@@ -6,6 +6,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import type { QualityTier } from '../services/settings'
 import { bakeCloudField } from './CloudBaker'
+import { FLOWER_FRAG, FLOWER_VERT } from './flowerShaders'
 import { WakeField } from './WakeField'
 import { CLOUD_SHADOW, MEADOW_NOISE, MEADOW_TINT } from './meadowShaders'
 import type { DescentEvent, FocusTarget, PickId, SkyStage } from '../types/sensor'
@@ -2884,60 +2885,104 @@ export class PrologueScene {
 
     this.surfaceGroup.add(hero)
 
-    // 远景野花：密度按距离抽稀，避开主花与石碑等已登记的地表清除区
-    const count = this.lowDetail ? 260 : 620
-    const stemGeo = new THREE.CylinderGeometry(0.004, 0.008, 0.42, 3)
-    const stemMat = new THREE.MeshStandardMaterial({ color: '#3b5332', roughness: 1 })
-    const bloomGeo = new THREE.IcosahedronGeometry(0.05, 0)
-    const bloomMat = new THREE.MeshStandardMaterial({
-      color: '#f2dcb2',
-      emissive: new THREE.Color('#ffd9a1'),
-      emissiveIntensity: 0.3,
-      roughness: 0.6,
-    })
-    const stems = new THREE.InstancedMesh(stemGeo, stemMat, count)
-    const blooms = new THREE.InstancedMesh(bloomGeo, bloomMat, count)
-    stems.frustumCulled = false
-    blooms.frustumCulled = false
-    const matrix = new THREE.Matrix4()
-    const color = new THREE.Color()
-    const blockers = this.contactShadowSpecs.map((spec) => ({
-      x: spec.x,
-      z: spec.z,
-      r: Math.max(0.6, spec.radius * 0.66),
-    }))
-    let placed = 0
-    let attempts = 0
-    while (placed < count && attempts < count * 6) {
-      attempts += 1
-      const angle = Math.random() * Math.PI * 2
-      const radius = 6 + Math.pow(Math.random(), 0.7) * 62
-      const x = Math.cos(angle) * radius
-      const z = Math.sin(angle) * radius - 12
-      if (!this.inRoam(x, z) && radius > this.roamRadius + 24) continue
-      if (Math.hypot(x + 3.8, z + 8.5) < 2.2) continue
-      if (blockers.some((b) => Math.hypot(x - b.x, z - b.z) < b.r)) continue
-      const ground = heightAt(x, z)
-      if (ground < LAKE.y + 0.45) continue
-      const h = 0.3 + Math.random() * 0.4
-      matrix.makeTranslation(x, ground + h / 2, z)
-      matrix.scale(new THREE.Vector3(1, h / 0.42, 1))
-      stems.setMatrixAt(placed, matrix)
-      matrix.makeTranslation(x, ground + h, z)
-      const s = 0.6 + Math.random() * 0.7
-      matrix.scale(new THREE.Vector3(s, s, s))
-      blooms.setMatrixAt(placed, matrix)
-      color.set(Math.random() > 0.5 ? '#ffe6c0' : Math.random() > 0.5 ? '#ffd0b5' : '#f4f0c8')
-      blooms.setColorAt(placed, color)
-      placed += 1
+    // 远景野花：相机跟随的两圈世界锚定花海，与草地共用高度图与清除遮罩
+    const geometry = (() => {
+      const positions: number[] = []
+      const parts: number[] = []
+      const locals: number[] = []
+      const push = (x: number, y: number, z: number, part: number) => {
+        positions.push(x, y, z)
+        parts.push(part)
+        locals.push(x, z)
+      }
+      push(-0.007, 0, 0, 0)
+      push(0.007, 0, 0, 0)
+      push(-0.005, 1, 0, 0)
+      push(-0.005, 1, 0, 0)
+      push(0.007, 0, 0, 0)
+      push(0.005, 1, 0, 0)
+      const rim = 6
+      for (let i = 0; i < rim; i += 1) {
+        const a0 = (i / rim) * Math.PI * 2
+        const a1 = ((i + 1) / rim) * Math.PI * 2
+        push(0, 1, 0, 1)
+        push(Math.cos(a0) * 0.075, 1, Math.sin(a0) * 0.075, 1)
+        push(Math.cos(a1) * 0.075, 1, Math.sin(a1) * 0.075, 1)
+      }
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      geo.setAttribute('aPart', new THREE.Float32BufferAttribute(parts, 1))
+      geo.setAttribute('aLocal', new THREE.Float32BufferAttribute(locals, 2))
+      return geo
+    })()
+
+    const uniforms: Record<string, THREE.IUniform> = {
+      uTime: this.grassUniforms.uTime,
+      uCamXZ: this.grassUniforms.uCamXZ,
+      uHeightTex: this.grassUniforms.uHeightTex,
+      uHeightOrigin: this.grassUniforms.uHeightOrigin,
+      uHeightSpan: this.grassUniforms.uHeightSpan,
+      uWaterY: this.grassUniforms.uWaterY,
+      uWakeTex: this.grassUniforms.uWakeTex,
+      uWakeOrigin: this.grassUniforms.uWakeOrigin,
+      uWakeSpan: this.grassUniforms.uWakeSpan,
+      uSunColor: this.grassUniforms.uSunColor,
+      uAmbient: this.grassUniforms.uAmbient,
+      uSunPower: this.grassUniforms.uSunPower,
+      uGalaxy: this.grassUniforms.uGalaxy,
+      uCell: { value: 8 },
+      uRadius: { value: 38 },
+      uFade: { value: new THREE.Vector4(-1, 0, 30, 38) },
     }
-    stems.count = placed
-    blooms.count = placed
-    stems.instanceMatrix.needsUpdate = true
-    blooms.instanceMatrix.needsUpdate = true
-    if (blooms.instanceColor) blooms.instanceColor.needsUpdate = true
-    this.surfaceGroup.add(stems)
-    this.surfaceGroup.add(blooms)
+
+    const shells = [
+      { cell: 8, per: 11, radius: 38, fade: [-1, 0, 30, 38], quality: 1 },
+      { cell: 22, per: 7, radius: 92, fade: [26, 36, 78, 92], quality: 0.5 },
+    ] as const
+
+    for (const shell of shells) {
+      const reach = Math.ceil(shell.radius / shell.cell)
+      const cells: [number, number][] = []
+      for (let cz = -reach; cz <= reach; cz += 1) {
+        for (let cx = -reach; cx <= reach; cx += 1) {
+          if (Math.hypot(cx, cz) > reach) continue
+          cells.push([cx, cz])
+        }
+      }
+      const per = Math.max(1, Math.round(shell.per * (this.lowDetail ? shell.quality : 1)))
+      const count = cells.length * per
+      const aCell = new Float32Array(count * 2)
+      const aSeed = new Float32Array(count * 3)
+      let index = 0
+      for (const [cx, cz] of cells) {
+        for (let slot = 0; slot < per; slot += 1) {
+          aCell[index * 2] = cx
+          aCell[index * 2 + 1] = cz
+          aSeed[index * 3] = Math.random()
+          aSeed[index * 3 + 1] = Math.random()
+          aSeed[index * 3 + 2] = Math.random()
+          index += 1
+        }
+      }
+      const shellGeometry = geometry.clone()
+      shellGeometry.setAttribute('aCell', new THREE.InstancedBufferAttribute(aCell, 2))
+      shellGeometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(aSeed, 3))
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          ...uniforms,
+          uCell: { value: shell.cell },
+          uRadius: { value: shell.radius },
+          uFade: { value: new THREE.Vector4(...shell.fade) },
+        },
+        vertexShader: FLOWER_VERT,
+        fragmentShader: FLOWER_FRAG,
+        side: THREE.DoubleSide,
+      })
+      const mesh = new THREE.InstancedMesh(shellGeometry, material, count)
+      mesh.frustumCulled = false
+      mesh.name = 'flower-' + shell.cell
+      this.surfaceGroup.add(mesh)
+    }
   }
 
   private buildScenery() {
