@@ -81,15 +81,15 @@ export function fitLocalBudget(list: StoredVision[]): StoredVision[] {
 function writeStored(list: StoredVision[]) {
   if (typeof window === 'undefined') return false
   let attempt = fitLocalBudget(list)
-  while (attempt.length > 0) {
+  for (;;) {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(attempt))
       return true
     } catch {
+      if (attempt.length === 0) return false
       attempt = attempt.slice(0, -1)
     }
   }
-  return false
 }
 
 function readHeartStore(): LocalHeartStore {

@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.8.2'
+export const APP_VERSION = '1.8.3'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '1.8.3',
+    date: '2026-11-23',
+    title: '撤回后本机记录立刻清空',
+    items: [
+      '修复 1.8.2 引入的问题：撤回视野后本机记录仍会残留，导致「我寄出的视野」里继续显示已删掉的那一条。现在撤回完成即清空。',
+    ],
+  },
   {
     version: '1.8.2',
     date: '2026-11-23',
