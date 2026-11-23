@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AmbientMixer } from '../audio/ambientMixer'
 import { getCityVoiceId, useVoiceState, voicePlayer } from '../audio/voicePlayer'
+import { signatureFor, type SignatureEffect } from '../data/citySignature'
 import { countEcho, countHeartbeat } from '../services/journey'
 import { deleteMyVision, ownsLocalVision, sendRadioHeartbeat } from '../services/visionApi'
 import type { RadioSignal, VisionEcho } from '../types/vision'
@@ -61,18 +62,29 @@ export function SignalViewer({
   const [sending, setSending] = useState(false)
   const [beating, setBeating] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
+  const [radioOn, setRadioOn] = useState(true)
   const [panelOpen, setPanelOpen] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | null>(null)
   const [own] = useState(() => ownsLocalVision(signal.code))
   const [withdrawArmed, setWithdrawArmed] = useState(false)
   const [withdrawing, setWithdrawing] = useState(false)
+  const [moment, setMoment] = useState<{ kind: SignatureEffect; tick: number } | null>(null)
+  const momentTimer = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (momentTimer.current !== null) window.clearTimeout(momentTimer.current)
+    }
+  }, [])
   const [postcardOpen, setPostcardOpen] = useState(false)
   const voiceState = useVoiceState()
 
   const packet = signal.packet
   const cityVoiceId = getCityVoiceId(packet.city)
   const wind = WIND_LABELS[Math.min(3, Math.max(0, Math.round(packet.windLevel)))]
+  const signature = signatureFor(packet.city, packet.ambience)
+  const weather = signature.weather || wind
   const recentEchoes = useMemo(
     () => [...echoes].sort((a, b) => b.createdAt - a.createdAt).slice(0, 12),
     [echoes],
@@ -106,6 +118,15 @@ export function SignalViewer({
     mixer.setActive(soundOn)
     if (soundOn) void mixer.ensure()
   }, [mixer, packet.ambience, soundOn])
+
+  useEffect(() => {
+    if (!soundOn || !radioOn) {
+      mixer.stopStation()
+      return
+    }
+    mixer.startStation(packet.city)
+    return () => mixer.stopStation()
+  }, [mixer, packet.city, soundOn, radioOn])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -208,6 +229,17 @@ export function SignalViewer({
     onClose()
   }
 
+  const triggerMoment = () => {
+    setMoment((current) => ({ kind: signature.effect, tick: (current?.tick ?? 0) + 1 }))
+    try {
+      navigator.vibrate?.([18, 36, 24])
+    } catch {
+      /* 设备不支持震动 */
+    }
+    if (momentTimer.current !== null) window.clearTimeout(momentTimer.current)
+    momentTimer.current = window.setTimeout(() => setMoment(null), 5600)
+  }
+
   return (
     <div
       className="fixed inset-0 z-[80] flex flex-col bg-[#091122] text-[#fff8ee]"
@@ -289,9 +321,27 @@ export function SignalViewer({
           )}
           <button
             type="button"
-            onClick={toggleSound}
-            aria-pressed={soundOn}
+            onClick={() => setRadioOn((current) => !current)}
+            aria-pressed={radioOn && soundOn}
+            aria-label="城市电台配乐"
+            title="城市电台配乐"
             className={`flex h-9 items-center gap-1.5 rounded-full border px-3 font-serif text-[12px] transition ${
+              radioOn && soundOn
+                ? 'border-sky-300/45 bg-sky-300/12 text-sky-200'
+                : 'border-white/14 bg-white/[0.04] text-white/55 hover:border-white/30'
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M9 18V6l10-2v12" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+              <circle cx="6.6" cy="18" r="2.4" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="16.6" cy="16" r="2.4" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+            <span className="hidden sm:inline">{radioOn && soundOn ? '电台配乐' : '静音配乐'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={toggleSound}
+            aria-pressed={soundOn}            className={`flex h-9 items-center gap-1.5 rounded-full border px-3 font-serif text-[12px] transition ${
               soundOn && !muted
                 ? 'border-signal/45 bg-signal/15 text-signal'
                 : 'border-white/14 bg-white/[0.04] text-white/60 hover:border-white/30'
@@ -341,6 +391,50 @@ export function SignalViewer({
             onHeartbeat={handleHeartbeat}
             onPlayVoice={() => void handlePlayVoice()}
           />
+          {moment && (
+            <div
+              key={moment.tick}
+              className="pointer-events-none absolute inset-0 z-20 flex items-start justify-center px-4 pt-16"
+            >
+              <div
+                className={`absolute inset-0 overflow-hidden fx-${moment.kind}`}
+                aria-hidden="true"
+              >
+                {moment.kind === 'ripple' && (
+                  <>
+                    <span />
+                    <span />
+                    <span />
+                  </>
+                )}
+                {moment.kind === 'starlight' &&
+                  [
+                    [22, 30, 0],
+                    [38, 22, 0.22],
+                    [56, 27, 0.44],
+                    [71, 35, 0.66],
+                    [47, 16, 0.88],
+                    [64, 44, 1.1],
+                    [31, 41, 1.32],
+                  ].map(([left, top, delay]) => (
+                    <i
+                      key={`${left}-${top}`}
+                      style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${delay}s` }}
+                    />
+                  ))}
+                {moment.kind === 'drizzle' &&
+                  [8, 20, 31, 42, 55, 66, 78, 90].map((left, index) => (
+                    <span
+                      key={left}
+                      style={{ left: `${left}%`, animationDelay: `${index * 0.14}s` }}
+                    />
+                  ))}
+              </div>
+              <p className="animate-fade-in relative max-w-[92%] rounded-2xl border border-signal/35 bg-[#0b152c]/90 px-3.5 py-2.5 font-serif text-[12.5px] leading-[1.85] text-[#fff8ee] shadow-2xl backdrop-blur-md">
+                <span className="text-signal">林微</span> · {signature.reply}
+              </p>
+            </div>
+          )}
         </section>
 
         {panelOpen && (
@@ -350,7 +444,7 @@ export function SignalViewer({
                 <div className="min-w-0">
                   <div className="font-serif text-[16px] text-[#fff8ee]">{packet.sender}</div>
                   <div className="mt-1 font-sans text-[12px] text-white/62">
-                    {packet.city} · {packet.tempC}°C · {wind}
+                    {packet.city} · {packet.tempC}°C · {weather}
                   </div>
                 </div>
                 <div className="shrink-0 rounded-2xl border border-signal/35 bg-signal/12 px-3.5 py-2 text-right">
@@ -365,6 +459,22 @@ export function SignalViewer({
                   ? `她在这片视野里停过 ${packet.focus.length} 次，点击画面上的光点可以读她的细语。`
                   : '她把当时的光与风留在了这帧风景里，长按画面下方可送出同频心跳。'}
               </p>
+
+              <button
+                type="button"
+                onClick={triggerMoment}
+                className="mt-3 w-full rounded-2xl border border-signal/30 bg-signal/[0.07] px-3.5 py-2.5 text-left transition hover:border-signal/55 hover:bg-signal/[0.13]"
+              >
+                <span className="block font-mono text-[9.5px] tracking-[0.22em] text-signal/60">
+                  ONE THING FOR HER
+                </span>
+                <span className="mt-1 block font-serif text-[13px] tracking-[0.04em] text-signal">
+                  替她{signature.verb}
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-white/45">
+                  做一件事，她会告诉你她的感受。
+                </span>
+              </button>
               <div className="mt-3 rounded-2xl border border-signal/25 bg-signal/[0.06] px-3.5 py-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-serif text-[11px] tracking-[0.06em] text-signal">来自地心的回响 · 林微</div>

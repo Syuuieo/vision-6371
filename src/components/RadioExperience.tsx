@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cityCoords } from '../data/seedRadioVisions'
+import { citySignature } from '../data/citySignature'
 import { getRadioSignal, listRadioSignals, previewLocalSignals } from '../services/visionApi'
 import type { RadioSignal, RadioSignalPreview, VisionOrigin } from '../types/vision'
 import { getCityWhisper, type StoryRelayState } from '../utils/storyRelay'
@@ -421,7 +422,8 @@ export function RadioExperience({
                           {item.title}
                         </div>
                         <div className="mt-1 truncate font-sans text-[12px] text-white/62">
-                          {item.sender} · {item.tempC}°C · {item.scentTag || '安静的风'}
+                          {item.sender} · {item.tempC}°C ·{' '}
+                          {citySignature(item.city)?.weather || item.scentTag || '安静的风'}
                         </div>
                         <div className="mt-1.5 flex items-center gap-3 font-sans text-[11px] text-white/55">
                           <span className="flex items-center gap-1 text-signal">

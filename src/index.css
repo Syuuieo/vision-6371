@@ -862,3 +862,97 @@ input[type="range"] {
   animation: none !important;
   opacity: 0.28;
 }
+
+/* 每座城市的专属感官动作：一次点击，一段短暂的画面反应 */
+.fx-frost {
+  background:
+    radial-gradient(120% 90% at 50% 50%, rgba(255, 255, 255, 0) 34%, rgba(214, 234, 255, 0.5) 72%, rgba(232, 243, 255, 0.86) 100%);
+  animation: fxFrost 3.4s ease-out forwards;
+}
+.fx-ripple span {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 30%;
+  aspect-ratio: 1;
+  border: 1.5px solid rgba(196, 232, 255, 0.7);
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.2);
+  animation: fxRipple 2.6s cubic-bezier(0.16, 0.72, 0.28, 1) forwards;
+}
+.fx-ripple span:nth-child(2) {
+  animation-delay: 0.28s;
+}
+.fx-ripple span:nth-child(3) {
+  animation-delay: 0.56s;
+}
+.fx-starlight i {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #fff7e6;
+  box-shadow: 0 0 12px 3px rgba(255, 244, 214, 0.8);
+  opacity: 0;
+  animation: fxStar 2.8s ease-out forwards;
+}
+.fx-bloom {
+  background: radial-gradient(70% 60% at 50% 58%, rgba(255, 205, 148, 0.4), rgba(255, 173, 96, 0) 72%);
+  animation: fxBloom 3s ease-out forwards;
+}
+.fx-drizzle span {
+  position: absolute;
+  top: -14%;
+  width: 1.5px;
+  height: 12%;
+  background: linear-gradient(180deg, rgba(214, 236, 255, 0), rgba(214, 236, 255, 0.85));
+  opacity: 0;
+  animation: fxDrop 1.9s linear forwards;
+}
+.fx-sway {
+  background: linear-gradient(105deg, transparent 30%, rgba(226, 238, 255, 0.34) 48%, transparent 66%);
+  animation: fxSway 2.4s ease-in-out forwards;
+}
+
+@keyframes fxFrost {
+  0% { opacity: 0; }
+  26% { opacity: 0.9; }
+  62% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+@keyframes fxRipple {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+  18% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.4); }
+}
+@keyframes fxStar {
+  0% { opacity: 0; transform: scale(0.4); }
+  28% { opacity: 1; transform: scale(1); }
+  74% { opacity: 0.85; }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+@keyframes fxBloom {
+  0% { opacity: 0; transform: scale(0.92); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+@keyframes fxDrop {
+  0% { opacity: 0; transform: translateY(0); }
+  12% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(760%); }
+}
+@keyframes fxSway {
+  0% { opacity: 0; transform: translateX(-18%); }
+  40% { opacity: 0.55; }
+  100% { opacity: 0; transform: translateX(18%); }
+}
+
+[data-motion="calm"] .fx-frost,
+[data-motion="calm"] .fx-bloom,
+[data-motion="calm"] .fx-sway,
+[data-flash-safe="on"] .fx-frost,
+[data-flash-safe="on"] .fx-bloom,
+[data-flash-safe="on"] .fx-sway {
+  animation-duration: 0.01ms;
+  opacity: 0;
+}

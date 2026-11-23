@@ -3,6 +3,7 @@ import { AmbientMixer } from '../audio/ambientMixer'
 import { getRadioSignal } from '../services/visionApi'
 import type { RadioSignal, VisionEcho } from '../types/vision'
 import { WIND_LABELS } from '../types/vision'
+import { citySignature } from '../data/citySignature'
 import { SignalViewer } from './SignalViewer'
 
 interface SignalReceiverProps {
@@ -67,6 +68,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
 
   const packet = signal?.packet
   const wind = packet ? WIND_LABELS[Math.min(3, Math.max(0, Math.round(packet.windLevel)))] : '微风'
+  const weather = (packet && citySignature(packet.city)?.weather) || wind
 
   return (
     <main
@@ -140,7 +142,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#091122] via-[#091122]/20 to-transparent" />
 
               <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-[#0b152c]/65 px-3.5 py-1.5 font-serif text-[12px] text-[#fff8ee] backdrop-blur-md">
-                {packet.city} · {packet.tempC}°C · {wind}
+                {packet.city} · {packet.tempC}°C · {weather}
               </div>
 
               <div className="absolute inset-x-5 bottom-5">
@@ -167,7 +169,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
               </h1>
               <p className="mt-4 font-serif text-[14.5px] font-light leading-[1.95] tracking-[0.04em] text-white/78 sm:text-[15.5px]">
                 来自 <span className="text-signal">{packet.city}</span> 的{' '}
-                <span className="text-[#fff8ee]">{packet.sender}</span>，把 {wind}、{packet.tempC}°C
+                <span className="text-[#fff8ee]">{packet.sender}</span>，把 {weather}、{packet.tempC}°C
                 {packet.scentTag ? `、${packet.scentTag}` : ''} 与 {packet.focus.length} 处想指给你看的目光，放进了这封视窗。
               </p>
 

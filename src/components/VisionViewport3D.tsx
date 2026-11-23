@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { citySignature } from '../data/citySignature'
 import type { FocusPoint, ParticleKind, StudioMode, VisionPacket } from '../types/vision'
 
 interface VisionViewport3DProps {
@@ -811,6 +812,7 @@ export function VisionViewport3D({
   const canGyro = isCoarse && typeof window !== 'undefined' && 'DeviceOrientationEvent' in window
   const focusCount = packet.focus.length
   const windText = ['无风', '微风', '清风', '长风'][clamp(Math.round(packet.windLevel), 0, 3)]
+  const weatherText = citySignature(packet.city)?.weather || windText
 
   return (
     <div ref={hostRef} className="group relative h-full w-full select-none overflow-hidden bg-[#0a1226]">
@@ -827,7 +829,7 @@ export function VisionViewport3D({
           <div className="flex items-center gap-2 font-serif text-[12px] tracking-[0.04em] text-[#fff8ee]">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]" />
             <span className="truncate">
-              {packet.city || '此刻'} · {packet.tempC}°C · {windText}
+              {packet.city || '此刻'} · {packet.tempC}°C · {weatherText}
               {packet.scentTag ? ` · ${packet.scentTag}` : ''}
             </span>
           </div>

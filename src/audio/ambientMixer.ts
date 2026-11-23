@@ -10,8 +10,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
-function makeNoise(ctx: AudioContext, seconds = 4) {
-  const length = Math.floor(ctx.sampleRate * seconds)
+function makeNoise(ctx: AudioContext, seconds = 4) {  const length = Math.floor(ctx.sampleRate * seconds)
   const buffer = ctx.createBuffer(2, length, ctx.sampleRate)
   for (let channel = 0; channel < 2; channel += 1) {
     const data = buffer.getChannelData(channel)
@@ -23,6 +22,45 @@ function makeNoise(ctx: AudioContext, seconds = 4) {
     }
   }
   return buffer
+}
+
+interface Station {
+  root: number
+  scale: number[]
+  bpm: number
+  pad: OscillatorType
+  cutoff: number
+}
+
+const MUSIC_LEVEL = 0.26
+
+const MINOR_PENTA = [0, 3, 5, 7, 10]
+const MAJOR_PENTA = [0, 2, 4, 7, 9]
+const DORIAN = [0, 2, 3, 5, 7, 9, 10]
+
+function stationOf(root: number, scale: number[], bpm: number, pad: OscillatorType, cutoff: number): Station {
+  return { root, scale, bpm, pad, cutoff }
+}
+
+const STATIONS: Record<string, Station> = {
+  北京: stationOf(146.83, MINOR_PENTA, 76, 'triangle', 1800),
+  哈尔滨: stationOf(110, MINOR_PENTA, 64, 'sine', 1400),
+  三亚: stationOf(174.61, MAJOR_PENTA, 92, 'triangle', 2600),
+  青岛: stationOf(196, MAJOR_PENTA, 84, 'sine', 2300),
+  大理: stationOf(130.81, MAJOR_PENTA, 70, 'triangle', 2100),
+  武汉: stationOf(164.81, MINOR_PENTA, 80, 'triangle', 1700),
+  拉萨: stationOf(164.81, MAJOR_PENTA, 62, 'sine', 2800),
+  上海: stationOf(123.47, MINOR_PENTA, 88, 'sawtooth', 1500),
+  成都: stationOf(174.61, MAJOR_PENTA, 74, 'triangle', 2000),
+  西安: stationOf(146.83, DORIAN, 68, 'triangle', 1600),
+  杭州: stationOf(110, MINOR_PENTA, 72, 'sine', 1900),
+  南京: stationOf(130.81, MINOR_PENTA, 66, 'sine', 1700),
+}
+
+const DEFAULT_STATION = stationOf(146.83, MINOR_PENTA, 72, 'triangle', 1900)
+
+function stationFor(city: string) {
+  return STATIONS[city.trim()] ?? DEFAULT_STATION
 }
 
 /**
@@ -51,6 +89,13 @@ export class AmbientMixer {
   private voiceSource: AudioBufferSourceNode | null = null
   private voiceStopTimer: number | null = null
   private voiceCache = new Map<string, AudioBuffer>()
+
+  private musicBus: GainNode | null = null
+  private musicTimer: number | null = null
+  private musicStation: Station | null = null
+  private musicCity: string | null = null
+  private musicStep = 0
+  private musicNext = 0
 
   private disposed = false
   private settingsUnsubscribe: (() => void) | null = null
@@ -111,6 +156,12 @@ export class AmbientMixer {
       sfx.connect(master)
       this.sfxBus = sfx
 
+      const music = ctx.createGain()
+      music.gain.value = 0.0001
+      music.connect(master)
+      this.musicBus = music
+      if (this.musicStation) this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * this.ambienceVolume, ctx.currentTime, 0.6)
+
       this.rebuildLayers()
     }
 
@@ -122,6 +173,9 @@ export class AmbientMixer {
       }
     }
     this.applyMaster(0.5)
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __mixer?: AmbientMixer }).__mixer = this
+    }
   }
 
   setKind(kind: AmbientKind) {
@@ -586,6 +640,139 @@ export class AmbientMixer {
     }
   }
 
+  /** 供开发期自检：电台配乐当前是否在跑、推进到第几拍 */
+  stationState() {
+    return {
+      city: this.musicCity,
+      running: this.musicTimer !== null,
+      step: this.musicStep,
+      context: this.ctx?.state ?? 'none',
+      gain: this.musicBus?.gain.value ?? 0,
+    }
+  }
+
+  startStation(city: string) {
+    this.musicStation = stationFor(city)
+    this.musicCity = city.trim() || null
+    this.musicStep = 0
+    void this.ensure().then(() => {
+      if (!this.ctx || !this.musicBus || !this.musicStation) return
+      this.musicNext = this.ctx.currentTime + 0.12
+      this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * this.ambienceVolume, this.ctx.currentTime, 0.9)
+      this.tuneIn()
+      if (this.musicTimer === null) {
+        this.musicTimer = window.setInterval(() => this.pumpMusic(), 220)
+      }
+    })
+  }
+
+  stopStation() {
+    this.musicStation = null
+    this.musicCity = null
+    if (this.musicTimer !== null) {
+      window.clearInterval(this.musicTimer)
+      this.musicTimer = null
+    }
+    if (this.ctx && this.musicBus) {
+      this.musicBus.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.4)
+    }
+  }
+
+  /** 调台时的一小段带通噪声，像收音机刚对准频率 */
+  private tuneIn() {
+    const ctx = this.ctx
+    const bus = this.musicBus
+    if (!ctx || !bus || !this.noise) return
+    const source = ctx.createBufferSource()
+    source.buffer = this.noise
+    source.loop = true
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.Q.value = 5.5
+    const at = ctx.currentTime
+    filter.frequency.setValueAtTime(520, at)
+    filter.frequency.exponentialRampToValueAtTime(2200, at + 0.42)
+    filter.frequency.exponentialRampToValueAtTime(760, at + 0.9)
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.exponentialRampToValueAtTime(0.5, at + 0.14)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 1.05)
+    source.connect(filter).connect(gain).connect(bus)
+    source.start(at)
+    source.stop(at + 1.15)
+  }
+
+  private pumpMusic() {
+    const ctx = this.ctx
+    if (!ctx || !this.musicBus || !this.musicStation) return
+    if (ctx.state !== 'running') return
+    const station = this.musicStation
+    const stepDur = 60 / station.bpm / 2
+    let guard = 0
+    while (this.musicNext < ctx.currentTime + 0.7 && guard < 24) {
+      guard += 1
+      if (this.musicStep % 8 === 0) this.playPad(this.musicNext, stepDur * 8, station)
+      if (this.musicStep % 2 === 0 && Math.random() < 0.42) this.playPluck(this.musicNext, station)
+      this.musicStep += 1
+      this.musicNext += stepDur
+    }
+  }
+
+  private playPad(at: number, duration: number, station: Station) {
+    const ctx = this.ctx
+    const bus = this.musicBus
+    if (!ctx || !bus) return
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = station.cutoff
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.linearRampToValueAtTime(0.2, at + Math.min(1.6, duration * 0.35))
+    gain.gain.linearRampToValueAtTime(0.0001, at + duration + 0.6)
+    filter.connect(gain).connect(bus)
+    for (const [ratio, level] of [[1, 1], [1.5, 0.55], [2, 0.34]] as const) {
+      const osc = ctx.createOscillator()
+      osc.type = station.pad
+      osc.frequency.value = station.root * ratio
+      osc.detune.value = (Math.random() - 0.5) * 9
+      const mix = ctx.createGain()
+      mix.gain.value = level
+      osc.connect(mix).connect(filter)
+      osc.start(at)
+      osc.stop(at + duration + 0.8)
+    }
+  }
+
+  private playPluck(at: number, station: Station) {
+    const ctx = this.ctx
+    const bus = this.musicBus
+    if (!ctx || !bus) return
+    const degree = station.scale[Math.floor(Math.random() * station.scale.length)]
+    const octave = Math.random() < 0.32 ? 2 : 1
+    const freq = station.root * Math.pow(2, (degree + 12 * (octave - 1)) / 12)
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.exponentialRampToValueAtTime(0.19, at + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 2.1)
+    gain.connect(bus)
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = freq
+    osc.connect(gain)
+    osc.start(at)
+    osc.stop(at + 2.2)
+    const shimmer = ctx.createOscillator()
+    shimmer.type = 'sine'
+    shimmer.frequency.value = freq * 2
+    const shimmerGain = ctx.createGain()
+    shimmerGain.gain.setValueAtTime(0.0001, at)
+    shimmerGain.gain.exponentialRampToValueAtTime(0.045, at + 0.03)
+    shimmerGain.gain.exponentialRampToValueAtTime(0.0001, at + 1.3)
+    shimmer.connect(shimmerGain).connect(bus)
+    shimmer.start(at)
+    shimmer.stop(at + 1.4)
+  }
+
   dispose() {
     if (this.disposed) return
     this.disposed = true
@@ -593,6 +780,7 @@ export class AmbientMixer {
     this.settingsUnsubscribe = null
     this.clearAccent()
     this.stopVoice()
+    this.stopStation()
     const ctx = this.ctx
     const master = this.master
     if (ctx && master) {
@@ -619,6 +807,7 @@ export class AmbientMixer {
     this.ambienceBus = null
     this.voiceBus = null
     this.sfxBus = null
+    this.musicBus = null
     this.noise = null
     this.voiceCache.clear()
   }

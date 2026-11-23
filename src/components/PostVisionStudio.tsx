@@ -19,6 +19,7 @@ import type {
   VisionVisibility,
 } from '../types/vision'
 import { WIND_DESCRIPTIONS } from '../types/vision'
+import { citySignature } from '../data/citySignature'
 import { countVisionSent } from '../services/journey'
 import { buildShareLink, deleteMyVision, listMyVisions, publishRadioSignal, type MyVision } from '../services/visionApi'
 import { compressImage, dataUrlBytes, formatBytes } from '../utils/imageCompress'
@@ -1201,7 +1202,8 @@ export function PostVisionStudio({
                 </div>
                 <div className="mt-1 font-sans text-[12px] text-white/65">
                   {publishResult.signal.packet.city} · {publishResult.signal.packet.tempC}°C ·{' '}
-                  {windLabel(publishResult.signal.packet.windLevel)}
+                  {citySignature(publishResult.signal.packet.city)?.weather ??
+                    windLabel(publishResult.signal.packet.windLevel)}
                 </div>
                 <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-signal/35 bg-signal/12 px-3 py-1 font-mono text-[11px] tracking-[0.12em] text-signal">
                   信号编号 {publishResult.code}
