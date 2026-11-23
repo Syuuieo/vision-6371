@@ -6,6 +6,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import type { QualityTier } from '../services/settings'
 import { bakeCloudField } from './CloudBaker'
+import { WakeField } from './WakeField'
 import { CLOUD_SHADOW, MEADOW_NOISE, MEADOW_TINT } from './meadowShaders'
 import type { DescentEvent, FocusTarget, PickId, SkyStage } from '../types/sensor'
 
@@ -714,6 +715,8 @@ export class PrologueScene {
   private calmMotion = false
   private skim = 0
   private skimReported = 0
+  private wake: WakeField | null = null
+  private grassMaterials: THREE.ShaderMaterial[] = []
   private lastFrame = 0
   private raf: number | null = null
   private paused = false
@@ -1003,6 +1006,9 @@ export class PrologueScene {
     this.composer = composer
     this.bloom = bloom
     this.atmosphere = atmosphere
+    this.wake = new WakeField()
+    this.grassUniforms.uWakeOrigin.value.set(-110, -152)
+    this.grassUniforms.uWakeSpan.value = this.wake.span
 
     this.resize()
 
@@ -1903,6 +1909,9 @@ export class PrologueScene {
     this.warpStreams = null
     this.lakeBoat = null
     this.vehicleCommsRing = null
+    this.wake?.dispose()
+    this.wake = null
+    this.grassMaterials = []
     const cloudTex = this.skyUniforms.uCloudTex?.value as THREE.Texture | undefined
     cloudTex?.dispose()
     this.glowTexture = null
@@ -2397,6 +2406,9 @@ export class PrologueScene {
       uSunDir: { value: this.look.sunDir.clone() },
       uSunPower: { value: this.look.sunPower },
       uGalaxy: { value: this.look.galaxy },
+      uWakeTex: { value: new THREE.DataTexture(new Uint8Array([128, 128, 0, 255]), 1, 1) },
+      uWakeOrigin: { value: new THREE.Vector2(0, -42) },
+      uWakeSpan: { value: 220 },
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
     }
     this.grassUniforms = uniforms
@@ -2417,6 +2429,9 @@ export class PrologueScene {
         uniform vec2 uHeightOrigin;
         uniform float uHeightSpan;
         uniform float uWaterY;
+        uniform sampler2D uWakeTex;
+        uniform vec2 uWakeOrigin;
+        uniform float uWakeSpan;
         varying float vH;
         varying float vClump;
         varying float vEdgeOn;
@@ -2490,6 +2505,9 @@ export class PrologueScene {
           float cursorPush = (1.0 - smoothstep(0.25, 2.4, cursorDist)) * 0.48;
           vec2 cursorDir = cursorDist > 0.001 ? toCursor / cursorDist : vec2(0.0);
 
+          vec2 wuv = (xz - uWakeOrigin) / uWakeSpan;
+          vec2 wpush = (texture2D(uWakeTex, clamp(wuv, 0.0, 1.0)).rg - 0.5) * 2.0;
+          world.xz += wpush * 0.75;
           float pushWeight = vH * vH;
           world.xz += (playerDir * playerPush + cursorDir * cursorPush) * pushWeight;
           world.y -= (playerPush + cursorPush) * 0.22 * pushWeight;
@@ -2588,6 +2606,7 @@ export class PrologueScene {
       const mesh = new THREE.InstancedMesh(geometry, shellMaterial, count)
       mesh.frustumCulled = false
       mesh.name = 'grass-' + shell.key
+      this.grassMaterials.push(shellMaterial)
       this.surfaceGroup.add(mesh)
     }
   }
@@ -5334,6 +5353,12 @@ export class PrologueScene {
     }
     if (this.mistUniforms) this.mistUniforms.uTime.value = this.elapsed
     if (this.skyUniforms.uTime) this.skyUniforms.uTime.value = this.elapsed
+    if (this.wake && this.renderer && !this.lowDetail && !this.calmMotion) {
+      const player = new THREE.Vector2(this.camPos.x, this.camPos.z)
+      const cursor = new THREE.Vector2(this.grassUniforms.uCursorPos.value.x, this.grassUniforms.uCursorPos.value.z)
+      this.wake.update(this.renderer, player, cursor, this.walkTarget !== null || this.keys.size > 0)
+      this.grassUniforms.uWakeTex.value = this.wake.texture
+    }
     this.windLevel += (this.windTarget - this.windLevel) * (1 - Math.exp(-dt * 1.4))
     if (this.grassUniforms.uWind) this.grassUniforms.uWind.value = this.windLevel
 
