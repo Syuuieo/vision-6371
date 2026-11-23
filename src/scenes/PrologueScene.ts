@@ -2884,44 +2884,55 @@ export class PrologueScene {
 
     this.surfaceGroup.add(hero)
 
-    // distant decorative wildflowers
-    const stemGeo = new THREE.CylinderGeometry(0.005, 0.01, 0.5, 4)
+    // 远景野花：密度按距离抽稀，避开主花与石碑等已登记的地表清除区
+    const count = this.lowDetail ? 260 : 620
+    const stemGeo = new THREE.CylinderGeometry(0.004, 0.008, 0.42, 3)
     const stemMat = new THREE.MeshStandardMaterial({ color: '#3b5332', roughness: 1 })
-    const bloomGeo = new THREE.IcosahedronGeometry(0.045, 0)
+    const bloomGeo = new THREE.IcosahedronGeometry(0.05, 0)
     const bloomMat = new THREE.MeshStandardMaterial({
       color: '#f2dcb2',
       emissive: new THREE.Color('#ffd9a1'),
-      emissiveIntensity: 0.28,
+      emissiveIntensity: 0.3,
       roughness: 0.6,
     })
-    const stems = new THREE.InstancedMesh(stemGeo, stemMat, 80)
-    const blooms = new THREE.InstancedMesh(bloomGeo, bloomMat, 80)
+    const stems = new THREE.InstancedMesh(stemGeo, stemMat, count)
+    const blooms = new THREE.InstancedMesh(bloomGeo, bloomMat, count)
     stems.frustumCulled = false
     blooms.frustumCulled = false
     const matrix = new THREE.Matrix4()
     const color = new THREE.Color()
-    for (let i = 0; i < 80; i += 1) {
+    const blockers = this.contactShadowSpecs.map((spec) => ({
+      x: spec.x,
+      z: spec.z,
+      r: Math.max(0.6, spec.radius * 0.66),
+    }))
+    let placed = 0
+    let attempts = 0
+    while (placed < count && attempts < count * 6) {
+      attempts += 1
       const angle = Math.random() * Math.PI * 2
-      const radius = 8 + Math.random() * 42
+      const radius = 6 + Math.pow(Math.random(), 0.7) * 62
       const x = Math.cos(angle) * radius
-      const z = Math.sin(angle) * radius - 8
+      const z = Math.sin(angle) * radius - 12
+      if (!this.inRoam(x, z) && radius > this.roamRadius + 24) continue
+      if (Math.hypot(x + 3.8, z + 8.5) < 2.2) continue
+      if (blockers.some((b) => Math.hypot(x - b.x, z - b.z) < b.r)) continue
       const ground = heightAt(x, z)
-      if (Math.hypot(x + 3.8, z + 8.5) < 6) {
-        stems.setMatrixAt(i, matrix.makeScale(0, 0, 0))
-        blooms.setMatrixAt(i, matrix.makeScale(0, 0, 0))
-        continue
-      }
-      const h = 0.32 + Math.random() * 0.42
+      if (ground < LAKE.y + 0.45) continue
+      const h = 0.3 + Math.random() * 0.4
       matrix.makeTranslation(x, ground + h / 2, z)
-      matrix.scale(new THREE.Vector3(1, h / 0.5, 1))
-      stems.setMatrixAt(i, matrix)
+      matrix.scale(new THREE.Vector3(1, h / 0.42, 1))
+      stems.setMatrixAt(placed, matrix)
       matrix.makeTranslation(x, ground + h, z)
-      const s = 0.45 + Math.random() * 0.55
+      const s = 0.6 + Math.random() * 0.7
       matrix.scale(new THREE.Vector3(s, s, s))
-      blooms.setMatrixAt(i, matrix)
+      blooms.setMatrixAt(placed, matrix)
       color.set(Math.random() > 0.5 ? '#ffe6c0' : Math.random() > 0.5 ? '#ffd0b5' : '#f4f0c8')
-      blooms.setColorAt(i, color)
+      blooms.setColorAt(placed, color)
+      placed += 1
     }
+    stems.count = placed
+    blooms.count = placed
     stems.instanceMatrix.needsUpdate = true
     blooms.instanceMatrix.needsUpdate = true
     if (blooms.instanceColor) blooms.instanceColor.needsUpdate = true

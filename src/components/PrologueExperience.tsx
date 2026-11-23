@@ -185,6 +185,7 @@ export function PrologueExperience({
   const [toast, setToast] = useState<string | null>(null)
   const [hint, setHint] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
+  const [journalOpen, setJournalOpen] = useState(false)
   const [eggsFound, setEggsFound] = useState<EggId[]>(() =>
     journey.eggsFound.filter((id): id is EggId => VALID_EGG_IDS.includes(id as EggId)),
   )
@@ -1840,6 +1841,55 @@ export function PrologueExperience({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {phase === 'explore' && (
+        <div className="pointer-events-auto fixed bottom-3 left-3 z-30 flex flex-col items-start gap-2">
+          {journalOpen && (
+            <div className="w-[236px] rounded-2xl border border-white/14 bg-[#0d172e]/82 p-3 font-serif text-[12px] text-white/80 shadow-2xl backdrop-blur-xl">
+              <div className="flex items-center justify-between">
+                <span className="tracking-[0.12em] text-signal/85">草原观测手账</span>
+                <button
+                  type="button"
+                  onClick={() => setJournalOpen(false)}
+                  className="rounded-full px-1.5 text-white/45 transition hover:text-signal"
+                  aria-label="收起手账"
+                >
+                  ×
+                </button>
+              </div>
+              <ul className="mt-2 space-y-1.5">
+                {([
+                  ['bottle', '漂流瓶 · 渡口下游'],
+                  ['tablet', '风化石碑 · 石拱庙侧'],
+                  ['meteor', '暮色流星 · 入夜后'],
+                ] as const).map(([id, label]) => {
+                  const found = eggsFound.includes(id)
+                  return (
+                    <li key={id} className="flex items-center gap-2">
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                          found ? 'bg-signal' : 'border border-white/35'
+                        }`}
+                      />
+                      <span className={found ? 'text-white/85' : 'text-white/45'}>{label}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+              <div className="mt-2.5 border-t border-white/10 pt-2 text-[11.5px] text-white/50">
+                叙事伏笔 {cluesFound.length} / 4
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setJournalOpen((current) => !current)}
+            className="rounded-full border border-white/16 bg-[#0d172e]/72 px-3 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-white/70 shadow-lg backdrop-blur-md transition hover:border-signal/50 hover:text-signal"
+          >
+            手账 · {eggsFound.length}/3
+          </button>
         </div>
       )}
 
