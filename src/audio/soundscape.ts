@@ -43,6 +43,10 @@ export class Soundscape {
   private ambient: GainNode | null = null
   private sfx: GainNode | null = null
   private reverbSend: GainNode | null = null
+  private skimSource: AudioBufferSourceNode | null = null
+  private skimGain: GainNode | null = null
+  private skimFilter: BiquadFilterNode | null = null
+  private skimAmount = 0
   private noise: AudioBuffer | null = null
 
   private windGain: GainNode | null = null
@@ -118,6 +122,7 @@ export class Soundscape {
       reverb.connect(master)
       this.reverbSend = reverbSend
 
+      this.buildSkim(ctx, ambient)
       this.buildWind(ctx, ambient)
       this.buildRumble(ctx, ambient)
       this.buildPulse(ctx, ambient)
@@ -668,7 +673,77 @@ export class Soundscape {
     this.lastBgmMode = null
   }
 
+  /** Paul Kellet 七阶粉红噪声：比白噪声更接近草叶摩擦的频谱 */
+  private makePinkBuffer(ctx: AudioContext, seconds = 3) {
+    const length = Math.floor(ctx.sampleRate * seconds)
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate)
+    const data = buffer.getChannelData(0)
+    let b0 = 0
+    let b1 = 0
+    let b2 = 0
+    let b3 = 0
+    let b4 = 0
+    let b5 = 0
+    let b6 = 0
+    for (let i = 0; i < length; i += 1) {
+      const white = Math.random() * 2 - 1
+      b0 = 0.99886 * b0 + white * 0.0555179
+      b1 = 0.99332 * b1 + white * 0.0750759
+      b2 = 0.969 * b2 + white * 0.153852
+      b3 = 0.8665 * b3 + white * 0.3104856
+      b4 = 0.55 * b4 + white * 0.5329522
+      b5 = -0.7616 * b5 - white * 0.016898
+      data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11
+      b6 = white * 0.115926
+    }
+    return buffer
+  }
+
+  private buildSkim(ctx: AudioContext, bus: GainNode) {
+    const source = ctx.createBufferSource()
+    source.buffer = this.makePinkBuffer(ctx)
+    source.loop = true
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 2600
+    filter.Q.value = 0.9
+    const highpass = ctx.createBiquadFilter()
+    highpass.type = 'highpass'
+    highpass.frequency.value = 1500
+    const gain = ctx.createGain()
+    gain.gain.value = 0.0001
+    source.connect(filter).connect(highpass).connect(gain).connect(bus)
+    source.start()
+    this.skimSource = source
+    this.skimGain = gain
+    this.skimFilter = filter
+    this.applySkim(0.3)
+  }
+
+  /** 0 = 完全静止，1 = 正在草尖上划过 */
+  setGrassSkim(amount: number) {
+    this.skimAmount = clamp(amount, 0, 1)
+    this.applySkim(0.25)
+  }
+
+  private applySkim(smoothing: number) {
+    if (!this.skimGain || !this.ctx) return
+    const target = this.muted || !this.active ? 0.0001 : Math.max(0.0001, this.skimAmount * 0.12)
+    this.skimGain.gain.setTargetAtTime(target, this.now(), smoothing)
+    if (this.skimFilter) {
+      this.skimFilter.frequency.setTargetAtTime(2100 + this.skimAmount * 1500, this.now(), smoothing)
+    }
+  }
+
   dispose() {
+    try {
+      this.skimSource?.stop()
+    } catch {
+      /* already stopped */
+    }
+    this.skimSource = null
+    this.skimGain = null
+    this.skimFilter = null
     this.stopHeartbeat()
     this.stopBgm()
     this.pendingTimers.forEach((timer) => window.clearTimeout(timer))

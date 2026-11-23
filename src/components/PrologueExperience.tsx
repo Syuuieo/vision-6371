@@ -360,6 +360,7 @@ export function PrologueExperience({
       onLakeRipple: () => lakeHandlerRef.current(),
       onHoverTarget: (info) => setHover(info),
       onZoomChange: (nextZoom) => setZoom(nextZoom),
+      onSkimChange: (amount) => sound.setGrassSkim(amount),
       onPlaceChange: (nextPlace) => setPlace(nextPlace),
       onBoundary: () => boundaryHandlerRef.current?.(),
     })
@@ -372,7 +373,7 @@ export function PrologueExperience({
       scene.dispose()
       sceneRef.current = null
     }
-  }, [])
+  }, [sound])
 
   useEffect(() => {
     sceneRef.current?.setPaused(!active)

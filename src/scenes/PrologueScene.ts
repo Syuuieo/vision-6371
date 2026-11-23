@@ -5,6 +5,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import type { QualityTier } from '../services/settings'
+import { bakeCloudField } from './CloudBaker'
+import { CLOUD_SHADOW, MEADOW_NOISE, MEADOW_TINT } from './meadowShaders'
 import type { DescentEvent, FocusTarget, PickId, SkyStage } from '../types/sensor'
 
 const LAKE = { x: -58, z: -96, rx: 74, rz: 52, y: -1.9 }
@@ -679,6 +681,7 @@ export interface PrologueSceneOptions {
   onLakeRipple?: () => void
   onHoverTarget?: (info: HoverTargetInfo | null) => void
   onZoomChange?: (zoom: number) => void
+  onSkimChange?: (amount: number) => void
   onPlaceChange?: (place: string) => void
   onBoundary?: () => void
 }
@@ -709,6 +712,8 @@ export class PrologueScene {
   private bloom: UnrealBloomPass | null = null
   private atmosphere: ShaderPass | null = null
   private calmMotion = false
+  private skim = 0
+  private skimReported = 0
   private lastFrame = 0
   private raf: number | null = null
   private paused = false
@@ -958,10 +963,11 @@ export class PrologueScene {
     this.buildTerrain()
     this.buildMistBoundary()
     this.buildWater()
-    this.buildGrass()
-    this.buildFlowers()
     this.buildScenery()
     this.buildScatter()
+    this.buildEasterEggs()
+    this.buildGrass()
+    this.buildFlowers()
     this.buildBeacons()
     this.buildPollen()
     this.buildPetals()
@@ -970,7 +976,6 @@ export class PrologueScene {
     this.buildHoverMotes()
     this.buildWalkMarker()
     this.buildCallWave()
-    this.buildEasterEggs()
     this.buildContactShadows()
     this.buildRain()
     this.buildConstellation()
@@ -1898,8 +1903,13 @@ export class PrologueScene {
     this.warpStreams = null
     this.lakeBoat = null
     this.vehicleCommsRing = null
+    const cloudTex = this.skyUniforms.uCloudTex?.value as THREE.Texture | undefined
+    cloudTex?.dispose()
     this.glowTexture = null
     this.contactShadowSpecs = []
+    this.skim = 0
+    this.skimReported = 0
+    this.options.onSkimChange?.(0)
     this.canvas = null
     this.renderer = null
     this.composer = null
@@ -1919,6 +1929,8 @@ export class PrologueScene {
       uGalaxy: { value: 0 },
       uGalaxyBoost: { value: 0 },
       uGalaxyColor: { value: new THREE.Color('#a4b3ef') },
+      uCloudTex: { value: bakeCloudField(this.lowDetail ? { width: 512, height: 128 } : { width: 1024, height: 256 }) },
+      uTime: { value: 0 },
     }
     this.skyUniforms = uniforms
 
@@ -1943,6 +1955,8 @@ export class PrologueScene {
         uniform float uSunPower;
         uniform float uGalaxy;
         uniform float uGalaxyBoost;
+        uniform sampler2D uCloudTex;
+        uniform float uTime;
 
         float hash13(vec3 p) {
           p = fract(p * 0.1031);
@@ -2001,8 +2015,17 @@ export class PrologueScene {
           float shaft = pow(sd, 12.0) * (0.35 + 0.65 * sunRay) * (0.45 + 0.55 * cloud) * smoothstep(-0.02, 0.28, dir.y);
           col += uSunColor * shaft * uSunPower * (1.0 - uGalaxy) * 0.22;
 
+          vec2 cuv = dir.xz / max(dir.y + 0.34, 0.12) * 0.12 + vec2(uTime * 0.0021, uTime * 0.0013);
+          vec4 cloudField = texture2D(uCloudTex, cuv);
+          float deck = smoothstep(0.04, 0.6, cloudField.g) * smoothstep(0.0, 0.18, dir.y);
+          float albedo = 0.55 + 0.45 * cloudField.r;
+          float hg = 0.62 * (0.25 + 0.75 * pow(max(dot(dir, sunDir), 0.0), 6.0));
+          vec3 lit = mix(uHorizon, uSunColor, 0.35 + 0.5 * hg) * (0.75 + 0.5 * cloudField.b);
+          col = mix(col, lit * albedo, deck * (0.55 - 0.3 * uGalaxy) * (0.6 + 0.6 * uSunPower));
+          float veil = smoothstep(0.1, 0.75, cloudField.a) * (1.0 - smoothstep(0.02, 0.3, dir.y));
+          col = mix(col, lit * 0.92, veil * 0.22 * (1.0 - uGalaxy));
           float cloudBand = (1.0 - smoothstep(0.02, 0.17, abs(dir.y - 0.055))) * smoothstep(0.25, 0.7, cloud);
-          col = mix(col, mix(vec3(0.95, 0.74, 0.56), vec3(0.82, 0.44, 0.4), 0.5) * (0.55 + 0.4 * uSunPower), cloudBand * 0.18 * (1.0 - uGalaxy));
+          col = mix(col, mix(vec3(0.95, 0.74, 0.56), vec3(0.82, 0.44, 0.4), 0.5) * (0.55 + 0.4 * uSunPower), cloudBand * 0.1 * (1.0 - uGalaxy));
 
           vec3 bandNormal = normalize(vec3(0.32, 0.62, 0.72));
           float band = 1.0 - smoothstep(0.0, 0.36, abs(dot(dir, bandNormal)));
@@ -2371,6 +2394,9 @@ export class PrologueScene {
       uHeightOrigin: { value: new THREE.Vector2(height.origin.x, height.origin.z) },
       uHeightSpan: { value: height.span },
       uWaterY: { value: LAKE.y + 0.35 },
+      uSunDir: { value: this.look.sunDir.clone() },
+      uSunPower: { value: this.look.sunPower },
+      uGalaxy: { value: this.look.galaxy },
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
     }
     this.grassUniforms = uniforms
@@ -2392,14 +2418,14 @@ export class PrologueScene {
         uniform float uHeightSpan;
         uniform float uWaterY;
         varying float vH;
+        varying float vClump;
+        varying float vEdgeOn;
+        varying vec2 vRootXZ;
         varying float vRand;
         varying vec3 vWorld;
         #include <fog_pars_vertex>
 
-        vec2 hash2(vec2 p) {
-          p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-          return fract(sin(p) * 43758.5453);
-        }
+        ${MEADOW_NOISE}
 
         void main() {
           vH = uv.y;
@@ -2420,16 +2446,24 @@ export class PrologueScene {
 
           vec4 packed = texture2D(uHeightTex, clamp((xz - uHeightOrigin) / uHeightSpan, 0.0, 1.0));
           float ground = -20.0 + ((packed.r * 65280.0 + packed.g * 255.0) / 65535.0) * 40.0;
-          if (ground < uWaterY) {
+          float cleared = smoothstep(0.28, 0.82, packed.b);
+          float mask = 1.0 - cleared;
+          if (mask <= 0.01 || ground < uWaterY) {
             gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
             return;
           }
 
-          float hgt = (0.38 + pow(fract(aSeed.x * 3.71), 1.5) * 1.05) * keep;
+          float hgt = (0.38 + pow(fract(aSeed.x * 3.71), 1.5) * 1.05) * keep * mask;
           float wid = (0.7 + fract(aSeed.y * 5.13) * 0.55) * keep;
           float yaw = aSeed.z * 6.2831853;
           float cs = cos(yaw);
           float sn = sin(yaw);
+          vec2 clump = hash2(floor(xz / 0.75) + aSeed.xy * 1.7);
+          vClump = clump.x;
+          vRootXZ = xz;
+          vec2 toEye = normalize(uCamXZ - xz + vec2(0.0001));
+          vEdgeOn = abs(dot(vec2(cs, sn), toEye));
+          wid *= mix(1.32, 1.0, vEdgeOn);
           vec3 p = position;
           p.xz *= wid;
           p.y *= hgt;
@@ -2470,19 +2504,35 @@ export class PrologueScene {
         uniform vec3 uSunColor;
         uniform vec3 uAmbient;
         uniform float uTip;
+        uniform vec3 uSunDir;
+        uniform float uSunPower;
+        uniform float uGalaxy;
+        uniform float uTime;
         varying float vH;
         varying float vRand;
         varying vec3 vWorld;
+        varying float vClump;
+        varying float vEdgeOn;
+        varying vec2 vRootXZ;
         #include <fog_pars_fragment>
+        ${MEADOW_NOISE}
+        ${MEADOW_TINT}
+        ${CLOUD_SHADOW}
         void main() {
-          vec3 root = mix(vec3(0.016, 0.034, 0.012), vec3(0.038, 0.066, 0.022), vRand);
-          vec3 tip = mix(vec3(0.2, 0.38, 0.12), vec3(0.46, 0.56, 0.18), vRand) * uTip;
+          vec3 tint = meadowTint(vRootXZ, vRand + vClump * 0.7, 0.55);
+          vec3 root = mix(vec3(0.016, 0.034, 0.012), vec3(0.038, 0.066, 0.022), vRand) * tint;
+          vec3 tip = mix(vec3(0.2, 0.38, 0.12), vec3(0.46, 0.56, 0.18), vRand) * uTip * tint;
           float h = clamp(vH, 0.0, 1.0);
           vec3 col = mix(root, tip, pow(h, 0.88));
+          float daylight = 1.0 - smoothstep(0.25, 0.75, uGalaxy);
+          float shade = cloudShadow(vRootXZ, uTime, daylight);
           float lightAmt = 0.24 + 0.5 * h;
-          col = col * uAmbient * 1.15 + col * uSunColor * lightAmt * 0.8;
+          col = col * uAmbient * 1.15 + col * uSunColor * lightAmt * 0.8 * shade;
           float up = smoothstep(0.55, 1.0, h);
-          col += uSunColor * up * (0.035 + 0.05 * vRand);
+          col += uSunColor * up * (0.035 + 0.05 * vRand) * shade;
+          float back = pow(max(dot(normalize(vWorld - cameraPosition), normalize(uSunDir + vec3(0.0001))), 0.0), 2.5);
+          col += uSunColor * back * smoothstep(0.3, 1.0, h) * uSunPower * 0.18 * daylight;
+          col *= mix(1.0, 0.82 + 0.18 * vEdgeOn, 0.5);
           gl_FragColor = vec4(col, 1.0);
           #include <fog_fragment>
         }
@@ -2543,10 +2593,11 @@ export class PrologueScene {
   }
 
   private bakeHeightTexture() {
-    const resolution = 384
+    const resolution = 512
     const span = 600
     const origin = { x: -span / 2, z: -42 - span / 2 }
     const data = new Uint8Array(resolution * resolution * 4)
+    const texel = span / resolution
     for (let j = 0; j < resolution; j += 1) {
       const z = origin.z + ((j + 0.5) / resolution) * span
       for (let i = 0; i < resolution; i += 1) {
@@ -2555,17 +2606,45 @@ export class PrologueScene {
         const offset = (j * resolution + i) * 4
         data[offset] = Math.floor(encoded / 256)
         data[offset + 1] = encoded % 256
-        data[offset + 2] = 0
+        const lakeDX = (x - LAKE.x) / (LAKE.rx * 1.02)
+        const lakeDZ = (z - LAKE.z) / (LAKE.rz * 1.02)
+        data[offset + 2] = lakeDX * lakeDX + lakeDZ * lakeDZ < 1 ? 255 : 0
         data[offset + 3] = 255
       }
     }
+
+    const stamp = (x: number, z: number, radius: number) => {
+      const minX = Math.max(0, Math.floor((x - radius - origin.x) / texel))
+      const maxX = Math.min(resolution - 1, Math.ceil((x + radius - origin.x) / texel))
+      const minZ = Math.max(0, Math.floor((z - radius - origin.z) / texel))
+      const maxZ = Math.min(resolution - 1, Math.ceil((z + radius - origin.z) / texel))
+      for (let j = minZ; j <= maxZ; j += 1) {
+        const wz = origin.z + ((j + 0.5) / resolution) * span
+        for (let i = minX; i <= maxX; i += 1) {
+          const wx = origin.x + ((i + 0.5) / resolution) * span
+          const d = Math.hypot(wx - x, wz - z)
+          const falloff = d >= radius ? 0 : 255 * (1 - d / radius) * (1 - d / radius)
+          const offset = (j * resolution + i) * 4
+          data[offset + 2] = Math.max(data[offset + 2], Math.round(falloff))
+        }
+      }
+      const ci = Math.min(resolution - 1, Math.max(0, Math.floor((x - origin.x) / texel)))
+      const cj = Math.min(resolution - 1, Math.max(0, Math.floor((z - origin.z) / texel)))
+      data[(cj * resolution + ci) * 4 + 2] = 255
+    }
+
+    this.contactShadowSpecs.forEach((spec) => {
+      stamp(spec.x, spec.z, Math.max(0.5, spec.radius * 0.66))
+    })
+    stamp(-3.8, -8.5, 2.2)
+
     const texture = new THREE.DataTexture(data, resolution, resolution, THREE.RGBAFormat, THREE.UnsignedByteType)
     texture.minFilter = THREE.LinearFilter
     texture.magFilter = THREE.LinearFilter
     texture.wrapS = THREE.ClampToEdgeWrapping
     texture.wrapT = THREE.ClampToEdgeWrapping
     texture.needsUpdate = true
-    return { texture, origin, span, min: -20, range: 40 }
+    return { texture, origin, span }
   }
 
   private createBladeGeometry(segments = 4) {
@@ -5045,6 +5124,13 @@ export class PrologueScene {
       this.updateDescent(dt)
     }
     this.updateAtmosphere()
+    const skimTarget = this.walkTarget || this.keys.size > 0 ? 1 : 0
+    const skimRate = skimTarget > this.skim ? 2.4 : 1.3
+    this.skim += (skimTarget - this.skim) * Math.min(1, dt * skimRate)
+    if (Math.abs(this.skim - this.skimReported) > 0.03) {
+      this.skimReported = this.skim
+      this.options.onSkimChange?.(this.skim)
+    }
   }
 
   private updateAtmosphere() {
@@ -5183,6 +5269,9 @@ export class PrologueScene {
     this.mistUniforms?.uColor.value.copy(this.look.fog)
     const ambient = this.look.hemiSky.clone().multiplyScalar(0.42).lerp(this.look.hemiGround, 0.45)
     this.grassUniforms.uAmbient?.value.copy(ambient)
+    this.grassUniforms.uSunDir?.value.copy(this.look.sunDir)
+    if (this.grassUniforms.uSunPower) this.grassUniforms.uSunPower.value = this.look.sunPower
+    if (this.grassUniforms.uGalaxy) this.grassUniforms.uGalaxy.value = this.look.galaxy
 
     if (this.starUniforms.uStars) this.starUniforms.uStars.value = this.look.stars
   }
@@ -5244,6 +5333,7 @@ export class PrologueScene {
       this.grassUniforms.uCamXZ.value.set(this.camera.position.x, this.camera.position.z)
     }
     if (this.mistUniforms) this.mistUniforms.uTime.value = this.elapsed
+    if (this.skyUniforms.uTime) this.skyUniforms.uTime.value = this.elapsed
     this.windLevel += (this.windTarget - this.windLevel) * (1 - Math.exp(-dt * 1.4))
     if (this.grassUniforms.uWind) this.grassUniforms.uWind.value = this.windLevel
 
