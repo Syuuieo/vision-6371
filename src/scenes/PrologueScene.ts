@@ -10,9 +10,8 @@ import type { DescentEvent, FocusTarget, PickId, SkyStage } from '../types/senso
 const LAKE = { x: -58, z: -96, rx: 74, rz: 52, y: -1.9 }
 const ROAM = { minX: -78, maxX: 78, minZ: -118, maxZ: 34 }
 const ROAM_CENTER = { x: 0, z: -42 }
-const ROAM_RADIUS = 82
+const ROAM_RADIUS = 96
 const EYE_HEIGHT = 1.72
-const inRoam = (x: number, z: number) => Math.hypot(x - ROAM_CENTER.x, z - ROAM_CENTER.z) < ROAM_RADIUS
 
 const PLACES = [
   { name: '轻舟渡口', x: -25.5, z: -49.5, radius: 16 },
@@ -721,6 +720,15 @@ export class PrologueScene {
     if (this.quality === 'lite') return true
     if (this.quality === 'full') return false
     return this.isMobile
+  }
+
+  /** 省电档的脚步范围更小，避免走到草地边缘之外 */
+  private get roamRadius(): number {
+    return this.lowDetail ? 80 : ROAM_RADIUS
+  }
+
+  private inRoam(x: number, z: number): boolean {
+    return Math.hypot(x - ROAM_CENTER.x, z - ROAM_CENTER.z) < this.roamRadius
   }
 
   private get pixelCap(): number {
@@ -2347,7 +2355,7 @@ export class PrologueScene {
 
   private buildGrass() {
     const geometry = this.createBladeGeometry()
-    const count = this.lowDetail ? 5600 : 15000
+    const count = this.lowDetail ? 11000 : 32000
     const uniforms: Record<string, THREE.IUniform> = {
       uTime: { value: 0 },
       uWind: { value: 0.55 },
@@ -2440,10 +2448,11 @@ export class PrologueScene {
     const position = new THREE.Vector3()
     let placed = 0
     let attempts = 0
+    const nearRadius = this.roamRadius + 8
     while (placed < count && attempts < count * 4) {
       attempts += 1
       const angle = Math.random() * Math.PI * 2
-      const radius = Math.pow(Math.random(), 0.72) * (this.lowDetail ? 76 : 96)
+      const radius = Math.pow(Math.random(), 0.58) * nearRadius
       const x = Math.cos(angle) * radius
       const z = Math.sin(angle) * radius - 22
       const ground = heightAt(x, z)
@@ -2463,10 +2472,49 @@ export class PrologueScene {
     geometry.setAttribute('aRand', new THREE.InstancedBufferAttribute(randoms, 1))
     mesh.instanceMatrix.needsUpdate = true
     this.surfaceGroup.add(mesh)
+    this.buildFarGrass(material)
   }
 
-  private createBladeGeometry() {
-    const segments = 4
+  private buildFarGrass(material: THREE.Material) {
+    const count = this.lowDetail ? 1800 : 7000
+    const geometry = this.createBladeGeometry(2)
+    const mesh = new THREE.InstancedMesh(geometry, material, count)
+    mesh.frustumCulled = false
+    const randoms = new Float32Array(count)
+    const matrix = new THREE.Matrix4()
+    const quaternion = new THREE.Quaternion()
+    const scale = new THREE.Vector3()
+    const position = new THREE.Vector3()
+    const inner = this.roamRadius + 2
+    const outer = this.roamRadius + 130
+    let placed = 0
+    let attempts = 0
+    while (placed < count && attempts < count * 4) {
+      attempts += 1
+      const angle = Math.random() * Math.PI * 2
+      const radius = inner + Math.pow(Math.random(), 0.85) * (outer - inner)
+      const x = Math.cos(angle) * radius
+      const z = Math.sin(angle) * radius - 22
+      const ground = heightAt(x, z)
+      if (ground < LAKE.y + 0.4) continue
+      const scaleY = 0.7 + Math.random() * 1.1
+      const scaleXZ = 1.1 + Math.random() * 0.9
+      position.set(x, ground, z)
+      quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2)
+      scale.set(scaleXZ, scaleY, scaleXZ)
+      matrix.compose(position, quaternion, scale)
+      mesh.setMatrixAt(placed, matrix)
+      randoms[placed] = Math.random()
+      placed += 1
+    }
+    mesh.count = placed
+    geometry.setAttribute('aRand', new THREE.InstancedBufferAttribute(randoms, 1))
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.name = 'far-grass'
+    this.surfaceGroup.add(mesh)
+  }
+
+  private createBladeGeometry(segments = 4) {
     const positions: number[] = []
     const uvs: number[] = []
     const indices: number[] = []
@@ -4754,7 +4802,7 @@ export class PrologueScene {
           if (
             ground &&
             ground.distance < 42 &&
-            inRoam(ground.point.x, ground.point.z) &&
+            this.inRoam(ground.point.x, ground.point.z) &&
             heightAt(ground.point.x, ground.point.z) > LAKE.y + 0.25
           ) {
             this.walkTarget = ground.point.clone()
@@ -4814,7 +4862,7 @@ export class PrologueScene {
     forwardInput += this.moveAxis.y
     rightInput += this.moveAxis.x
 
-    const valid = (x: number, z: number) => inRoam(x, z) && heightAt(x, z) > LAKE.y + 0.25
+    const valid = (x: number, z: number) => this.inRoam(x, z) && heightAt(x, z) > LAKE.y + 0.25
 
     let moveX = 0
     let moveZ = 0
@@ -4829,7 +4877,7 @@ export class PrologueScene {
         move.normalize()
         const fast = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
         const magnitude = Math.min(1, Math.hypot(forwardInput, rightInput))
-        speed = (fast ? 4.2 : 2.1) * Math.max(0.35, magnitude)
+        speed = (fast ? 6 : 3.1) * Math.max(0.35, magnitude)
         moveX = move.x
         moveZ = move.z
       }
@@ -4842,7 +4890,7 @@ export class PrologueScene {
       } else {
         moveX = dx / dist
         moveZ = dz / dist
-        speed = 2.6
+        speed = 3.8
       }
     }
 
@@ -4867,7 +4915,7 @@ export class PrologueScene {
     }
     if (nextX === this.camPos.x && nextZ === this.camPos.z) {
       this.walkTarget = null
-      if (!inRoam(targetX, targetZ)) this.reportBoundary()
+      if (!this.inRoam(targetX, targetZ)) this.reportBoundary()
       return
     }
     this.camPos.x = nextX
@@ -5006,7 +5054,7 @@ export class PrologueScene {
       uTime: { value: 0 },
     }
     this.mistUniforms = uniforms
-    const geometry = new THREE.CylinderGeometry(ROAM_RADIUS + 3, ROAM_RADIUS + 7, 26, 96, 1, true)
+    const geometry = new THREE.CylinderGeometry(this.roamRadius + 3, this.roamRadius + 7, 26, 96, 1, true)
     const material = new THREE.ShaderMaterial({
       uniforms,
       transparent: true,

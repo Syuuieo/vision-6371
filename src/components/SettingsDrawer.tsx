@@ -232,6 +232,12 @@ export function SettingsDrawer({
             checked={settings.flashSafe}
             onChange={(next) => onChange({ flashSafe: next })}
           />
+          <ToggleRow
+            label="视野随指针轻微视差"
+            hint="开启后，电台视野会随指针轻微偏移；容易晕车或眩晕的话保持关闭更舒服。"
+            checked={settings.parallax}
+            onChange={(next) => onChange({ parallax: next })}
+          />
         </section>
 
         <section className="mt-6 space-y-3">

@@ -10,6 +10,7 @@ export interface VisionSettings {
   quality: QualityTier
   reducedMotion: boolean
   flashSafe: boolean
+  parallax: boolean
   flashNoticeSeen: boolean
   landscapeHintSeen: boolean
 }
@@ -24,6 +25,7 @@ export const DEFAULT_SETTINGS: VisionSettings = {
   quality: 'auto',
   reducedMotion: false,
   flashSafe: false,
+  parallax: false,
   flashNoticeSeen: false,
   landscapeHintSeen: false,
 }
@@ -46,6 +48,7 @@ function normalize(raw: Partial<VisionSettings>): VisionSettings {
       : 'auto',
     reducedMotion: Boolean(raw.reducedMotion),
     flashSafe: Boolean(raw.flashSafe),
+    parallax: Boolean(raw.parallax),
     flashNoticeSeen: Boolean(raw.flashNoticeSeen),
     landscapeHintSeen: Boolean(raw.landscapeHintSeen),
   }

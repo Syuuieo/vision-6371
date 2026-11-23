@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { citySignature } from '../data/citySignature'
+import { getSettings } from '../services/settings'
 import type { FocusPoint, ParticleKind, StudioMode, VisionPacket } from '../types/vision'
 
 interface VisionViewport3DProps {
@@ -257,6 +258,7 @@ export function VisionViewport3D({
     let pointerX = 0
     let pointerY = 0
     let smoothX = 0
+    let parallaxMix = 0
     let smoothY = 0
     let hoveredId: string | null = null
 
@@ -627,8 +629,10 @@ export function VisionViewport3D({
       smoothX += (targetX - smoothX) * smooth
       smoothY += (targetY - smoothY) * smooth
 
-      camera.position.x = smoothX * 0.27
-      camera.position.y = smoothY * 0.2
+      const wantParallax = getSettings().parallax
+      parallaxMix += ((wantParallax ? 1 : 0) - parallaxMix) * (1 - Math.pow(0.02, Math.min(delta, 0.05)))
+      camera.position.x = smoothX * 0.16 * parallaxMix + gyro.x * 0.2
+      camera.position.y = smoothY * 0.11 * parallaxMix + gyro.y * 0.14
       camera.position.z = CAMERA_Z
       camera.lookAt(0, 0, 0)
       plate.position.y = Math.sin(elapsed * 0.45) * 0.004
