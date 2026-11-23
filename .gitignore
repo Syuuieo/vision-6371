@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Qoder Sites 本地描述文件（每次发布会改写）
+*.qoder.site
