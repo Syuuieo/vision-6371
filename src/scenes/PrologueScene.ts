@@ -5,10 +5,16 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import type { QualityTier } from '../services/settings'
-import { bakeCloudField } from './CloudBaker'
+import { CloudBaker } from './CloudBaker'
 import { FLOWER_FRAG, FLOWER_VERT } from './flowerShaders'
 import { WakeField } from './WakeField'
-import { CLOUD_SHADOW, MEADOW_NOISE, MEADOW_TINT } from './meadowShaders'
+import {
+  AERIAL_PERSPECTIVE_GLSL,
+  CLOUD_SHADOW_GLSL,
+  MEADOW_COLOR_GLSL,
+  MEADOW_NOISE_GLSL,
+  WAKE_SAMPLE_GLSL,
+} from './meadowShaders'
 import type { DescentEvent, FocusTarget, PickId, SkyStage } from '../types/sensor'
 
 const LAKE = { x: -58, z: -96, rx: 74, rz: 52, y: -1.9 }
@@ -716,7 +722,12 @@ export class PrologueScene {
   private calmMotion = false
   private skim = 0
   private skimReported = 0
+  private cloudBaker: CloudBaker | null = null
+  private cloudReady = 0
   private wake: WakeField | null = null
+  private prevCamXZ = new THREE.Vector2()
+  private prevCursorXZ = new THREE.Vector2(999, 999)
+  private hasPrevCamXZ = false
   private grassMaterials: THREE.ShaderMaterial[] = []
   private lastFrame = 0
   private raf: number | null = null
@@ -960,6 +971,13 @@ export class PrologueScene {
     this.surfaceGroup.add(this.rippleGroup)
 
     this.glowTexture = makeGlowTexture()
+    this.cloudBaker = new CloudBaker(
+      renderer,
+      this.lowDetail ? 512 : 1024,
+      this.lowDetail ? 128 : 256,
+      this.lowDetail ? 26 : 40,
+    )
+    this.wake = new WakeField(renderer, 256, 72)
 
     this.buildSky()
     this.buildStars()
@@ -1007,9 +1025,6 @@ export class PrologueScene {
     this.composer = composer
     this.bloom = bloom
     this.atmosphere = atmosphere
-    this.wake = new WakeField()
-    this.grassUniforms.uWakeOrigin.value.set(-110, -152)
-    this.grassUniforms.uWakeSpan.value = this.wake.span
 
     this.resize()
 
@@ -1837,6 +1852,7 @@ export class PrologueScene {
     if (this.quality === quality) return
     this.quality = quality
     if (this.atmosphere) this.atmosphere.enabled = !this.lowDetail && !this.calmMotion
+    if (this.lowDetail) this.wake?.reset()
     if (!this.renderer) return
     const ratio = Math.min(window.devicePixelRatio, this.pixelCap)
     this.renderer.setPixelRatio(ratio)
@@ -1847,6 +1863,7 @@ export class PrologueScene {
   setCalmMotion(calm: boolean) {
     this.calmMotion = calm
     if (this.atmosphere) this.atmosphere.enabled = !this.lowDetail && !calm
+    if (calm) this.wake?.reset()
   }
 
   resize() {
@@ -1912,9 +1929,12 @@ export class PrologueScene {
     this.vehicleCommsRing = null
     this.wake?.dispose()
     this.wake = null
+    this.cloudBaker?.dispose()
+    this.cloudBaker = null
+    this.cloudReady = 0
     this.grassMaterials = []
-    const cloudTex = this.skyUniforms.uCloudTex?.value as THREE.Texture | undefined
-    cloudTex?.dispose()
+    const heightTex = this.grassUniforms.uHeightTex?.value as THREE.Texture | undefined
+    heightTex?.dispose()
     this.glowTexture = null
     this.contactShadowSpecs = []
     this.skim = 0
@@ -1939,7 +1959,8 @@ export class PrologueScene {
       uGalaxy: { value: 0 },
       uGalaxyBoost: { value: 0 },
       uGalaxyColor: { value: new THREE.Color('#a4b3ef') },
-      uCloudTex: { value: bakeCloudField(this.lowDetail ? { width: 512, height: 128 } : { width: 1024, height: 256 }) },
+      uCloudTex: { value: this.cloudBaker?.texture ?? null },
+      uCloudReady: { value: 0 },
       uTime: { value: 0 },
     }
     this.skyUniforms = uniforms
@@ -1966,6 +1987,7 @@ export class PrologueScene {
         uniform float uGalaxy;
         uniform float uGalaxyBoost;
         uniform sampler2D uCloudTex;
+        uniform float uCloudReady;
         uniform float uTime;
 
         float hash13(vec3 p) {
@@ -2025,17 +2047,24 @@ export class PrologueScene {
           float shaft = pow(sd, 12.0) * (0.35 + 0.65 * sunRay) * (0.45 + 0.55 * cloud) * smoothstep(-0.02, 0.28, dir.y);
           col += uSunColor * shaft * uSunPower * (1.0 - uGalaxy) * 0.22;
 
-          vec2 cuv = dir.xz / max(dir.y + 0.34, 0.12) * 0.12 + vec2(uTime * 0.0021, uTime * 0.0013);
-          vec4 cloudField = texture2D(uCloudTex, cuv);
-          float deck = smoothstep(0.04, 0.6, cloudField.g) * smoothstep(0.0, 0.18, dir.y);
-          float albedo = 0.55 + 0.45 * cloudField.r;
-          float hg = 0.62 * (0.25 + 0.75 * pow(max(dot(dir, sunDir), 0.0), 6.0));
-          vec3 lit = mix(uHorizon, uSunColor, 0.35 + 0.5 * hg) * (0.75 + 0.5 * cloudField.b);
-          col = mix(col, lit * albedo, deck * (0.55 - 0.3 * uGalaxy) * (0.6 + 0.6 * uSunPower));
-          float veil = smoothstep(0.1, 0.75, cloudField.a) * (1.0 - smoothstep(0.02, 0.3, dir.y));
-          col = mix(col, lit * 0.92, veil * 0.22 * (1.0 - uGalaxy));
-          float cloudBand = (1.0 - smoothstep(0.02, 0.17, abs(dir.y - 0.055))) * smoothstep(0.25, 0.7, cloud);
-          col = mix(col, mix(vec3(0.95, 0.74, 0.56), vec3(0.82, 0.44, 0.4), 0.5) * (0.55 + 0.4 * uSunPower), cloudBand * 0.1 * (1.0 - uGalaxy));
+          float az = atan(dir.z, dir.x) / 6.2831853 + 0.5 + uTime * 0.00038;
+          float el = sqrt(clamp(asin(clamp(dir.y, 0.0, 1.0)) / 1.5707963, 0.0, 1.0));
+          vec4 cloudSample = texture2D(uCloudTex, vec2(az, el));
+          float cov = cloudSample.r;
+          float hf = cloudSample.g;
+          float topLight = cloudSample.b;
+          float cir = cloudSample.a;
+          float cloudFade = smoothstep(0.0, 0.12, dir.y) * uCloudReady * (1.0 - uGalaxy * 0.86);
+          float mu = dot(dir, sunDir);
+          float g2 = 0.76 * 0.76;
+          float hgPhase = (1.0 - g2) / (12.566 * pow(max(1.0 + g2 - 2.0 * 0.76 * mu, 0.02), 1.5));
+          float sunRim = 0.68 + 1.45 * hgPhase;
+          vec3 cloudShadowCol = mix(uZenith * 0.85, uHorizon * 0.78, 0.58);
+          vec3 cloudLitCol = mix(uHorizon * 1.08, uSunColor * (0.95 + uSunPower * 0.32), 0.62) * sunRim;
+          vec3 cloudCol = mix(cloudShadowCol, cloudLitCol, smoothstep(0.12, 0.88, hf * 0.65 + topLight * 0.45));
+          col = mix(col, cloudCol, cov * 0.84 * cloudFade);
+          vec3 cirCol = mix(uHorizon, uSunColor, 0.45 + 0.45 * pow(max(mu, 0.0), 4.0));
+          col = mix(col, cirCol, cir * 0.42 * cloudFade);
 
           vec3 bandNormal = normalize(vec3(0.32, 0.62, 0.72));
           float band = 1.0 - smoothstep(0.0, 0.36, abs(dot(dir, bandNormal)));
@@ -2403,14 +2432,18 @@ export class PrologueScene {
       uHeightTex: { value: height.texture },
       uHeightOrigin: { value: new THREE.Vector2(height.origin.x, height.origin.z) },
       uHeightSpan: { value: height.span },
-      uWaterY: { value: LAKE.y + 0.35 },
+      uWaterY: { value: LAKE.y + 0.48 },
       uSunDir: { value: this.look.sunDir.clone() },
       uSunPower: { value: this.look.sunPower },
+      uZenith: { value: this.look.zenith.clone() },
+      uHorizon: { value: this.look.horizon.clone() },
+      uFogColor: { value: this.look.fog.clone() },
+      uFogDensity: { value: this.look.fogDensity },
       uGalaxy: { value: this.look.galaxy },
-      uWakeTex: { value: new THREE.DataTexture(new Uint8Array([128, 128, 0, 255]), 1, 1) },
-      uWakeOrigin: { value: new THREE.Vector2(0, -42) },
-      uWakeSpan: { value: 220 },
-      ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
+      uCamPos: { value: this.camera.position.clone() },
+      uWakeTex: { value: this.wake?.texture ?? null },
+      uWake: { value: new THREE.Vector4(0, 0, 1 / 72, 0) },
+      uClearStele: { value: new THREE.Vector4(14, -34, 1.55, 0) },
     }
     this.grassUniforms = uniforms
 
@@ -2423,6 +2456,7 @@ export class PrologueScene {
         uniform vec3 uPlayerPos;
         uniform vec3 uCursorPos;
         uniform vec2 uCamXZ;
+        uniform vec3 uCamPos;
         uniform float uCell;
         uniform float uRadius;
         uniform vec4 uFade;
@@ -2431,26 +2465,27 @@ export class PrologueScene {
         uniform float uHeightSpan;
         uniform float uWaterY;
         uniform sampler2D uWakeTex;
-        uniform vec2 uWakeOrigin;
-        uniform float uWakeSpan;
+        uniform vec4 uWake;
+        uniform vec4 uClearStele;
         varying float vH;
         varying float vClump;
-        varying float vEdgeOn;
+        varying float vGust;
+        varying float vMoisture;
         varying vec2 vRootXZ;
         varying float vRand;
         varying vec3 vWorld;
-        #include <fog_pars_vertex>
 
-        ${MEADOW_NOISE}
+        ${MEADOW_NOISE_GLSL}
+        ${WAKE_SAMPLE_GLSL}
 
         void main() {
           vH = uv.y;
           vRand = aRand;
 
           vec2 cellIndex = floor(uCamXZ / uCell) + aCell;
-          vec2 jitter = hash2(cellIndex + aSeed.xy * 37.0);
+          vec2 jitter = hash22(cellIndex + aSeed.xy * 37.0);
           vec2 wrapped = (cellIndex + jitter) * uCell - uCamXZ;
-          wrapped -= uRadius * 2.0 * round(wrapped / (uRadius * 2.0));
+          wrapped -= uRadius * 2.0 * floor(wrapped / (uRadius * 2.0) + 0.5);
           vec2 xz = uCamXZ + wrapped;
           float dist = length(wrapped);
 
@@ -2460,35 +2495,50 @@ export class PrologueScene {
             return;
           }
 
-          vec4 packed = texture2D(uHeightTex, clamp((xz - uHeightOrigin) / uHeightSpan, 0.0, 1.0));
-          float ground = -20.0 + ((packed.r * 65280.0 + packed.g * 255.0) / 65535.0) * 40.0;
-          float cleared = smoothstep(0.28, 0.82, packed.b);
-          float mask = 1.0 - cleared;
-          if (mask <= 0.01 || ground < uWaterY) {
+          if (length(xz - uClearStele.xy) < uClearStele.z) {
             gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
             return;
           }
 
-          float hgt = (0.38 + pow(fract(aSeed.x * 3.71), 1.5) * 1.05) * keep * mask;
-          float wid = (0.7 + fract(aSeed.y * 5.13) * 0.55) * keep;
-          float yaw = aSeed.z * 6.2831853;
+          vec4 packed = texture2D(uHeightTex, clamp((xz - uHeightOrigin) / uHeightSpan, 0.0, 1.0));
+          float ground = -20.0 + ((packed.r * 65280.0 + packed.g * 255.0) / 65535.0) * 40.0;
+          float cleared = smoothstep(0.18, 0.62, packed.b);
+          float mask = 1.0 - cleared;
+          if (mask <= 0.02 || ground < uWaterY) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+          }
+
+          vec4 clumpRand = hash42(floor(xz / 0.75));
+          vClump = clumpRand.x;
+          vRootXZ = xz;
+          vMoisture = 1.0 - smoothstep(uWaterY, uWaterY + 2.6, ground);
+
+          float hgt = (0.38 + pow(fract(aSeed.x * 3.71), 1.5) * 1.05) * mix(0.78, 1.24, clumpRand.y) * keep * mask;
+          float wid = (0.72 + fract(aSeed.y * 5.13) * 0.52) * keep;
+          float yaw = aSeed.z * 6.2831853 + (clumpRand.z - 0.5) * 0.85;
           float cs = cos(yaw);
           float sn = sin(yaw);
-          vec2 clump = hash2(floor(xz / 0.75) + aSeed.xy * 1.7);
-          vClump = clump.x;
-          vRootXZ = xz;
-          vec2 toEye = normalize(uCamXZ - xz + vec2(0.0001));
-          vEdgeOn = abs(dot(vec2(cs, sn), toEye));
-          wid *= mix(1.32, 1.0, vEdgeOn);
+
+          vec2 toCam = normalize(uCamPos.xz - xz + vec2(0.0001));
+          vec2 camRight = vec2(-toCam.y, toCam.x);
+          vec2 bladeAxis = normalize(mix(vec2(cs, sn), camRight, 0.34));
+          vec2 bladeNormal = vec2(-bladeAxis.y, bladeAxis.x);
+
           vec3 p = position;
           p.xz *= wid;
           p.y *= hgt;
-          p.xz = mat2(cs, -sn, sn, cs) * p.xz;
+          vec3 rotated = vec3(
+            bladeAxis.x * p.x + bladeNormal.x * p.z,
+            p.y,
+            bladeAxis.y * p.x + bladeNormal.y * p.z
+          );
 
-          vec3 world = vec3(xz.x + p.x, ground + p.y, xz.y + p.z);
+          vec3 world = vec3(xz.x + rotated.x, ground + rotated.y, xz.y + rotated.z);
           vec3 root = vec3(xz.x, ground, xz.y);
 
           float gust = 0.5 + 0.5 * sin(root.x * 0.021 - root.z * 0.017 + uTime * 0.55);
+          vGust = gust;
           float wave = sin(root.x * 0.16 + root.z * 0.12 + uTime * 1.9 + aRand * 6.283);
           float amp = (0.05 + 0.16 * uWind * gust) * (0.6 + aRand * 0.8);
           float bend = amp * vH * vH;
@@ -2496,27 +2546,23 @@ export class PrologueScene {
           world.z += cos(root.x * 0.1 + uTime * 1.3 + aRand * 4.0) * bend;
           world.y -= bend * 0.35;
 
+          vec3 wake = sampleWake(uWakeTex, uWake, xz);
           vec2 toPlayer = world.xz - uPlayerPos.xz;
           float playerDist = length(toPlayer);
-          float playerPush = (1.0 - smoothstep(0.35, 2.2, playerDist)) * 0.55;
+          float playerPush = (1.0 - smoothstep(0.35, 2.2, playerDist)) * (uWake.w > 0.5 ? 0.25 : 0.55);
           vec2 playerDir = playerDist > 0.001 ? toPlayer / playerDist : vec2(0.0);
 
           vec2 toCursor = world.xz - uCursorPos.xz;
           float cursorDist = length(toCursor);
-          float cursorPush = (1.0 - smoothstep(0.25, 2.4, cursorDist)) * 0.48;
+          float cursorPush = (1.0 - smoothstep(0.25, 2.4, cursorDist)) * (uWake.w > 0.5 ? 0.2 : 0.48);
           vec2 cursorDir = cursorDist > 0.001 ? toCursor / cursorDist : vec2(0.0);
 
-          vec2 wuv = (xz - uWakeOrigin) / uWakeSpan;
-          vec2 wpush = (texture2D(uWakeTex, clamp(wuv, 0.0, 1.0)).rg - 0.5) * 2.0;
-          world.xz += wpush * 0.75;
           float pushWeight = vH * vH;
-          world.xz += (playerDir * playerPush + cursorDir * cursorPush) * pushWeight;
-          world.y -= (playerPush + cursorPush) * 0.22 * pushWeight;
+          world.xz += (wake.xy * 0.58 + playerDir * playerPush + cursorDir * cursorPush) * pushWeight;
+          world.y -= max(wake.z * 0.32, (playerPush + cursorPush) * 0.22) * pushWeight;
 
           vWorld = world;
-          vec4 mvPosition = viewMatrix * vec4(world, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-          #include <fog_vertex>
+          gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
         }
       `
     const fragmentShader = /* glsl */ `
@@ -2525,35 +2571,57 @@ export class PrologueScene {
         uniform float uTip;
         uniform vec3 uSunDir;
         uniform float uSunPower;
+        uniform vec3 uZenith;
+        uniform vec3 uHorizon;
+        uniform vec3 uFogColor;
+        uniform float uFogDensity;
         uniform float uGalaxy;
+        uniform vec3 uCamPos;
         uniform float uTime;
         varying float vH;
         varying float vRand;
         varying vec3 vWorld;
         varying float vClump;
-        varying float vEdgeOn;
+        varying float vGust;
+        varying float vMoisture;
         varying vec2 vRootXZ;
-        #include <fog_pars_fragment>
-        ${MEADOW_NOISE}
-        ${MEADOW_TINT}
-        ${CLOUD_SHADOW}
+        ${MEADOW_NOISE_GLSL}
+        ${MEADOW_COLOR_GLSL}
+        ${CLOUD_SHADOW_GLSL}
+        ${AERIAL_PERSPECTIVE_GLSL}
         void main() {
-          vec3 tint = meadowTint(vRootXZ, vRand + vClump * 0.7, 0.55);
+          vec3 tint = meadowTint(vRootXZ, vMoisture);
           vec3 root = mix(vec3(0.016, 0.034, 0.012), vec3(0.038, 0.066, 0.022), vRand) * tint;
-          vec3 tip = mix(vec3(0.2, 0.38, 0.12), vec3(0.46, 0.56, 0.18), vRand) * uTip * tint;
+          vec3 tip = mix(vec3(0.20, 0.38, 0.12), vec3(0.46, 0.56, 0.18), vRand) * uTip * tint * mix(0.88, 1.14, vClump);
           float h = clamp(vH, 0.0, 1.0);
           vec3 col = mix(root, tip, pow(h, 0.88));
-          float daylight = 1.0 - smoothstep(0.25, 0.75, uGalaxy);
-          float shade = cloudShadow(vRootXZ, uTime, daylight);
-          float lightAmt = 0.24 + 0.5 * h;
-          col = col * uAmbient * 1.15 + col * uSunColor * lightAmt * 0.8 * shade;
+
+          float shade = cloudShadow(vWorld.xz, uTime, uGalaxy);
+          float daylight = 1.0 - smoothstep(0.3, 0.88, uGalaxy);
+          float lightAmt = 0.24 + 0.52 * h;
+          col = col * uAmbient * 1.15 + col * uSunColor * lightAmt * 0.84 * shade;
+
           float up = smoothstep(0.55, 1.0, h);
-          col += uSunColor * up * (0.035 + 0.05 * vRand) * shade;
-          float back = pow(max(dot(normalize(vWorld - cameraPosition), normalize(uSunDir + vec3(0.0001))), 0.0), 2.5);
-          col += uSunColor * back * smoothstep(0.3, 1.0, h) * uSunPower * 0.18 * daylight;
-          col *= mix(1.0, 0.82 + 0.18 * vEdgeOn, 0.5);
+          col += uSunColor * up * (0.032 + 0.05 * vRand) * shade;
+
+          vec3 V = normalize(vWorld - uCamPos);
+          float back = pow(saturate(dot(V, normalize(uSunDir)) * 0.5 + 0.5), 3.0);
+          col += uSunColor * back * pow(h, 1.3) * uSunPower * 0.24 * daylight * shade;
+          col += uSunColor * vGust * up * 0.045 * uSunPower * daylight * shade;
+
+          col = applyAerialPerspective(
+            col,
+            vWorld,
+            uCamPos,
+            uFogColor,
+            uFogDensity,
+            uZenith,
+            uHorizon,
+            uSunDir,
+            uSunColor,
+            uGalaxy
+          );
           gl_FragColor = vec4(col, 1.0);
-          #include <fog_fragment>
         }
       `
 
@@ -2599,7 +2667,7 @@ export class PrologueScene {
           uRadius: { value: shell.radius },
           uFade: { value: new THREE.Vector4(...shell.fade) },
         },
-        fog: true,
+        fog: false,
         side: THREE.DoubleSide,
         vertexShader,
         fragmentShader,
@@ -2654,9 +2722,14 @@ export class PrologueScene {
     }
 
     this.contactShadowSpecs.forEach((spec) => {
-      stamp(spec.x, spec.z, Math.max(0.5, spec.radius * 0.66))
+      stamp(spec.x, spec.z, Math.max(0.5, spec.radius * 0.72))
     })
     stamp(-3.8, -8.5, 2.2)
+    // 湖边木栈道下方留白，防止木板缝隙穿草
+    for (let s = 0; s <= 4; s += 1) {
+      const t = s / 4
+      stamp(-22 - t * 3.8, -46 - t * 3.8, 1.7)
+    }
 
     const texture = new THREE.DataTexture(data, resolution, resolution, THREE.RGBAFormat, THREE.UnsignedByteType)
     texture.minFilter = THREE.LinearFilter
@@ -2888,46 +2961,53 @@ export class PrologueScene {
     // 远景野花：相机跟随的两圈世界锚定花海，与草地共用高度图与清除遮罩
     const geometry = (() => {
       const positions: number[] = []
+      const uvs: number[] = []
       const parts: number[] = []
-      const locals: number[] = []
-      const push = (x: number, y: number, z: number, part: number) => {
-        positions.push(x, y, z)
-        parts.push(part)
-        locals.push(x, z)
-      }
-      push(-0.007, 0, 0, 0)
-      push(0.007, 0, 0, 0)
-      push(-0.005, 1, 0, 0)
-      push(-0.005, 1, 0, 0)
-      push(0.007, 0, 0, 0)
-      push(0.005, 1, 0, 0)
-      const rim = 6
-      for (let i = 0; i < rim; i += 1) {
-        const a0 = (i / rim) * Math.PI * 2
-        const a1 = ((i + 1) / rim) * Math.PI * 2
-        push(0, 1, 0, 1)
-        push(Math.cos(a0) * 0.075, 1, Math.sin(a0) * 0.075, 1)
-        push(Math.cos(a1) * 0.075, 1, Math.sin(a1) * 0.075, 1)
-      }
+      const indices: number[] = []
+
+      // 细茎（aPart = 0）
+      positions.push(-0.007, 0, 0, 0.007, 0, 0, -0.004, 1, 0, 0.004, 1, 0)
+      uvs.push(0, 0, 1, 0, 0, 1, 1, 1)
+      parts.push(0, 0, 0, 0)
+      indices.push(0, 1, 2, 2, 1, 3)
+
+      // 花盘四方片（aPart = 1，uv ∈ [0,1] -> [-1,1] 花瓣程序化裁剪）
+      const r = 0.145
+      const b = positions.length / 3
+      positions.push(-r, 0, -r, r, 0, -r, r, 0, r, -r, 0, r)
+      uvs.push(0, 0, 1, 0, 1, 1, 0, 1)
+      parts.push(1, 1, 1, 1)
+      indices.push(b, b + 1, b + 2, b, b + 2, b + 3)
+
       const geo = new THREE.BufferGeometry()
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
       geo.setAttribute('aPart', new THREE.Float32BufferAttribute(parts, 1))
-      geo.setAttribute('aLocal', new THREE.Float32BufferAttribute(locals, 2))
+      geo.setIndex(indices)
       return geo
     })()
 
     const uniforms: Record<string, THREE.IUniform> = {
       uTime: this.grassUniforms.uTime,
+      uWind: this.grassUniforms.uWind,
       uCamXZ: this.grassUniforms.uCamXZ,
+      uCamPos: this.grassUniforms.uCamPos,
+      uPlayerPos: this.grassUniforms.uPlayerPos,
+      uCursorPos: this.grassUniforms.uCursorPos,
       uHeightTex: this.grassUniforms.uHeightTex,
       uHeightOrigin: this.grassUniforms.uHeightOrigin,
       uHeightSpan: this.grassUniforms.uHeightSpan,
       uWaterY: this.grassUniforms.uWaterY,
       uWakeTex: this.grassUniforms.uWakeTex,
-      uWakeOrigin: this.grassUniforms.uWakeOrigin,
-      uWakeSpan: this.grassUniforms.uWakeSpan,
+      uWake: this.grassUniforms.uWake,
+      uClearStele: this.grassUniforms.uClearStele,
       uSunColor: this.grassUniforms.uSunColor,
+      uSunDir: this.grassUniforms.uSunDir,
       uAmbient: this.grassUniforms.uAmbient,
+      uZenith: this.grassUniforms.uZenith,
+      uHorizon: this.grassUniforms.uHorizon,
+      uFogColor: this.grassUniforms.uFogColor,
+      uFogDensity: this.grassUniforms.uFogDensity,
       uSunPower: this.grassUniforms.uSunPower,
       uGalaxy: this.grassUniforms.uGalaxy,
       uCell: { value: 8 },
@@ -2936,8 +3016,8 @@ export class PrologueScene {
     }
 
     const shells = [
-      { cell: 8, per: 11, radius: 38, fade: [-1, 0, 30, 38], quality: 1 },
-      { cell: 22, per: 7, radius: 92, fade: [26, 36, 78, 92], quality: 0.5 },
+      { cell: 8, per: 28, radius: 38, fade: [-1, 0, 30, 38], quality: 0.5 },
+      { cell: 18, per: 18, radius: 92, fade: [24, 34, 76, 92], quality: 0.48 },
     ] as const
 
     for (const shell of shells) {
@@ -2974,6 +3054,7 @@ export class PrologueScene {
           uRadius: { value: shell.radius },
           uFade: { value: new THREE.Vector4(...shell.fade) },
         },
+        fog: false,
         vertexShader: FLOWER_VERT,
         fragmentShader: FLOWER_FRAG,
         side: THREE.DoubleSide,
@@ -2983,6 +3064,7 @@ export class PrologueScene {
       mesh.name = 'flower-' + shell.cell
       this.surfaceGroup.add(mesh)
     }
+    geometry.dispose()
   }
 
   private buildScenery() {
@@ -5199,13 +5281,6 @@ export class PrologueScene {
       this.updateDescent(dt)
     }
     this.updateAtmosphere()
-    const skimTarget = this.walkTarget || this.keys.size > 0 ? 1 : 0
-    const skimRate = skimTarget > this.skim ? 2.4 : 1.3
-    this.skim += (skimTarget - this.skim) * Math.min(1, dt * skimRate)
-    if (Math.abs(this.skim - this.skimReported) > 0.03) {
-      this.skimReported = this.skim
-      this.options.onSkimChange?.(this.skim)
-    }
   }
 
   private updateAtmosphere() {
@@ -5347,6 +5422,10 @@ export class PrologueScene {
     this.grassUniforms.uSunDir?.value.copy(this.look.sunDir)
     if (this.grassUniforms.uSunPower) this.grassUniforms.uSunPower.value = this.look.sunPower
     if (this.grassUniforms.uGalaxy) this.grassUniforms.uGalaxy.value = this.look.galaxy
+    this.grassUniforms.uZenith?.value.copy(this.look.zenith)
+    this.grassUniforms.uHorizon?.value.copy(this.look.horizon)
+    this.grassUniforms.uFogColor?.value.copy(this.look.fog)
+    if (this.grassUniforms.uFogDensity) this.grassUniforms.uFogDensity.value = this.look.fogDensity
 
     if (this.starUniforms.uStars) this.starUniforms.uStars.value = this.look.stars
   }
@@ -5407,13 +5486,73 @@ export class PrologueScene {
     if (this.grassUniforms.uCamXZ) {
       this.grassUniforms.uCamXZ.value.set(this.camera.position.x, this.camera.position.z)
     }
+    this.grassUniforms.uCamPos?.value.copy(this.camera.position)
     if (this.mistUniforms) this.mistUniforms.uTime.value = this.elapsed
     if (this.skyUniforms.uTime) this.skyUniforms.uTime.value = this.elapsed
-    if (this.wake && this.renderer && !this.lowDetail && !this.calmMotion) {
-      const player = new THREE.Vector2(this.camPos.x, this.camPos.z)
-      const cursor = new THREE.Vector2(this.grassUniforms.uCursorPos.value.x, this.grassUniforms.uCursorPos.value.z)
-      this.wake.update(this.renderer, player, cursor, this.walkTarget !== null || this.keys.size > 0)
+
+    if (this.cloudBaker) {
+      if (!this.cloudBaker.done) {
+        this.cloudBaker.step(2)
+      }
+      const targetReady = this.cloudBaker.done ? 1 : this.cloudBaker.progress * 0.45
+      this.cloudReady += (targetReady - this.cloudReady) * Math.min(1, dt * 4.5)
+      if (this.skyUniforms.uCloudReady) this.skyUniforms.uCloudReady.value = this.cloudReady
+    }
+
+    const safeDt = Math.max(dt, 0.001)
+    let playerSpeed = 0
+    if (this.hasPrevCamXZ) {
+      playerSpeed = Math.hypot(this.camPos.x - this.prevCamXZ.x, this.camPos.z - this.prevCamXZ.y) / safeDt
+    } else {
+      this.hasPrevCamXZ = true
+    }
+    this.prevCamXZ.set(this.camPos.x, this.camPos.z)
+
+    const cursorActive =
+      !this.descent.active &&
+      this.surfaceGroup.visible &&
+      !this.flight &&
+      this.cursorWorld.x < 450 &&
+      this.cursorWorld.z < 450
+    let cursorSpeed = 0
+    if (cursorActive && this.prevCursorXZ.x < 450) {
+      const jump = Math.hypot(this.cursorWorld.x - this.prevCursorXZ.x, this.cursorWorld.z - this.prevCursorXZ.y)
+      if (jump < 12) cursorSpeed = jump / safeDt
+    }
+    this.prevCursorXZ.set(this.cursorWorld.x, this.cursorWorld.z)
+
+    const wakeActive =
+      this.wake !== null &&
+      this.renderer !== null &&
+      !this.lowDetail &&
+      !this.calmMotion &&
+      !this.descent.active &&
+      this.surfaceGroup.visible
+    if (wakeActive && this.wake) {
+      this.wake.update(
+        dt,
+        this.camPos.x,
+        this.camPos.z,
+        this.cursorWorld.x,
+        this.cursorWorld.z,
+        cursorActive,
+      )
       this.grassUniforms.uWakeTex.value = this.wake.texture
+      this.grassUniforms.uWake?.value.set(this.wake.centerX, this.wake.centerZ, this.wake.invExtent, 1)
+    } else if (this.grassUniforms.uWake) {
+      this.grassUniforms.uWake.value.w = 0
+    }
+
+    const activeSurface = !this.descent.active && this.surfaceGroup.visible && !this.flight
+    const skimTarget = activeSurface
+      ? clamp(playerSpeed / 4.2 + Math.min(0.45, cursorSpeed * 0.08), 0, 1)
+      : 0
+    const skimRate = skimTarget > this.skim ? 4.5 : 2.6
+    this.skim += (skimTarget - this.skim) * Math.min(1, dt * skimRate)
+    if (this.skim < 0.01 && skimTarget === 0) this.skim = 0
+    if (Math.abs(this.skim - this.skimReported) > 0.025 || (this.skim === 0 && this.skimReported !== 0)) {
+      this.skimReported = this.skim
+      this.options.onSkimChange?.(this.skim)
     }
     this.windLevel += (this.windTarget - this.windLevel) * (1 - Math.exp(-dt * 1.4))
     if (this.grassUniforms.uWind) this.grassUniforms.uWind.value = this.windLevel

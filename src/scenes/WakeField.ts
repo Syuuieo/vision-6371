@@ -1,146 +1,298 @@
 import * as THREE from 'three'
 
-// 256×256 的踩踏尾迹：128/255 为中性，ping-pong 双缓冲，
-// 每帧写入玩家与指针在地面上的线段，约 1.4 秒自然回弹。
-
-const SPAN = 220
-const CENTER = { x: 0, z: -42 }
-
-const VERT = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = vec4(position.xy, 0.0, 1.0);
-  }
-`
-
-const FRAG = /* glsl */ `
-  uniform sampler2D uPrev;
-  uniform vec2 uPlayer;
-  uniform vec2 uPrevPlayer;
-  uniform vec2 uCursor;
-  uniform vec2 uPrevCursor;
-  uniform float uActive;
-  uniform float uOriginZ;
-  uniform float uSpan;
-  varying vec2 vUv;
-
-  float segDist(vec2 p, vec2 a, vec2 b) {
-    vec2 pa = p - a;
-    vec2 ba = b - a;
-    float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0);
-    return length(pa - ba * h);
-  }
-
-  void main() {
-    vec2 world = vec2(vUv.x, vUv.y) * uSpan + vec2(-uSpan * 0.5, uOriginZ);
-    vec4 prev = texture2D(uPrev, vUv);
-    vec2 push = (prev.rg - 0.5) * 2.0;
-    push *= 0.978;
-    if (abs(push.x) < 0.004) push.x = 0.0;
-    if (abs(push.y) < 0.004) push.y = 0.0;
-
-    if (uActive > 0.5) {
-      float dPlayer = segDist(world, uPrevPlayer, uPlayer);
-      float dCursor = segDist(world, uPrevCursor, uCursor);
-      vec2 dirPlayer = normalize(world - (uPrevPlayer + uPlayer) * 0.5 + vec2(0.001));
-      vec2 dirCursor = normalize(world - (uPrevCursor + uCursor) * 0.5 + vec2(0.001));
-      push += dirPlayer * exp(-dPlayer * dPlayer * 3.2) * 0.55;
-      push += dirCursor * exp(-dCursor * dCursor * 5.0) * 0.4;
-    }
-
-    push = clamp(push, vec2(-1.0), vec2(1.0));
-    gl_FragColor = vec4(push * 0.5 + 0.5, 0.0, 1.0);
-  }
-`
-
+/**
+ * 持久草地尾迹场（双缓冲世界锚定 Ping-Pong Texture）
+ *
+ * 借鉴 Petalwake 的草浪尾迹方案：在玩家周围一块按纹理像素对齐移动的
+ * 256×256 局部窗口内，持续记录脚步踏过与指针轻抚草尖后的“倾倒向量 (RG) +
+ * 踩踏压低幅度 (B)”。随时间在 ~1.45 秒内自然回弹恢复，并严格采用 RGBA8
+ * 中性编码 (128/255 = 0) 以兼容所有桌面与移动端 WebGL 驱动。
+ */
 export class WakeField {
-  private targets: THREE.WebGLRenderTarget[]
-  private quad: THREE.Mesh
-  private scene = new THREE.Scene()
-  private camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
-  private material: THREE.ShaderMaterial
-  private index = 0
-  private prevPlayer = new THREE.Vector2(9999, 9999)
-  private prevCursor = new THREE.Vector2(9999, 9999)
-  private hasPrev = false
+  private readonly renderer: THREE.WebGLRenderer
+  private readonly size: number
+  private readonly extent: number
+  private readonly targets: [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget]
+  private readonly clearMat: THREE.ShaderMaterial
+  private readonly updateMat: THREE.ShaderMaterial
+  private readonly quad: THREE.Mesh
+  private readonly scene = new THREE.Scene()
+  private readonly cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
 
-  readonly originZ = CENTER.z - SPAN / 2
-  readonly span = SPAN
+  private outIdx = 0
+  private _centerX = 0
+  private _centerZ = 0
+  private hasPlayerPrev = false
+  private prevPlayerX = 0
+  private prevPlayerZ = 0
+  private hasCursorPrev = false
+  private prevCursorX = 999
+  private prevCursorZ = 999
+  private initializedCenter = false
+  private disposed = false
 
-  constructor() {
-    const make = () =>
-      new THREE.WebGLRenderTarget(256, 256, {
-        format: THREE.RGBAFormat,
-        type: THREE.UnsignedByteType,
-        depthBuffer: false,
-        stencilBuffer: false,
-        minFilter: THREE.LinearFilter,
-        magFilter: THREE.LinearFilter,
-      })
-    this.targets = [make(), make()]
-    for (const target of this.targets) {
-      const renderer = target as unknown as { texture: THREE.Texture }
-      renderer.texture.needsUpdate = true
+  constructor(renderer: THREE.WebGLRenderer, size = 256, extent = 72) {
+    this.renderer = renderer
+    this.size = size
+    this.extent = extent
+
+    const opts: THREE.RenderTargetOptions = {
+      type: THREE.UnsignedByteType,
+      format: THREE.RGBAFormat,
+      depthBuffer: false,
+      stencilBuffer: false,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      wrapS: THREE.ClampToEdgeWrapping,
+      wrapT: THREE.ClampToEdgeWrapping,
+      generateMipmaps: false,
     }
-    this.material = new THREE.ShaderMaterial({
-      uniforms: {
-        uPrev: { value: null },
-        uPlayer: { value: new THREE.Vector2(9999, 9999) },
-        uPrevPlayer: { value: new THREE.Vector2(9999, 9999) },
-        uCursor: { value: new THREE.Vector2(9999, 9999) },
-        uPrevCursor: { value: new THREE.Vector2(9999, 9999) },
-        uActive: { value: 0 },
-        uOriginZ: { value: this.originZ },
-        uSpan: { value: SPAN },
-      },
-      vertexShader: VERT,
-      fragmentShader: FRAG,
+
+    this.targets = [
+      new THREE.WebGLRenderTarget(size, size, opts),
+      new THREE.WebGLRenderTarget(size, size, opts),
+    ]
+
+    const tri = new THREE.BufferGeometry()
+    tri.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3),
+    )
+
+    const quadVert = /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = position.xy * 0.5 + 0.5;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `
+
+    this.clearMat = new THREE.ShaderMaterial({
+      vertexShader: quadVert,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        void main() {
+          gl_FragColor = vec4(128.0 / 255.0, 128.0 / 255.0, 0.0, 1.0);
+        }
+      `,
       depthTest: false,
       depthWrite: false,
+      blending: THREE.NoBlending,
     })
-    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material)
+
+    this.updateMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tPrev: { value: this.targets[0].texture },
+        uShift: { value: new THREE.Vector2() },
+        uCenter: { value: new THREE.Vector2() },
+        uExtent: { value: extent },
+        uDecay: { value: 0.96 },
+        uSegA: { value: new THREE.Vector4() },
+        uParamsA: { value: new THREE.Vector4(1.65, 0.92, 0.65, 0) },
+        uSegB: { value: new THREE.Vector4() },
+        uParamsB: { value: new THREE.Vector4(2.15, 0.86, 0.42, 0) },
+      },
+      vertexShader: quadVert,
+      fragmentShader: WAKE_UPDATE_FRAG,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.NoBlending,
+    })
+
+    this.quad = new THREE.Mesh(tri, this.clearMat)
     this.quad.frustumCulled = false
     this.scene.add(this.quad)
+
+    this.reset()
   }
 
   get texture(): THREE.Texture {
-    return this.targets[this.index].texture
+    return this.targets[this.outIdx].texture
+  }
+
+  get centerX(): number {
+    return this._centerX
+  }
+
+  get centerZ(): number {
+    return this._centerZ
+  }
+
+  get invExtent(): number {
+    return 1 / this.extent
+  }
+
+  reset() {
+    if (this.disposed) return
+    const r = this.renderer
+    const prevTarget = r.getRenderTarget()
+    const prevAutoClear = r.autoClear
+
+    this.quad.material = this.clearMat
+    r.autoClear = false
+    for (const target of this.targets) {
+      r.setRenderTarget(target)
+      r.render(this.scene, this.cam)
+    }
+
+    r.setRenderTarget(prevTarget)
+    r.autoClear = prevAutoClear
+    this.hasPlayerPrev = false
+    this.hasCursorPrev = false
+    this.initializedCenter = false
   }
 
   update(
-    renderer: THREE.WebGLRenderer,
-    player: THREE.Vector2,
-    cursor: THREE.Vector2,
-    active: boolean,
+    dt: number,
+    playerX: number,
+    playerZ: number,
+    cursorX: number,
+    cursorZ: number,
+    cursorActive: boolean,
   ) {
-    const next = (this.index + 1) % 2
-    const uniforms = this.material.uniforms
-    uniforms.uPrev.value = this.targets[this.index].texture
-    uniforms.uPlayer.value.copy(player)
-    uniforms.uCursor.value.copy(cursor)
-    if (!this.hasPrev) {
-      this.prevPlayer.copy(player)
-      this.prevCursor.copy(cursor)
-      this.hasPrev = true
+    if (this.disposed) return
+    const texelWorld = this.extent / this.size
+    const nextCX = Math.round(playerX / texelWorld) * texelWorld
+    const nextCZ = Math.round(playerZ / texelWorld) * texelWorld
+
+    const prevCX = this.initializedCenter ? this._centerX : nextCX
+    const prevCZ = this.initializedCenter ? this._centerZ : nextCZ
+    this.initializedCenter = true
+
+    const shiftX = (nextCX - prevCX) / this.extent
+    const shiftZ = (nextCZ - prevCZ) / this.extent
+    this._centerX = nextCX
+    this._centerZ = nextCZ
+
+    const u = this.updateMat.uniforms
+    u.uShift.value.set(shiftX, shiftZ)
+    u.uCenter.value.set(nextCX, nextCZ)
+    u.uDecay.value = Math.exp(-Math.max(0.001, dt) / 1.45)
+
+    if (!this.hasPlayerPrev) {
+      this.prevPlayerX = playerX
+      this.prevPlayerZ = playerZ
+      this.hasPlayerPrev = true
     }
-    uniforms.uPrevPlayer.value.copy(this.prevPlayer)
-    uniforms.uPrevCursor.value.copy(this.prevCursor)
-    uniforms.uActive.value = active ? 1 : 0
+    const playerJump = Math.hypot(playerX - this.prevPlayerX, playerZ - this.prevPlayerZ)
+    const pAx = playerJump > 10 ? playerX : this.prevPlayerX
+    const pAz = playerJump > 10 ? playerZ : this.prevPlayerZ
+    u.uSegA.value.set(pAx, pAz, playerX, playerZ)
+    u.uParamsA.value.set(1.65, 0.92, 0.65, 1)
+    this.prevPlayerX = playerX
+    this.prevPlayerZ = playerZ
 
-    const previousTarget = renderer.getRenderTarget()
-    renderer.setRenderTarget(this.targets[next])
-    renderer.render(this.scene, this.camera)
-    renderer.setRenderTarget(previousTarget)
+    if (cursorActive && cursorX < 450 && cursorZ < 450) {
+      if (!this.hasCursorPrev) {
+        this.prevCursorX = cursorX
+        this.prevCursorZ = cursorZ
+        this.hasCursorPrev = true
+      }
+      const cursorJump = Math.hypot(cursorX - this.prevCursorX, cursorZ - this.prevCursorZ)
+      const cAx = cursorJump > 12 ? cursorX : this.prevCursorX
+      const cAz = cursorJump > 12 ? cursorZ : this.prevCursorZ
+      u.uSegB.value.set(cAx, cAz, cursorX, cursorZ)
+      u.uParamsB.value.set(2.15, 0.84, 0.4, 1)
+      this.prevCursorX = cursorX
+      this.prevCursorZ = cursorZ
+    } else {
+      this.hasCursorPrev = false
+      u.uParamsB.value.w = 0
+    }
 
-    this.prevPlayer.copy(player)
-    this.prevCursor.copy(cursor)
-    this.index = next
+    const read = this.targets[this.outIdx]
+    const write = this.targets[1 - this.outIdx]
+    u.tPrev.value = read.texture
+
+    const r = this.renderer
+    const prevTarget = r.getRenderTarget()
+    const prevAutoClear = r.autoClear
+
+    this.quad.material = this.updateMat
+    r.autoClear = false
+    r.setRenderTarget(write)
+    r.render(this.scene, this.cam)
+
+    r.setRenderTarget(prevTarget)
+    r.autoClear = prevAutoClear
+    this.outIdx = 1 - this.outIdx
   }
 
   dispose() {
-    this.targets.forEach((target) => target.dispose())
-    this.material.dispose()
+    if (this.disposed) return
+    this.disposed = true
     this.quad.geometry.dispose()
+    this.clearMat.dispose()
+    this.updateMat.dispose()
+    this.targets[0].dispose()
+    this.targets[1].dispose()
+    this.scene.clear()
   }
 }
+
+const WAKE_UPDATE_FRAG = /* glsl */ `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D tPrev;
+uniform vec2 uShift;
+uniform vec2 uCenter;
+uniform float uExtent;
+uniform float uDecay;
+uniform vec4 uSegA;
+uniform vec4 uParamsA;
+uniform vec4 uSegB;
+uniform vec4 uParamsB;
+
+void stampSegment(vec2 worldXZ, vec4 seg, vec4 params, inout vec2 lean, inout float crush) {
+  if (params.w < 0.5) return;
+  vec2 a = seg.xy;
+  vec2 b = seg.zw;
+  vec2 ab = b - a;
+  float len2 = dot(ab, ab);
+  float t = len2 > 1e-6 ? clamp(dot(worldXZ - a, ab) / len2, 0.0, 1.0) : 0.0;
+  vec2 closest = a + ab * t;
+  vec2 diff = worldXZ - closest;
+  float dist = length(diff);
+  float radius = params.x;
+  if (dist >= radius) return;
+
+  float k = 1.0 - dist / radius;
+  float w = pow(k, 1.35) * params.y;
+  vec2 side = dist > 0.001 ? diff / dist : vec2(0.0, 1.0);
+  vec2 forward = len2 > 1e-6 ? normalize(ab) : vec2(0.0);
+  vec2 push = normalize(side + forward * 0.25 + vec2(1e-5)) * w;
+
+  float magPush = length(push);
+  float magCur = length(lean);
+  if (magPush >= magCur) {
+    lean = mix(lean, push, 0.72);
+  } else {
+    lean += push * 0.25;
+  }
+  crush = max(crush, k * params.z);
+}
+
+void main() {
+  vec2 prevUv = vUv + uShift;
+  vec2 lean = vec2(0.0);
+  float crush = 0.0;
+
+  if (prevUv.x > 0.0 && prevUv.x < 1.0 && prevUv.y > 0.0 && prevUv.y < 1.0) {
+    vec4 s = texture2D(tPrev, prevUv);
+    lean = ((s.rg * 255.0 - 128.0) / 127.0) * uDecay;
+    crush = s.b * uDecay;
+    if (length(lean) < 0.012) lean = vec2(0.0);
+    if (crush < 0.01) crush = 0.0;
+  }
+
+  vec2 worldXZ = uCenter + (vUv - 0.5) * uExtent;
+  stampSegment(worldXZ, uSegA, uParamsA, lean, crush);
+  stampSegment(worldXZ, uSegB, uParamsB, lean, crush);
+
+  float mag = length(lean);
+  if (mag > 1.0) lean /= mag;
+
+  vec2 rg = (lean * 127.0 + 128.0) / 255.0;
+  gl_FragColor = vec4(clamp(rg, 0.0, 1.0), clamp(crush, 0.0, 1.0), 1.0);
+}
+`

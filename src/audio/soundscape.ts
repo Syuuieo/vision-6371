@@ -647,6 +647,8 @@ export class Soundscape {
     this.pulseGain?.gain.setTargetAtTime(0.16, t, 2.2)
     this.windGain?.gain.setTargetAtTime(0.0001, t, 0.5)
     this.staticGain?.gain.setTargetAtTime(0.0001, t, 0.4)
+    this.skimAmount = 0
+    this.applySkim(0.35)
     this.playChime([196, 261.63, 329.63, 392], 0.07, 5.2)
     this.startBgm('descent')
     this.later(() => this.startHeartbeat(), 3600)
@@ -668,6 +670,8 @@ export class Soundscape {
     this.staticGain?.gain.setTargetAtTime(0.0001, t, 0.6)
     this.windGain?.gain.setTargetAtTime(0.0001, t, 0.6)
     this.rainGain?.gain.setTargetAtTime(0.0001, t, 0.8)
+    this.skimAmount = 0
+    this.applySkim(0.3)
     this.stopHeartbeat()
     this.stopBgm()
     this.lastBgmMode = null
