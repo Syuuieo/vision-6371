@@ -2354,8 +2354,7 @@ export class PrologueScene {
   }
 
   private buildGrass() {
-    const geometry = this.createBladeGeometry()
-    const count = this.lowDetail ? 11000 : 32000
+    const height = this.bakeHeightTexture()
     const uniforms: Record<string, THREE.IUniform> = {
       uTime: { value: 0 },
       uWind: { value: 0.55 },
@@ -2364,36 +2363,87 @@ export class PrologueScene {
       uTip: { value: 1 },
       uPlayerPos: { value: new THREE.Vector3() },
       uCursorPos: { value: new THREE.Vector3(999, 999, 999) },
+      uCamXZ: { value: new THREE.Vector2() },
+      uCell: { value: 6 },
+      uRadius: { value: 30 },
+      uFade: { value: new THREE.Vector4(-1, 0, 25, 30) },
+      uHeightTex: { value: height.texture },
+      uHeightOrigin: { value: new THREE.Vector2(height.origin.x, height.origin.z) },
+      uHeightSpan: { value: height.span },
+      uWaterY: { value: LAKE.y + 0.35 },
       ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog),
     }
     this.grassUniforms = uniforms
 
-    const material = new THREE.ShaderMaterial({
-      uniforms,
-      fog: true,
-      side: THREE.DoubleSide,
-      vertexShader: /* glsl */ `
+    const vertexShader = /* glsl */ `
         attribute float aRand;
+        attribute vec2 aCell;
+        attribute vec3 aSeed;
         uniform float uTime;
         uniform float uWind;
         uniform vec3 uPlayerPos;
         uniform vec3 uCursorPos;
+        uniform vec2 uCamXZ;
+        uniform float uCell;
+        uniform float uRadius;
+        uniform vec4 uFade;
+        uniform sampler2D uHeightTex;
+        uniform vec2 uHeightOrigin;
+        uniform float uHeightSpan;
+        uniform float uWaterY;
         varying float vH;
         varying float vRand;
         varying vec3 vWorld;
         #include <fog_pars_vertex>
+
+        vec2 hash2(vec2 p) {
+          p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+          return fract(sin(p) * 43758.5453);
+        }
+
         void main() {
           vH = uv.y;
           vRand = aRand;
-          vec4 instanceWorld = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-          vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
 
-          float gust = 0.5 + 0.5 * sin(instanceWorld.x * 0.021 - instanceWorld.z * 0.017 + uTime * 0.55);
-          float wave = sin(instanceWorld.x * 0.16 + instanceWorld.z * 0.12 + uTime * 1.9 + aRand * 6.283);
+          vec2 cellIndex = floor(uCamXZ / uCell) + aCell;
+          vec2 jitter = hash2(cellIndex + aSeed.xy * 37.0);
+          vec2 wrapped = (cellIndex + jitter) * uCell - uCamXZ;
+          wrapped -= uRadius * 2.0 * round(wrapped / (uRadius * 2.0));
+          vec2 xz = uCamXZ + wrapped;
+          float dist = length(wrapped);
+
+          float keep = smoothstep(uFade.x, uFade.y, dist) * (1.0 - smoothstep(uFade.z, uFade.w, dist));
+          if (keep <= 0.002) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+          }
+
+          vec4 packed = texture2D(uHeightTex, clamp((xz - uHeightOrigin) / uHeightSpan, 0.0, 1.0));
+          float ground = -20.0 + ((packed.r * 65280.0 + packed.g * 255.0) / 65535.0) * 40.0;
+          if (ground < uWaterY) {
+            gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+            return;
+          }
+
+          float hgt = (0.38 + pow(fract(aSeed.x * 3.71), 1.5) * 1.05) * keep;
+          float wid = (0.7 + fract(aSeed.y * 5.13) * 0.55) * keep;
+          float yaw = aSeed.z * 6.2831853;
+          float cs = cos(yaw);
+          float sn = sin(yaw);
+          vec3 p = position;
+          p.xz *= wid;
+          p.y *= hgt;
+          p.xz = mat2(cs, -sn, sn, cs) * p.xz;
+
+          vec3 world = vec3(xz.x + p.x, ground + p.y, xz.y + p.z);
+          vec3 root = vec3(xz.x, ground, xz.y);
+
+          float gust = 0.5 + 0.5 * sin(root.x * 0.021 - root.z * 0.017 + uTime * 0.55);
+          float wave = sin(root.x * 0.16 + root.z * 0.12 + uTime * 1.9 + aRand * 6.283);
           float amp = (0.05 + 0.16 * uWind * gust) * (0.6 + aRand * 0.8);
           float bend = amp * vH * vH;
           world.x += wave * bend * 1.7;
-          world.z += cos(instanceWorld.x * 0.1 + uTime * 1.3 + aRand * 4.0) * bend;
+          world.z += cos(root.x * 0.1 + uTime * 1.3 + aRand * 4.0) * bend;
           world.y -= bend * 0.35;
 
           vec2 toPlayer = world.xz - uPlayerPos.xz;
@@ -2410,13 +2460,13 @@ export class PrologueScene {
           world.xz += (playerDir * playerPush + cursorDir * cursorPush) * pushWeight;
           world.y -= (playerPush + cursorPush) * 0.22 * pushWeight;
 
-          vWorld = world.xyz;
-          vec4 mvPosition = viewMatrix * world;
+          vWorld = world;
+          vec4 mvPosition = viewMatrix * vec4(world, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           #include <fog_vertex>
         }
-      `,
-      fragmentShader: /* glsl */ `
+      `
+    const fragmentShader = /* glsl */ `
         uniform vec3 uSunColor;
         uniform vec3 uAmbient;
         uniform float uTip;
@@ -2436,82 +2486,86 @@ export class PrologueScene {
           gl_FragColor = vec4(col, 1.0);
           #include <fog_fragment>
         }
-      `,
-    })
+      `
 
-    const mesh = new THREE.InstancedMesh(geometry, material, count)
-    mesh.frustumCulled = false
-    const randoms = new Float32Array(count)
-    const matrix = new THREE.Matrix4()
-    const quaternion = new THREE.Quaternion()
-    const scale = new THREE.Vector3()
-    const position = new THREE.Vector3()
-    let placed = 0
-    let attempts = 0
-    const nearRadius = this.roamRadius + 8
-    while (placed < count && attempts < count * 4) {
-      attempts += 1
-      const angle = Math.random() * Math.PI * 2
-      const radius = Math.pow(Math.random(), 0.58) * nearRadius
-      const x = Math.cos(angle) * radius
-      const z = Math.sin(angle) * radius - 22
-      const ground = heightAt(x, z)
-      if (ground < LAKE.y + 0.4) continue
-      if (Math.hypot(x + 3.8, z + 8.5) < 2.7) continue
-      const scaleY = 0.38 + Math.pow(Math.random(), 1.5) * 1.05
-      const scaleXZ = 0.7 + Math.random() * 0.55
-      position.set(x, ground, z)
-      quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2)
-      scale.set(scaleXZ, scaleY, scaleXZ)
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(placed, matrix)
-      randoms[placed] = Math.random()
-      placed += 1
+    const shells = [
+      { key: 'near', cell: 6, per: 70, radius: 30, fade: [-1, 0, 25, 30], segs: 4, quality: 1 },
+      { key: 'mid', cell: 16, per: 48, radius: 66, fade: [20, 28, 56, 66], segs: 3, quality: 1 },
+      { key: 'far', cell: 44, per: 34, radius: 150, fade: [52, 64, 128, 150], segs: 2, quality: 0.55 },
+    ] as const
+
+    for (const shell of shells) {
+      const reach = Math.ceil(shell.radius / shell.cell)
+      const cells: [number, number][] = []
+      for (let cz = -reach; cz <= reach; cz += 1) {
+        for (let cx = -reach; cx <= reach; cx += 1) {
+          cells.push([cx, cz])
+        }
+      }
+      const per = Math.max(1, Math.round(shell.per * (this.lowDetail ? shell.quality * 0.55 : 1)))
+      const count = cells.length * per
+      const geometry = this.createBladeGeometry(shell.segs)
+      const aCell = new Float32Array(count * 2)
+      const aSeed = new Float32Array(count * 3)
+      const randoms = new Float32Array(count)
+      let index = 0
+      for (const [cx, cz] of cells) {
+        for (let slot = 0; slot < per; slot += 1) {
+          aCell[index * 2] = cx
+          aCell[index * 2 + 1] = cz
+          aSeed[index * 3] = Math.random()
+          aSeed[index * 3 + 1] = Math.random()
+          aSeed[index * 3 + 2] = Math.random()
+          randoms[index] = Math.random()
+          index += 1
+        }
+      }
+      geometry.setAttribute('aRand', new THREE.InstancedBufferAttribute(randoms, 1))
+      geometry.setAttribute('aCell', new THREE.InstancedBufferAttribute(aCell, 2))
+      geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(aSeed, 3))
+      const shellMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          ...uniforms,
+          uCell: { value: shell.cell },
+          uRadius: { value: shell.radius },
+          uFade: { value: new THREE.Vector4(...shell.fade) },
+        },
+        fog: true,
+        side: THREE.DoubleSide,
+        vertexShader,
+        fragmentShader,
+      })
+      const mesh = new THREE.InstancedMesh(geometry, shellMaterial, count)
+      mesh.frustumCulled = false
+      mesh.name = 'grass-' + shell.key
+      this.surfaceGroup.add(mesh)
     }
-    mesh.count = placed
-    geometry.setAttribute('aRand', new THREE.InstancedBufferAttribute(randoms, 1))
-    mesh.instanceMatrix.needsUpdate = true
-    this.surfaceGroup.add(mesh)
-    this.buildFarGrass(material)
   }
 
-  private buildFarGrass(material: THREE.Material) {
-    const count = this.lowDetail ? 1800 : 7000
-    const geometry = this.createBladeGeometry(2)
-    const mesh = new THREE.InstancedMesh(geometry, material, count)
-    mesh.frustumCulled = false
-    const randoms = new Float32Array(count)
-    const matrix = new THREE.Matrix4()
-    const quaternion = new THREE.Quaternion()
-    const scale = new THREE.Vector3()
-    const position = new THREE.Vector3()
-    const inner = this.roamRadius + 2
-    const outer = this.roamRadius + 130
-    let placed = 0
-    let attempts = 0
-    while (placed < count && attempts < count * 4) {
-      attempts += 1
-      const angle = Math.random() * Math.PI * 2
-      const radius = inner + Math.pow(Math.random(), 0.85) * (outer - inner)
-      const x = Math.cos(angle) * radius
-      const z = Math.sin(angle) * radius - 22
-      const ground = heightAt(x, z)
-      if (ground < LAKE.y + 0.4) continue
-      const scaleY = 0.7 + Math.random() * 1.1
-      const scaleXZ = 1.1 + Math.random() * 0.9
-      position.set(x, ground, z)
-      quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI * 2)
-      scale.set(scaleXZ, scaleY, scaleXZ)
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(placed, matrix)
-      randoms[placed] = Math.random()
-      placed += 1
+  private bakeHeightTexture() {
+    const resolution = 384
+    const span = 600
+    const origin = { x: -span / 2, z: -42 - span / 2 }
+    const data = new Uint8Array(resolution * resolution * 4)
+    for (let j = 0; j < resolution; j += 1) {
+      const z = origin.z + ((j + 0.5) / resolution) * span
+      for (let i = 0; i < resolution; i += 1) {
+        const x = origin.x + ((i + 0.5) / resolution) * span
+        const encoded = Math.round(Math.min(1, Math.max(0, (heightAt(x, z) + 20) / 40)) * 65535)
+        const offset = (j * resolution + i) * 4
+        data[offset] = Math.floor(encoded / 256)
+        data[offset + 1] = encoded % 256
+        data[offset + 2] = 0
+        data[offset + 3] = 255
+      }
     }
-    mesh.count = placed
-    geometry.setAttribute('aRand', new THREE.InstancedBufferAttribute(randoms, 1))
-    mesh.instanceMatrix.needsUpdate = true
-    mesh.name = 'far-grass'
-    this.surfaceGroup.add(mesh)
+    const texture = new THREE.DataTexture(data, resolution, resolution, THREE.RGBAFormat, THREE.UnsignedByteType)
+    texture.minFilter = THREE.LinearFilter
+    texture.magFilter = THREE.LinearFilter
+    texture.wrapS = THREE.ClampToEdgeWrapping
+    texture.wrapT = THREE.ClampToEdgeWrapping
+    texture.needsUpdate = true
+    return { texture, origin, span, min: -20, range: 40 }
   }
 
   private createBladeGeometry(segments = 4) {
@@ -5186,6 +5240,9 @@ export class PrologueScene {
 
   private updateWorld(dt: number) {
     if (this.grassUniforms.uTime) this.grassUniforms.uTime.value = this.elapsed
+    if (this.grassUniforms.uCamXZ) {
+      this.grassUniforms.uCamXZ.value.set(this.camera.position.x, this.camera.position.z)
+    }
     if (this.mistUniforms) this.mistUniforms.uTime.value = this.elapsed
     this.windLevel += (this.windTarget - this.windLevel) * (1 - Math.exp(-dt * 1.4))
     if (this.grassUniforms.uWind) this.grassUniforms.uWind.value = this.windLevel
