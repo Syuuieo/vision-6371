@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ROAM_MUSIC_CYCLE,
+  getRoamTrackMeta,
+  resolveTrackForHour,
+  type RoamMusicPreference,
+} from '../audio/roamMusic'
 import type { Soundscape } from '../audio/soundscape'
 import { type VoiceMode, useVoiceState, voicePlayer } from '../audio/voicePlayer'
 import {
@@ -84,6 +90,29 @@ const TUNE_TARGET = 0.71
 const TUNE_WINDOW = 0.055
 const LINGER_SECONDS = 15
 const DISCOVERIES_KEY = 'vision6371_discoveries_v1'
+const ROAM_MUSIC_KEY = 'vision6371_roam_music_v1'
+
+function loadRoamMusicPref(): RoamMusicPreference {
+  if (typeof window === 'undefined') return 'auto'
+  try {
+    const val = window.localStorage.getItem(ROAM_MUSIC_KEY)
+    if (val && ROAM_MUSIC_CYCLE.includes(val as RoamMusicPreference)) {
+      return val as RoamMusicPreference
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'auto'
+}
+
+function persistRoamMusicPref(pref: RoamMusicPreference) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(ROAM_MUSIC_KEY, pref)
+  } catch {
+    /* ignore */
+  }
+}
 const VALID_DISCOVERY_IDS: readonly WorldDiscoveryId[] = WORLD_DISCOVERIES.map((d) => d.id)
 const MEADOW_QUICK_NOTES = [
   '替你在风起的高崖上，把整片谷地的草浪拍了下来。',
@@ -253,6 +282,7 @@ export function PrologueExperience({
   const [discoveriesFound, setDiscoveriesFound] = useState<WorldDiscoveryId[]>(() => loadDiscoveries())
   const [freeRoam, setFreeRoam] = useState(false)
   const [customHour, setCustomHour] = useState(16.5)
+  const [musicPref, setMusicPref] = useState<RoamMusicPreference>(() => loadRoamMusicPref())
   const [meadowShot, setMeadowShot] = useState<{ image: string; placeName: string; hour: number } | null>(null)
   const [meadowNote, setMeadowNote] = useState('')
   const [meadowSaved, setMeadowSaved] = useState(false)
@@ -474,6 +504,7 @@ export function PrologueExperience({
   useEffect(() => {
     telemetryHandlerRef.current = (next) => {
       setTelemetry(next)
+      sound.setRoamMusicMotion(next.speedNorm, Boolean(next.seatedBenchId))
       if (next.nearbyDiscovery && !discoveriesRef.current.includes(next.nearbyDiscovery)) {
         const nextList = [...discoveriesRef.current, next.nearbyDiscovery]
         discoveriesRef.current = nextList
@@ -499,6 +530,28 @@ export function PrologueExperience({
     scene.setStage(stage)
     scene.setClock(clockHour)
   }, [stage, clockHour, freeRoam])
+
+  const effectiveMusicHour = freeRoam ? customHour : clockHour
+  const activeMusicTrack = getRoamTrackMeta(
+    musicPref === 'auto' || musicPref === 'off' ? resolveTrackForHour(effectiveMusicHour) : musicPref,
+  )
+
+  useEffect(() => {
+    sound.setRoamMusicPreference(musicPref)
+  }, [musicPref, sound])
+
+  useEffect(() => {
+    sound.setRoamMusicHour(effectiveMusicHour)
+  }, [effectiveMusicHour, sound])
+
+  useEffect(() => {
+    const presence = freeRoam ? 1.0 : linger ? 0.85 : 0.62
+    sound.setRoamMusicPresence(presence, freeRoam ? 0.9 : 1.3)
+  }, [freeRoam, linger, sound])
+
+  useEffect(() => {
+    sound.setRoamMusicDucked(Boolean(voiceState.playingId || quote || lore))
+  }, [lore, quote, sound, voiceState.playingId])
 
   useEffect(() => {
     sceneRef.current?.setActiveTask(activeTask)
@@ -611,6 +664,7 @@ export function PrologueExperience({
       panelRef.current = 'none'
       setActiveTask(null)
       setCustomHour(clockHour)
+      void sound.unlock()
       sound.playChime([523.25, 659.25], 0.04, 1.8)
       showToast('自由漫游已开启 · 可切换 24h 天色与踏勘 5 处新地标，按 P 随时留影', 3200)
     } else {
@@ -624,6 +678,24 @@ export function PrologueExperience({
     setCustomHour(nextHour)
     sceneRef.current?.setClockHour(nextHour)
   }, [])
+
+  const cycleRoamMusic = useCallback(() => {
+    void sound.unlock()
+    const idx = ROAM_MUSIC_CYCLE.indexOf(musicPref)
+    const next = ROAM_MUSIC_CYCLE[(idx + 1) % ROAM_MUSIC_CYCLE.length]
+    setMusicPref(next)
+    persistRoamMusicPref(next)
+    sound.setRoamMusicPreference(next)
+    if (next === 'off') {
+      showToast('草原轻音乐已暂停 · 仅保留风声与自然环境音', 2200)
+    } else if (next === 'auto') {
+      const autoTrack = getRoamTrackMeta(resolveTrackForHour(freeRoam ? customHour : clockHour))
+      showToast('轻音乐 · 随天色流转（当前：《' + autoTrack.title + '》）', 2600)
+    } else {
+      const track = getRoamTrackMeta(next)
+      showToast('轻音乐 · 《' + track.title + '》' + track.subtitle, 2600)
+    }
+  }, [clockHour, customHour, freeRoam, musicPref, showToast, sound])
 
   const handleBenchToggle = useCallback(() => {
     const cur = telemetryRef.current
@@ -729,6 +801,17 @@ export function PrologueExperience({
         return
       }
       if (
+        event.code === 'KeyM' &&
+        active &&
+        phaseRef.current === 'explore' &&
+        !finalizingRef.current &&
+        !meadowShotRef.current
+      ) {
+        event.preventDefault()
+        cycleRoamMusic()
+        return
+      }
+      if (
         event.code === 'KeyP' &&
         active &&
         phaseRef.current === 'explore' &&
@@ -748,7 +831,7 @@ export function PrologueExperience({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, advanceIntroBeat, handleBenchToggle, openMeadowCapture, triggerSkyCall])
+  }, [active, advanceIntroBeat, cycleRoamMusic, handleBenchToggle, openMeadowCapture, triggerSkyCall])
 
   useEffect(() => {
     if (panel !== 'wind') return
@@ -2226,6 +2309,40 @@ export function PrologueExperience({
           </button>
           <button
             type="button"
+            onClick={cycleRoamMusic}
+            aria-label="切换草原轻音乐（快捷键 M）"
+            title={
+              musicPref === 'off'
+                ? '开启草原轻音乐 (M)'
+                : '轻音乐：' +
+                  (musicPref === 'auto' ? '随天色 · ' : '') +
+                  activeMusicTrack.title +
+                  '（点击切换 / 关闭 · M）'
+            }
+            className={
+              'flex h-6 items-center gap-1 rounded-full px-2 font-serif text-[11px] transition ' +
+              (musicPref === 'off'
+                ? 'text-white/45 hover:bg-white/10 hover:text-white/80'
+                : 'text-signal/90 hover:bg-white/10 hover:text-signal')
+            }
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M9 18V5l11-2v13"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="6.5" cy="18.5" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+              <circle cx="17.5" cy="16.5" r="2.5" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+            <span className="hidden lg:inline">
+              {musicPref === 'off' ? '静谧' : activeMusicTrack.title}
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={openMeadowCapture}
             aria-label="定格草原留影（快捷键 P）"
             title="定格草原留影 · 收入纪念册 (P)"
@@ -2287,6 +2404,21 @@ export function PrologueExperience({
           <span className="w-10 text-right font-mono text-[10.5px] text-signal">
             {formatClockHour(customHour)}
           </span>
+          <span className="h-3.5 w-px bg-white/15" />
+          <button
+            type="button"
+            onClick={cycleRoamMusic}
+            title="点击切换轻音乐：随天色 / 晨风白键 / 白桦风铃 / 星湖夜曲 / 静谧 (M)"
+            className={
+              'flex items-center gap-1 rounded-full px-2 py-0.5 font-serif text-[10.5px] transition ' +
+              (musicPref === 'off'
+                ? 'text-white/45 hover:text-white/80'
+                : 'bg-signal/15 text-signal hover:bg-signal/25')
+            }
+          >
+            <span>{musicPref === 'off' ? '♪ 静谧' : '♪ ' + activeMusicTrack.title}</span>
+            {musicPref === 'auto' && <span className="text-[9.5px] text-white/55">自动</span>}
+          </button>
         </div>
       )}
 
@@ -2386,7 +2518,7 @@ export function PrologueExperience({
             <div className="animate-fade-in cinema-surface-soft hud-ink-soft rounded-full px-3.5 py-1 font-serif text-[11.5px] text-white/82">
               {coarsePointer
                 ? '左摇杆漫步 · 右摇杆环顾 · 点击光点读她的细语'
-                : '拖拽环顾 · WASD / 点击漫步 · 按住 Shift 迎风滑步 · 空格心光 · E 长椅 · P 留影 · J 手账'}
+                : '拖拽环顾 · WASD / 点击漫步 · 按住 Shift 迎风滑步 · 空格心光 · E 长椅 · M 轻乐 · P 留影 · J 手账'}
             </div>
           )}
 
@@ -2455,6 +2587,17 @@ export function PrologueExperience({
               }`}
             >
               漫游
+            </button>
+            <button
+              type="button"
+              onClick={cycleRoamMusic}
+              aria-label="切换草原轻音乐"
+              className={
+                'rounded-full px-2 py-0.5 font-serif text-[10.5px] transition ' +
+                (musicPref === 'off' ? 'text-white/45' : 'text-signal')
+              }
+            >
+              {musicPref === 'off' ? '静谧' : '♪轻乐'}
             </button>
             <button
               type="button"

@@ -1,3 +1,5 @@
+import { RoamMusicEngine, type RoamMusicPreference, type RoamMusicSuiteId } from './roamMusic'
+
 const TUNE_TARGET = 0.71
 
 function clamp(value: number, min: number, max: number) {
@@ -70,6 +72,7 @@ export class Soundscape {
   private lastBgmMode: 'meadow' | 'descent' | 'core' | null = null
   private bgmTimer: number | null = null
   private bgmStep = 0
+  private roamMusic = new RoamMusicEngine()
   private pendingTimers: number[] = []
   private tuning = 0.5
 
@@ -128,6 +131,8 @@ export class Soundscape {
       this.buildPulse(ctx, ambient)
       this.buildRain(ctx, ambient)
       this.buildOrgan(ctx, ambient)
+      this.roamMusic.attach(ctx, ambient, reverbSend, this.noise)
+      this.roamMusic.setVolumeScale(this.active && !this.muted ? this.ambienceVolume : 0, 0.3)
     }
 
     if (this.ctx.state === 'suspended') {
@@ -406,9 +411,13 @@ export class Soundscape {
 
     const t = this.now()
     if (mode === 'meadow') {
-      this.organFilter?.frequency.setTargetAtTime(460, t, 0.8)
-      this.organGain?.gain.setTargetAtTime(0.045, t, 1.1)
-    } else if (mode === 'descent') {
+      this.organGain?.gain.setTargetAtTime(0.0001, t, 0.8)
+      this.roamMusic.setVolumeScale(this.active && !this.muted ? this.ambienceVolume : 0, 0.4)
+      this.roamMusic.start()
+      return
+    }
+    this.roamMusic.stop(0.8)
+    if (mode === 'descent') {
       this.organFilter?.frequency.setTargetAtTime(1350, t, 0.9)
       this.organGain?.gain.setTargetAtTime(0.19, t, 0.8)
     } else {
@@ -422,7 +431,7 @@ export class Soundscape {
       392, 587.33, 392, 587.33,
       329.63, 493.88, 329.63, 493.88,
     ]
-    const intervalMs = mode === 'descent' ? 280 : mode === 'meadow' ? 560 : 780
+    const intervalMs = mode === 'descent' ? 280 : 780
 
     const tick = () => {
       if (!this.ctx || !this.active || this.bgmMode !== mode) return
@@ -431,8 +440,6 @@ export class Soundscape {
       if (mode === 'descent') {
         this.playPianoNote(freq, 0.055, 0.95)
         this.playPianoNote(freq * 2, 0.02, 0.8)
-      } else if (mode === 'meadow') {
-        this.playPianoNote(freq, 0.036, 1.1)
       } else {
         this.playPianoNote(freq, 0.042, 1.35)
       }
@@ -444,6 +451,7 @@ export class Soundscape {
 
   stopBgm() {
     this.bgmMode = 'off'
+    this.roamMusic.stop(0.6)
     if (this.bgmTimer !== null) {
       window.clearInterval(this.bgmTimer)
       this.bgmTimer = null
@@ -451,6 +459,40 @@ export class Soundscape {
     if (this.ctx) {
       this.organGain?.gain.setTargetAtTime(0.0001, this.now(), 0.5)
     }
+  }
+
+  setRoamMusicPreference(pref: RoamMusicPreference) {
+    this.roamMusic.setPreference(pref)
+    if (pref !== 'off' && this.bgmMode !== 'descent' && this.bgmMode !== 'core' && this.active && this.ctx) {
+      this.bgmMode = 'meadow'
+      this.lastBgmMode = 'meadow'
+      this.roamMusic.setVolumeScale(this.muted ? 0 : this.ambienceVolume, 0.4)
+      this.roamMusic.start()
+    }
+  }
+
+  getRoamMusicPreference(): RoamMusicPreference {
+    return this.roamMusic.getPreference()
+  }
+
+  getActiveRoamMusicSuite(): RoamMusicSuiteId {
+    return this.roamMusic.getActiveSuite()
+  }
+
+  setRoamMusicHour(hour: number) {
+    this.roamMusic.setTimeHour(hour)
+  }
+
+  setRoamMusicPresence(level: number, smoothing = 1.1) {
+    this.roamMusic.setPresence(level, smoothing)
+  }
+
+  setRoamMusicDucked(ducked: boolean) {
+    this.roamMusic.setDucked(ducked)
+  }
+
+  setRoamMusicMotion(speedNorm: number, seated: boolean) {
+    this.roamMusic.setMotionContext(speedNorm, seated)
   }
 
   skyCall() {
@@ -462,6 +504,7 @@ export class Soundscape {
 
   setMuted(muted: boolean) {
     this.muted = muted
+    this.roamMusic.setVolumeScale(this.active && !muted ? this.ambienceVolume : 0, 0.25)
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(muted ? 0.0001 : 0.62 * this.masterVolume, this.now(), 0.25)
     }
@@ -476,6 +519,7 @@ export class Soundscape {
 
   setAmbienceVolume(value: number) {
     this.ambienceVolume = Number.isFinite(value) ? clamp(value, 0, 1) : 1
+    this.roamMusic.setVolumeScale(this.active && !this.muted ? this.ambienceVolume : 0, 0.25)
     if (this.ambient && this.ctx) {
       this.ambient.gain.setTargetAtTime(this.active ? 0.95 * this.ambienceVolume : 0.0001, this.now(), 0.25)
     }
@@ -490,6 +534,7 @@ export class Soundscape {
 
   setActive(active: boolean) {
     this.active = active
+    this.roamMusic.setVolumeScale(active && !this.muted ? this.ambienceVolume : 0, 0.5)
     if (this.ambient && this.ctx) {
       this.ambient.gain.setTargetAtTime(active ? 0.95 * this.ambienceVolume : 0.0001, this.now(), 0.8)
     }
@@ -750,6 +795,7 @@ export class Soundscape {
     this.skimFilter = null
     this.stopHeartbeat()
     this.stopBgm()
+    this.roamMusic.dispose()
     this.pendingTimers.forEach((timer) => window.clearTimeout(timer))
     this.pendingTimers = []
     if (this.ctx) {
