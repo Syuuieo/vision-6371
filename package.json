@@ -1,7 +1,7 @@
 {
   "name": "vision-6371",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "视界 6371 · Take Her Eyes — 3D 沉浸式感官序章",
   "type": "module",
   "scripts": {

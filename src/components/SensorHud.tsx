@@ -14,6 +14,7 @@ interface SensorHudProps {
   tuned: boolean
   eggsFound: EggId[]
   cluesFound?: string[]
+  onOpenJournal?: () => void
 }
 
 function formatDepth(depth: number) {
@@ -42,12 +43,12 @@ function SunArc({ hour, compact = false }: { hour: number; compact?: boolean }) 
   return (
     <svg
       viewBox="0 0 100 34"
-      className={compact ? 'h-[18px] w-[54px]' : 'h-[26px] w-[78px]'}
+      className={compact ? 'h-[16px] w-[48px]' : 'h-[22px] w-[68px]'}
       aria-hidden="true"
     >
-      <path d="M6 30 Q50 -2 94 30" fill="none" stroke="rgba(255,255,255,0.16)" strokeWidth="1.4" />
-      <line x1="4" y1="30" x2="96" y2="30" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-      <circle cx={x} cy={y} r="4.2" fill={tint} opacity="0.28" />
+      <path d="M6 30 Q50 -2 94 30" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.4" />
+      <line x1="4" y1="30" x2="96" y2="30" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
+      <circle cx={x} cy={y} r="4.4" fill={tint} opacity="0.3" />
       <circle cx={x} cy={y} r="2.4" fill={tint} />
     </svg>
   )
@@ -56,7 +57,7 @@ function SunArc({ hour, compact = false }: { hour: number; compact?: boolean }) 
 function PlaceTag({ place, className = '' }: { place: string; className?: string }) {
   return (
     <span className={`flex items-center gap-1.5 ${className}`}>
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0 text-signal/70">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0 text-signal/78">
         <path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
         <circle cx="12" cy="10" r="2.4" fill="currentColor" />
       </svg>
@@ -68,10 +69,10 @@ function PlaceTag({ place, className = '' }: { place: string; className?: string
 function AlertCapsule({ text }: { text: string }) {
   return (
     <div
-      className="flex items-center gap-2 rounded-full border border-ember/45 bg-[#2a1210]/85 px-3.5 py-1.5 font-serif text-[12px] tracking-[0.04em] text-[#ffd4c4] shadow-lg backdrop-blur-md"
+      className="flex items-center gap-2 rounded-full border border-ember/45 bg-[#2a1210]/82 px-3.5 py-1.5 font-serif text-[12px] tracking-[0.04em] text-[#ffd4c4] shadow-lg backdrop-blur-md"
       style={{ animation: 'blinkSoft 0.75s ease-in-out infinite' }}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ember" />
+      <span className="cinema-gem h-1.5 w-1.5 shrink-0 bg-ember" />
       <span>{text}</span>
     </div>
   )
@@ -89,6 +90,7 @@ export function SensorHud({
   tuned: _tuned,
   eggsFound,
   cluesFound = [],
+  onOpenJournal,
 }: SensorHudProps) {
   const step = STEPS[act - 1] ?? STEPS[0]
   const clockHour = Number(step.timeLabel.slice(0, 2)) + Number(step.timeLabel.slice(3, 5)) / 60
@@ -97,62 +99,104 @@ export function SensorHud({
 
   return (
     <>
-      <aside className="pointer-events-none fixed left-4 top-[78px] z-30 hidden select-none flex-col items-start gap-2 lg:flex">
-        <div className="flex flex-col gap-1.5 rounded-2xl border border-white/14 bg-[#0d172e]/64 px-3.5 py-2.5 shadow-[0_12px_32px_-12px_rgba(3,8,22,0.75)] backdrop-blur-xl">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
-            <span className="whitespace-nowrap font-serif text-[12.5px] tracking-[0.05em] text-[#fff8ee]">
+      {/* 桌面端：Petalwake 无框轻盈排印浮层 */}
+      <aside className="pointer-events-none fixed left-6 top-[78px] z-30 hidden select-none flex-col items-start gap-2.5 lg:flex">
+        <div className="hud-ink flex flex-col gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_12px_rgba(242,194,139,0.92)]" />
+            <span className="whitespace-nowrap font-serif text-[13.5px] font-medium tracking-[0.06em] text-[#fff8ee]">
               第 {step.index} 幕 · {step.title}
             </span>
-            <span className="font-mono text-[10.5px] text-signal/80">{step.timeLabel}</span>
+            <span className="font-mono text-[11px] tracking-[0.08em] text-signal/88">{step.timeLabel}</span>
           </div>
-          <div className="flex items-center justify-between gap-3 font-serif text-[11.5px] text-white/70">
-            <span className="flex items-center gap-2">
+
+          <div className="flex items-center gap-3 font-serif text-[12px] text-white/82">
+            <span className="flex items-center gap-1.5">
               <SunArc hour={clockHour} />
               <span>{dayPhase(clockHour)}</span>
             </span>
-            <span className="flex items-center gap-2.5">
-              <span className="flex items-center gap-1">
-                <span>线索</span>
-                <span className="text-signal">{cluesFound.length}/4</span>
-              </span>
-              <span className="h-2.5 w-px bg-white/15" />
-              <span className="flex items-center gap-1">
-                <span>彩蛋</span>
-                <span className="text-signal">{eggsFound.length}/3</span>
-              </span>
-            </span>
+            {!descending && (
+              <>
+                <span className="h-2.5 w-px bg-white/25" />
+                <PlaceTag place={place} className="text-white/74" />
+              </>
+            )}
           </div>
-          {!descending && <PlaceTag place={place} className="font-serif text-[11px] text-white/58" />}
+
+          <div className="pointer-events-auto mt-0.5 flex items-center gap-2">
+            {onOpenJournal ? (
+              <button
+                type="button"
+                onClick={onOpenJournal}
+                aria-label="打开传感观测手账"
+                title="打开观测手账 (快捷键 J)"
+                className="group flex items-center gap-2 rounded-full border border-white/16 bg-[#070e1f]/36 px-3 py-1 font-serif text-[11.5px] tracking-[0.04em] text-white/84 backdrop-blur-md transition hover:border-signal/55 hover:bg-signal/12 hover:text-[#fff8ee]"
+              >
+                <span className="cinema-gem h-1.5 w-1.5 border border-signal bg-signal/40 transition group-hover:bg-signal" />
+                <span>
+                  线索 <span className="text-signal">{cluesFound.length}/4</span>
+                </span>
+                <span className="h-2.5 w-px bg-white/18" />
+                <span>
+                  彩蛋 <span className="text-signal">{eggsFound.length}/3</span>
+                </span>
+                <span className="cinema-kbd ml-0.5 text-[9.5px] text-white/75 group-hover:border-signal/50 group-hover:text-signal">
+                  J
+                </span>
+              </button>
+            ) : (
+              <div className="hud-ink-soft flex items-center gap-2 font-serif text-[11.5px] text-white/76">
+                <span>
+                  线索 <span className="text-signal">{cluesFound.length}/4</span>
+                </span>
+                <span className="h-2.5 w-px bg-white/20" />
+                <span>
+                  彩蛋 <span className="text-signal">{eggsFound.length}/3</span>
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {showDepthBadge &&
           (pressureAlert ? (
             <AlertCapsule text={PRESSURE_ALERT} />
           ) : (
-            <div className="flex items-center gap-2 rounded-full border border-ember/40 bg-[#1f1218]/80 px-3.5 py-1.5 font-serif text-[12px] tracking-[0.05em] text-[#ffd4c4] backdrop-blur-md">
-              <span className="h-1.5 w-1.5 rounded-full bg-ember animate-[blinkDot_1.6s_ease-in-out_infinite]" />
+            <div className="flex items-center gap-2 rounded-full border border-ember/40 bg-[#1f1218]/78 px-3.5 py-1.5 font-serif text-[12px] tracking-[0.05em] text-[#ffd4c4] backdrop-blur-md">
+              <span className="cinema-gem h-1.5 w-1.5 bg-ember animate-[blinkDot_1.6s_ease-in-out_infinite]" />
               <span>地核深度 {formatDepth(depthKm)} KM</span>
             </div>
           ))}
       </aside>
 
-      <div className="pointer-events-none fixed inset-x-3 top-[64px] z-30 flex flex-col items-center gap-1.5 select-none lg:hidden">
-        <div className="flex max-w-full items-center gap-2 rounded-full border border-white/14 bg-[#0d172e]/66 px-3.5 py-1.5 shadow-lg backdrop-blur-xl">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]" />
+      {/* 移动端：纤薄顶部半透胶囊 */}
+      <div className="pointer-events-none fixed inset-x-3 top-[62px] z-30 flex flex-col items-center gap-1.5 select-none lg:hidden">
+        <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-white/14 bg-[#070e1f]/52 px-3.5 py-1.5 shadow-lg backdrop-blur-md">
+          <span className="cinema-gem h-1.5 w-1.5 shrink-0 bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]" />
           <span className="truncate font-serif text-[12px] tracking-[0.04em] text-[#fff8ee]">
             第 {step.index} 幕 · {step.title} · {step.timeLabel}
           </span>
           <span className="h-3 w-px shrink-0 bg-white/15" />
           <SunArc hour={clockHour} compact />
           <span className="h-3 w-px shrink-0 bg-white/15" />
-          <span className="shrink-0 font-serif text-[11px] text-signal">
-            线索 {cluesFound.length}/4 · 彩蛋 {eggsFound.length}/3
-          </span>
+          {onOpenJournal ? (
+            <button
+              type="button"
+              onClick={onOpenJournal}
+              aria-label="打开观测手账"
+              className="shrink-0 font-serif text-[11px] text-signal underline decoration-signal/35 underline-offset-2"
+            >
+              线索 {cluesFound.length}/4 · 彩蛋 {eggsFound.length}/3
+            </button>
+          ) : (
+            <span className="shrink-0 font-serif text-[11px] text-signal">
+              线索 {cluesFound.length}/4 · 彩蛋 {eggsFound.length}/3
+            </span>
+          )}
         </div>
 
         {!descending && (
-          <div className="flex items-center rounded-full border border-white/12 bg-[#0d172e]/60 px-3 py-0.5 font-serif text-[10.5px] text-white/65 backdrop-blur-md">
+          <div className="hud-ink-soft flex items-center px-3 py-0.5 font-serif text-[10.5px] text-white/75">
             <PlaceTag place={place} />
           </div>
         )}
@@ -161,7 +205,7 @@ export function SensorHud({
           (pressureAlert ? (
             <AlertCapsule text={PRESSURE_ALERT} />
           ) : (
-            <div className="rounded-full border border-ember/40 bg-[#1f1218]/80 px-3 py-1 font-serif text-[11.5px] text-[#ffd4c4] backdrop-blur-md">
+            <div className="rounded-full border border-ember/40 bg-[#1f1218]/78 px-3 py-1 font-serif text-[11.5px] text-[#ffd4c4] backdrop-blur-md">
               地核深度 {formatDepth(depthKm)} KM
             </div>
           ))}

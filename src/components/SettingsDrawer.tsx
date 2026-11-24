@@ -96,7 +96,7 @@ function SectionTitle({ index, title }: { index: string; title: string }) {
     <div className="flex items-center gap-2.5">
       <span className="hud-label text-signal/70">{index}</span>
       <span className="font-serif text-[14px] tracking-[0.1em] text-[#fff6ea]">{title}</span>
-      <span className="hairline ml-1 flex-1" />
+      <span className="cinema-rule-cool ml-1 flex-1" />
     </div>
   )
 }
@@ -138,7 +138,7 @@ export function SettingsDrawer({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <div className="glass no-scrollbar max-h-[calc(100dvh-2.5rem)] w-full max-w-[560px] overflow-y-auto rounded-[26px] p-5 sm:p-6">
+      <div className="cinema-surface no-scrollbar max-h-[calc(100dvh-2.5rem)] w-full max-w-[560px] overflow-y-auto rounded-[26px] p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="hud-label text-signal/75">SETTINGS · 视界 6371</div>

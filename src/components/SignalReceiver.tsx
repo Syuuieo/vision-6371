@@ -99,7 +99,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
         )}
 
         {!loading && !signal && (
-          <div className="animate-fade-up mx-auto max-w-[520px] rounded-[28px] border border-white/14 bg-[#0d172e]/75 p-7 text-center shadow-2xl backdrop-blur-xl">
+          <div className="animate-fade-up cinema-surface mx-auto max-w-[520px] rounded-[28px] p-7 text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-ember/35 bg-ember/10">
               <span className="h-2.5 w-2.5 rounded-full bg-ember" />
             </div>
@@ -132,7 +132,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
 
         {!loading && signal && packet && (
           <div className="animate-fade-up grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.06fr)_minmax(0,0.94fr)] lg:gap-6">
-            <div className="relative min-h-[42dvh] overflow-hidden rounded-[28px] border border-white/14 bg-[#0c1834] shadow-[0_36px_110px_-40px_rgba(3,8,22,0.9)] lg:min-h-[58dvh]">
+            <div className="cinema-surface-soft relative min-h-[42dvh] overflow-hidden rounded-[28px] lg:min-h-[58dvh]">
               <img
                 src={packet.image}
                 alt={packet.title}
@@ -160,7 +160,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
               </div>
             </div>
 
-            <div className="flex flex-col justify-center rounded-[28px] border border-white/12 bg-[#0d172e]/74 px-6 py-7 shadow-2xl backdrop-blur-xl sm:px-8 sm:py-9">
+            <div className="cinema-surface flex flex-col justify-center rounded-[28px] px-6 py-7 sm:px-8 sm:py-9">
               <div className="font-serif text-[12.5px] tracking-[0.12em] text-signal/90">
                 来自 {packet.city} 的明信片
               </div>

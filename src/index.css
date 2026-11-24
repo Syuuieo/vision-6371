@@ -956,3 +956,83 @@ input[type="range"] {
   animation-duration: 0.01ms;
   opacity: 0;
 }
+
+/* ── Petalwake 电影级透明浮层与编辑部排印体系 ── */
+.hud-ink {
+  text-shadow:
+    0 1px 14px rgba(3, 8, 22, 0.72),
+    0 0 32px rgba(3, 8, 22, 0.45);
+}
+
+.hud-ink-soft {
+  text-shadow: 0 1px 10px rgba(3, 8, 22, 0.62);
+}
+
+.cinema-surface {
+  background: radial-gradient(
+    125% 110% at 50% 0%,
+    rgba(16, 28, 56, 0.78),
+    rgba(8, 14, 30, 0.88)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 28px 90px -30px rgba(2, 6, 18, 0.88);
+  backdrop-filter: blur(18px) saturate(118%);
+}
+
+.cinema-surface-soft {
+  background: radial-gradient(
+    120% 100% at 50% 0%,
+    rgba(14, 24, 48, 0.56),
+    rgba(7, 13, 28, 0.7)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 16px 48px -20px rgba(2, 6, 18, 0.75);
+  backdrop-filter: blur(14px) saturate(114%);
+}
+
+.cinema-rule {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(242, 194, 139, 0.38),
+    transparent
+  );
+}
+
+.cinema-rule-cool {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.16),
+    transparent
+  );
+}
+
+.cinema-gem {
+  display: inline-block;
+  flex-shrink: 0;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+.cinema-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+}

@@ -41,6 +41,7 @@ import type {
 import { exportMemoryFilmstrip, type MemoryFrame } from '../utils/memoryStripExport'
 import type { StoryRelayState } from '../utils/storyRelay'
 import { CalibrationDial } from './CalibrationDial'
+import { FieldJournalModal } from './FieldJournalModal'
 import { IntroRitual } from './IntroRitual'
 import { SensorHud } from './SensorHud'
 
@@ -538,6 +539,11 @@ export function PrologueExperience({
       if (phaseRef.current === 'intro_call' && (event.code === 'Space' || event.code === 'Enter')) {
         event.preventDefault()
         advanceIntroBeat()
+        return
+      }
+      if (event.code === 'KeyJ' && active && phaseRef.current === 'explore' && !finalizingRef.current) {
+        event.preventDefault()
+        setJournalOpen((current) => !current)
         return
       }
       if (event.code !== 'Space') return
@@ -1714,9 +1720,9 @@ export function PrologueExperience({
             <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-tr-sm border-r-[1.5px] border-t-[1.5px] border-signal/85 shadow-[0_0_8px_rgba(242,194,139,0.5)]" />
             <span className="absolute bottom-0 left-0 h-2.5 w-2.5 rounded-bl-sm border-b-[1.5px] border-l-[1.5px] border-signal/85 shadow-[0_0_8px_rgba(242,194,139,0.5)]" />
             <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-br-sm border-b-[1.5px] border-r-[1.5px] border-signal/85 shadow-[0_0_8px_rgba(242,194,139,0.5)]" />
-            <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-signal" />
+            <span className="cinema-gem absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
           </div>
-          <div className="mt-1.5 flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-signal/35 bg-[#0d172e]/85 px-3 py-1 font-serif text-[11.5px] tracking-[0.04em] text-[#fff8ee] shadow-lg backdrop-blur-md">
+          <div className="cinema-surface-soft hud-ink-soft mt-1.5 flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border-signal/35 px-3 py-1 font-serif text-[11.5px] tracking-[0.04em] text-[#fff8ee]">
             <span className="text-signal">{PICK_LABELS[hover.id]}</span>
             <span className="text-white/40">·</span>
             <span className="text-white/75">{hover.distance.toFixed(1)} m</span>
@@ -1757,7 +1763,7 @@ export function PrologueExperience({
         >
           <div
             key={introBeat}
-            className="cinema-caption glass w-full max-w-[660px] rounded-[26px] px-6 py-5 shadow-2xl sm:px-8 sm:py-6"
+            className="cinema-caption cinema-surface w-full max-w-[660px] rounded-[26px] px-6 py-5 sm:px-8 sm:py-6"
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 font-serif text-[12px] tracking-[0.08em] text-signal">
@@ -1844,54 +1850,14 @@ export function PrologueExperience({
         </div>
       )}
 
-      {phase === 'explore' && (
-        <div className="pointer-events-auto fixed bottom-3 left-3 z-30 flex flex-col items-start gap-2">
-          {journalOpen && (
-            <div className="w-[236px] rounded-2xl border border-white/14 bg-[#0d172e]/82 p-3 font-serif text-[12px] text-white/80 shadow-2xl backdrop-blur-xl">
-              <div className="flex items-center justify-between">
-                <span className="tracking-[0.12em] text-signal/85">草原观测手账</span>
-                <button
-                  type="button"
-                  onClick={() => setJournalOpen(false)}
-                  className="rounded-full px-1.5 text-white/45 transition hover:text-signal"
-                  aria-label="收起手账"
-                >
-                  ×
-                </button>
-              </div>
-              <ul className="mt-2 space-y-1.5">
-                {([
-                  ['bottle', '漂流瓶 · 渡口下游'],
-                  ['tablet', '风化石碑 · 石拱庙侧'],
-                  ['meteor', '暮色流星 · 入夜后'],
-                ] as const).map(([id, label]) => {
-                  const found = eggsFound.includes(id)
-                  return (
-                    <li key={id} className="flex items-center gap-2">
-                      <span
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                          found ? 'bg-signal' : 'border border-white/35'
-                        }`}
-                      />
-                      <span className={found ? 'text-white/85' : 'text-white/45'}>{label}</span>
-                    </li>
-                  )
-                })}
-              </ul>
-              <div className="mt-2.5 border-t border-white/10 pt-2 text-[11.5px] text-white/50">
-                叙事伏笔 {cluesFound.length} / 4
-              </div>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setJournalOpen((current) => !current)}
-            className="rounded-full border border-white/16 bg-[#0d172e]/72 px-3 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-white/70 shadow-lg backdrop-blur-md transition hover:border-signal/50 hover:text-signal"
-          >
-            手账 · {eggsFound.length}/3
-          </button>
-        </div>
-      )}
+      <FieldJournalModal
+        open={phase === 'explore' && journalOpen}
+        cluesFound={cluesFound}
+        eggsFound={eggsFound}
+        memories={memories}
+        act={act}
+        onClose={() => setJournalOpen(false)}
+      />
 
       {(phase === 'explore' || phase === 'descending' || phase === 'core_pulse') && (
         <SensorHud
@@ -1906,11 +1872,12 @@ export function PrologueExperience({
           tuned={tuned}
           eggsFound={eggsFound}
           cluesFound={cluesFound}
+          onOpenJournal={phase === 'explore' ? () => setJournalOpen(true) : undefined}
         />
       )}
 
       {phase === 'explore' && !finalizing && !attenuating && (
-        <div className="pointer-events-auto fixed right-3 top-[64px] z-30 hidden items-center gap-1 rounded-full border border-white/14 bg-[#0d172e]/62 px-2 py-1.5 shadow-lg backdrop-blur-xl sm:top-[78px] sm:right-4 sm:flex">
+        <div className="cinema-surface-soft pointer-events-auto fixed right-4 top-[78px] z-30 hidden items-center gap-1 rounded-full px-2 py-1.5 sm:flex">
           {STEPS.map((item) => {
             const activeAct = item.act === act
             const doneAct = item.act < act
@@ -1936,6 +1903,16 @@ export function PrologueExperience({
           <span className="mx-0.5 h-3.5 w-px bg-white/15" />
           <button
             type="button"
+            onClick={() => setJournalOpen(true)}
+            aria-label="打开观测手账（快捷键 J）"
+            title="观测手账 (J)"
+            className="flex h-6 items-center gap-1 rounded-full px-2 font-serif text-[11px] text-white/78 transition hover:bg-white/10 hover:text-signal"
+          >
+            <span className="cinema-gem h-1.5 w-1.5 bg-signal/80" />
+            <span>手账</span>
+          </button>
+          <button
+            type="button"
             onClick={() => sceneRef.current?.focusTarget('home', 2.2)}
             aria-label="重新环视草原"
             title="重新环视"
@@ -1951,8 +1928,8 @@ export function PrologueExperience({
 
       {toast && (
         <div className="pointer-events-none fixed left-1/2 top-[112px] z-40 w-max max-w-[90vw] -translate-x-1/2 sm:top-[82px]">
-          <div className="animate-fade-in flex items-center gap-2 rounded-full border border-signal/35 bg-[#0d172e]/88 px-4 py-2 shadow-xl backdrop-blur-xl">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]" />
+          <div className="animate-fade-in cinema-surface flex items-center gap-2 rounded-full border-signal/35 px-4 py-2">
+            <span className="cinema-gem h-1.5 w-1.5 shrink-0 bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]" />
             <span className="font-serif text-[12px] tracking-[0.04em] text-[#fff8ee]">{toast}</span>
           </div>
         </div>
@@ -1974,7 +1951,7 @@ export function PrologueExperience({
       {/* Default explore bar */}
       {phase === 'explore' && linger && !quote && !lore && !finalizing && !attenuating && (
         <div className="pointer-events-none fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex justify-center sm:bottom-7">
-          <div className="pointer-events-auto flex w-full max-w-[760px] items-center justify-between gap-2.5 rounded-[22px] border border-signal/30 bg-[#0d172e]/82 px-3.5 py-2.5 shadow-[0_22px_60px_-14px_rgba(3,8,22,0.9)] backdrop-blur-xl sm:gap-5 sm:rounded-[28px] sm:px-7 sm:py-5">
+          <div className="cinema-surface pointer-events-auto flex w-full max-w-[760px] items-center justify-between gap-2.5 rounded-[22px] border-signal/30 px-3.5 py-2.5 sm:gap-5 sm:rounded-[28px] sm:px-7 sm:py-5">
             <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-4">
               <span className="relative flex h-10 w-10 shrink-0 items-center justify-center sm:h-14 sm:w-14">
                 <svg viewBox="0 0 24 24" className="absolute h-10 w-10 -rotate-90 sm:h-14 sm:w-14" aria-hidden="true">
@@ -2019,16 +1996,16 @@ export function PrologueExperience({
       {phase === 'explore' && !linger && panel === 'none' && !quote && !lore && !finalizing && !attenuating && (
         <div className="pointer-events-none fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex flex-col items-center gap-2 sm:bottom-6">
           {hint && (
-            <div className="animate-fade-in rounded-full border border-white/12 bg-[#0d172e]/68 px-3.5 py-1 font-serif text-[11.5px] text-white/75 backdrop-blur-md">
+            <div className="animate-fade-in cinema-surface-soft hud-ink-soft rounded-full px-3.5 py-1 font-serif text-[11.5px] text-white/82">
               {coarsePointer
                 ? '左摇杆漫步 · 右摇杆环顾 · 点击光点读她的细语'
-                : '拖拽环顾 · 点击草地或 WASD 漫步 · 点击或按空格呼唤心光'}
+                : '拖拽环顾 · WASD / 点击漫步 · 按住 Shift 迎风滑步 · 空格心光 · J 手账'}
             </div>
           )}
 
-          <div className="pointer-events-auto flex w-full max-w-[780px] flex-wrap items-center justify-between gap-2.5 rounded-3xl border border-white/14 bg-[#0d172e]/74 px-4 py-2.5 shadow-[0_18px_50px_-14px_rgba(3,8,22,0.85)] backdrop-blur-xl sm:flex-nowrap sm:rounded-full sm:py-2 sm:pl-5 sm:pr-2.5">
+          <div className="cinema-surface pointer-events-auto flex w-full max-w-[780px] flex-wrap items-center justify-between gap-2.5 rounded-3xl px-4 py-2.5 sm:flex-nowrap sm:rounded-full sm:py-2 sm:pl-5 sm:pr-2.5">
             <div className="flex min-w-0 flex-1 items-center gap-2.5">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
+              <span className="cinema-gem h-2 w-2 shrink-0 bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
               <p className="truncate font-serif text-[13px] tracking-[0.04em] text-[#fff8ee]/92 sm:text-[13.5px]">
                 {act === 2
                   ? `轻划湖面传去水声 (${lakeRipples}/2)，或直接校准风声`
@@ -2080,7 +2057,7 @@ export function PrologueExperience({
       {/* Act I Optical Focus Pull */}
       {phase === 'explore' && panel === 'focus' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5">
-          <div className="glass pointer-events-auto animate-fade-up relative w-full max-w-[540px] rounded-[26px] p-5 text-center sm:p-6">
+          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[540px] rounded-[26px] p-5 text-center sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2138,10 +2115,7 @@ export function PrologueExperience({
       {/* Act II Lake & Wind Resonance */}
       {phase === 'explore' && panel === 'wind' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
-          <div
-            className="glass pointer-events-auto animate-fade-up no-scrollbar relative max-h-[calc(100dvh-5rem)] w-full max-w-[720px] overflow-y-auto rounded-[26px] p-4 sm:max-h-none sm:p-6"
-            style={{ background: 'linear-gradient(180deg, rgba(13,23,46,0.92), rgba(8,15,32,0.9))' }}
-          >
+          <div className="cinema-surface pointer-events-auto animate-fade-up no-scrollbar relative max-h-[calc(100dvh-5rem)] w-full max-w-[720px] overflow-y-auto rounded-[26px] p-4 sm:max-h-none sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2186,7 +2160,7 @@ export function PrologueExperience({
       {/* Act III Lone Tree & Dandelion Swell */}
       {phase === 'explore' && panel === 'dandelion' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="glass pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
+          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2225,7 +2199,7 @@ export function PrologueExperience({
       {/* Act IV Stone Archway Breathing Resonance */}
       {phase === 'explore' && panel === 'ruin' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="glass pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
+          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2268,7 +2242,7 @@ export function PrologueExperience({
       {/* Act V Interactive Raindrop Catch */}
       {phase === 'explore' && panel === 'rain' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="glass pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
+          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2310,7 +2284,7 @@ export function PrologueExperience({
       {/* Act VI Interactive Fireflies around the Rowboat */}
       {phase === 'explore' && panel === 'fireflies' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="glass pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
+          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2352,7 +2326,7 @@ export function PrologueExperience({
       {/* Act VII Star Constellation */}
       {phase === 'explore' && panel === 'constellation' && !quote && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="glass pointer-events-auto animate-fade-up relative w-full max-w-[540px] rounded-[26px] p-5 text-center sm:p-6">
+          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[540px] rounded-[26px] p-5 text-center sm:p-6">
             <button
               type="button"
               onClick={dismissPanel}
@@ -2398,7 +2372,7 @@ export function PrologueExperience({
       {quote && phase !== 'descending' && phase !== 'core_pulse' && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[36] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-6">
           <div
-            className={`glass pointer-events-auto animate-fade-up no-scrollbar relative w-full max-w-[660px] overflow-y-auto rounded-[26px] p-5 sm:p-7 ${
+            className={`cinema-surface pointer-events-auto animate-fade-up no-scrollbar relative w-full max-w-[660px] overflow-y-auto rounded-[26px] p-5 sm:p-7 ${
               quoteCollapsed ? '' : 'max-h-[45dvh]'
             }`}
           >
@@ -2460,7 +2434,7 @@ export function PrologueExperience({
 
             {quote.data.clue && (
               <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-ember/40 bg-ember/10 px-3 py-1 font-serif text-[11.5px] text-[#ffd4c4]">
-                <span className="h-1.5 w-1.5 rounded-full bg-ember" />
+                <span className="cinema-gem h-1.5 w-1.5 bg-ember" />
                 {quote.data.clue.label}
               </div>
             )}
@@ -2537,14 +2511,14 @@ export function PrologueExperience({
 
       {/* Hidden Easter Eggs */}
       {lore && (
-        <div className="fixed inset-0 z-[38] flex items-center justify-center bg-black/35 px-4 backdrop-blur-[2px]">
-          <div className="glass animate-fade-up relative w-full max-w-[520px] overflow-hidden rounded-[26px] p-6 text-center sm:p-8">
+        <div className="fixed inset-0 z-[38] flex items-center justify-center bg-[#030712]/48 px-4 backdrop-blur-sm">
+          <div className="cinema-surface animate-fade-up relative w-full max-w-[520px] overflow-hidden rounded-[26px] p-6 text-center sm:p-8">
             <div
-              className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full border"
-              style={{ borderColor: `${lore.accent}55`, background: `${lore.accent}11` }}
+              className="mx-auto mb-4 flex h-10 w-10 rotate-45 items-center justify-center rounded-[8px] border"
+              style={{ borderColor: `${lore.accent}60`, background: `${lore.accent}14` }}
             >
               <span
-                className="h-1.5 w-1.5 rounded-full"
+                className="h-2 w-2 rounded-[2px]"
                 style={{ backgroundColor: lore.accent, boxShadow: `0 0 14px ${lore.accent}` }}
               />
             </div>
@@ -2725,7 +2699,7 @@ export function PrologueExperience({
             )}
 
             {memories.length > 0 && (
-              <div className="pointer-events-auto mx-auto mt-5 flex max-w-[540px] flex-col items-center gap-2.5 rounded-2xl border border-white/14 bg-[#0d172e]/82 p-3 backdrop-blur-md">
+              <div className="cinema-surface-soft pointer-events-auto mx-auto mt-5 flex max-w-[540px] flex-col items-center gap-2.5 rounded-2xl p-3">
                 <div className="flex w-full items-center justify-between px-1 font-serif text-[12px] text-signal">
                   <span>落日六号 · 草原一日胶片实拍</span>
                   <span className="text-white/60">{memories.length} 帧可带往第 03 章</span>

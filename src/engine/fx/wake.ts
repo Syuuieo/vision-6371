@@ -1,17 +1,16 @@
 import * as THREE from 'three'
+import { SHARED_UNIFORMS } from '../core/ctx'
 
 /**
- * 持久草地尾迹场（双缓冲世界锚定 Ping-Pong Texture）
+ * 持久草原尾迹场（双缓冲世界像素对齐 Ping-Pong Texture，借鉴 Petalwake `fx/wake.js`）。
  *
- * 借鉴 Petalwake 的草浪尾迹方案：在玩家周围一块按纹理像素对齐移动的
- * 256×256 局部窗口内，持续记录脚步踏过与指针轻抚草尖后的“倾倒向量 (RG) +
- * 踩踏压低幅度 (B)”。随时间在 ~1.45 秒内自然回弹恢复，并严格采用 RGBA8
- * 中性编码 (128/255 = 0) 以兼容所有桌面与移动端 WebGL 驱动。
+ * 在玩家周围 72m×72m 按纹素整格吸附对齐的 256×256 缓冲中，写入脚步路径与
+ * 指针轻抚轨迹的倾倒向量 (RG, 中性 128/255=0) 与踩压程度 (B)，约 1.5s 自然回弹。
  */
 export class WakeField {
   private readonly renderer: THREE.WebGLRenderer
-  private readonly size: number
-  private readonly extent: number
+  private readonly size = 256
+  private readonly extent = 72
   private readonly targets: [THREE.WebGLRenderTarget, THREE.WebGLRenderTarget]
   private readonly clearMat: THREE.ShaderMaterial
   private readonly updateMat: THREE.ShaderMaterial
@@ -20,8 +19,8 @@ export class WakeField {
   private readonly cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
 
   private outIdx = 0
-  private _centerX = 0
-  private _centerZ = 0
+  private centerX = 0
+  private centerZ = 0
   private hasPlayerPrev = false
   private prevPlayerX = 0
   private prevPlayerZ = 0
@@ -31,11 +30,8 @@ export class WakeField {
   private initializedCenter = false
   private disposed = false
 
-  constructor(renderer: THREE.WebGLRenderer, size = 256, extent = 72) {
+  constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
-    this.size = size
-    this.extent = extent
-
     const opts: THREE.RenderTargetOptions = {
       type: THREE.UnsignedByteType,
       format: THREE.RGBAFormat,
@@ -49,8 +45,8 @@ export class WakeField {
     }
 
     this.targets = [
-      new THREE.WebGLRenderTarget(size, size, opts),
-      new THREE.WebGLRenderTarget(size, size, opts),
+      new THREE.WebGLRenderTarget(this.size, this.size, opts),
+      new THREE.WebGLRenderTarget(this.size, this.size, opts),
     ]
 
     const tri = new THREE.BufferGeometry()
@@ -85,10 +81,10 @@ export class WakeField {
         tPrev: { value: this.targets[0].texture },
         uShift: { value: new THREE.Vector2() },
         uCenter: { value: new THREE.Vector2() },
-        uExtent: { value: extent },
+        uExtent: { value: this.extent },
         uDecay: { value: 0.96 },
         uSegA: { value: new THREE.Vector4() },
-        uParamsA: { value: new THREE.Vector4(1.65, 0.92, 0.65, 0) },
+        uParamsA: { value: new THREE.Vector4(1.65, 0.94, 0.65, 0) },
         uSegB: { value: new THREE.Vector4() },
         uParamsB: { value: new THREE.Vector4(2.15, 0.86, 0.42, 0) },
       },
@@ -102,24 +98,7 @@ export class WakeField {
     this.quad = new THREE.Mesh(tri, this.clearMat)
     this.quad.frustumCulled = false
     this.scene.add(this.quad)
-
     this.reset()
-  }
-
-  get texture(): THREE.Texture {
-    return this.targets[this.outIdx].texture
-  }
-
-  get centerX(): number {
-    return this._centerX
-  }
-
-  get centerZ(): number {
-    return this._centerZ
-  }
-
-  get invExtent(): number {
-    return 1 / this.extent
   }
 
   reset() {
@@ -140,10 +119,13 @@ export class WakeField {
     this.hasPlayerPrev = false
     this.hasCursorPrev = false
     this.initializedCenter = false
+    SHARED_UNIFORMS.uWakeTex.value = this.targets[this.outIdx].texture
+    SHARED_UNIFORMS.uWake.value.w = 0
   }
 
   update(
     dt: number,
+    active: boolean,
     playerX: number,
     playerZ: number,
     cursorX: number,
@@ -151,34 +133,42 @@ export class WakeField {
     cursorActive: boolean,
   ) {
     if (this.disposed) return
+    if (!active) {
+      SHARED_UNIFORMS.uWake.value.w = 0
+      return
+    }
+
     const texelWorld = this.extent / this.size
     const nextCX = Math.round(playerX / texelWorld) * texelWorld
     const nextCZ = Math.round(playerZ / texelWorld) * texelWorld
 
-    const prevCX = this.initializedCenter ? this._centerX : nextCX
-    const prevCZ = this.initializedCenter ? this._centerZ : nextCZ
+    const prevCX = this.initializedCenter ? this.centerX : nextCX
+    const prevCZ = this.initializedCenter ? this.centerZ : nextCZ
     this.initializedCenter = true
 
     const shiftX = (nextCX - prevCX) / this.extent
     const shiftZ = (nextCZ - prevCZ) / this.extent
-    this._centerX = nextCX
-    this._centerZ = nextCZ
+    this.centerX = nextCX
+    this.centerZ = nextCZ
 
     const u = this.updateMat.uniforms
     u.uShift.value.set(shiftX, shiftZ)
     u.uCenter.value.set(nextCX, nextCZ)
-    u.uDecay.value = Math.exp(-Math.max(0.001, dt) / 1.45)
+    u.uDecay.value = Math.exp(-Math.max(0.001, dt) / 1.5)
 
     if (!this.hasPlayerPrev) {
       this.prevPlayerX = playerX
       this.prevPlayerZ = playerZ
       this.hasPlayerPrev = true
     }
-    const playerJump = Math.hypot(playerX - this.prevPlayerX, playerZ - this.prevPlayerZ)
-    const pAx = playerJump > 10 ? playerX : this.prevPlayerX
-    const pAz = playerJump > 10 ? playerZ : this.prevPlayerZ
-    u.uSegA.value.set(pAx, pAz, playerX, playerZ)
-    u.uParamsA.value.set(1.65, 0.92, 0.65, 1)
+    const pJump = Math.hypot(playerX - this.prevPlayerX, playerZ - this.prevPlayerZ)
+    u.uSegA.value.set(
+      pJump > 10 ? playerX : this.prevPlayerX,
+      pJump > 10 ? playerZ : this.prevPlayerZ,
+      playerX,
+      playerZ,
+    )
+    u.uParamsA.value.set(1.68, 0.94, 0.65, 1)
     this.prevPlayerX = playerX
     this.prevPlayerZ = playerZ
 
@@ -188,11 +178,14 @@ export class WakeField {
         this.prevCursorZ = cursorZ
         this.hasCursorPrev = true
       }
-      const cursorJump = Math.hypot(cursorX - this.prevCursorX, cursorZ - this.prevCursorZ)
-      const cAx = cursorJump > 12 ? cursorX : this.prevCursorX
-      const cAz = cursorJump > 12 ? cursorZ : this.prevCursorZ
-      u.uSegB.value.set(cAx, cAz, cursorX, cursorZ)
-      u.uParamsB.value.set(2.15, 0.84, 0.4, 1)
+      const cJump = Math.hypot(cursorX - this.prevCursorX, cursorZ - this.prevCursorZ)
+      u.uSegB.value.set(
+        cJump > 12 ? cursorX : this.prevCursorX,
+        cJump > 12 ? cursorZ : this.prevCursorZ,
+        cursorX,
+        cursorZ,
+      )
+      u.uParamsB.value.set(2.15, 0.85, 0.42, 1)
       this.prevCursorX = cursorX
       this.prevCursorZ = cursorZ
     } else {
@@ -216,6 +209,9 @@ export class WakeField {
     r.setRenderTarget(prevTarget)
     r.autoClear = prevAutoClear
     this.outIdx = 1 - this.outIdx
+
+    SHARED_UNIFORMS.uWakeTex.value = this.targets[this.outIdx].texture
+    SHARED_UNIFORMS.uWake.value.set(this.centerX, this.centerZ, 1 / this.extent, 1)
   }
 
   dispose() {

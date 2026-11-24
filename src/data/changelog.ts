@@ -1,4 +1,4 @@
-export const APP_VERSION = '2.0.0'
+export const APP_VERSION = '3.0.0'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.0.0',
+    date: '2026-11-24',
+    title: '统一 HDR 光影架构、迎风滑步与无框电影感 UI 重构',
+    items: [
+      '彻底重构序章 3D 世界引擎至 `src/engine/`（核心管线 / 共享 GLSL / 天空体云 / 地形草海与野花海 / 浅水折射湖泊 / 风痕尾迹 / 玩家惯性漫步 / 地心隧道），以 Petalwake 同源的线性 HalfFloat HDR 管线 + 13-tap Bloom + 深度遮蔽晨光神迹射线 + ACES Filmic 色调映射统一所有材质与大气散射。',
+      '天空引入全屏射线求交大气散射与 16 条切片 Worley 体云，湖面接入浅水折射、水底焦散、动态云层倒影与 8 槽交互波纹；草原升级为视角适配三圈草浪 + GPU 双圈花海，并新增世界像素对齐 72 米 ping-pong 踩踏尾迹场与空气风痕飘带。',
+      '新增按住 `Shift` 的「迎风滑步」与点击草地信标漫步，配合轻微视野呼吸与 Paul Kellet 粉红噪声掠草微音效。',
+      '全站界面重构为轻盈通透的无框排印浮层与半透细框电影卡片，新增 `[J]` 传感观测手账弹窗（收纳 4 枚异常伏笔、3 枚彩蛋位置线索与显影记忆胶片），同步统一电台、明信片工坊与接收页质感。',
+    ],
+  },
   {
     version: '2.0.0',
     date: '2026-11-23',

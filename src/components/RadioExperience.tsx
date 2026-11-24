@@ -239,9 +239,9 @@ export function RadioExperience({
       />
 
       <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-6 pt-[66px] sm:px-5 sm:pt-[78px] lg:h-full lg:min-h-0 lg:grid lg:grid-cols-[minmax(0,1.42fr)_minmax(360px,0.58fr)] lg:gap-4 lg:pb-5">
-        <section className="relative flex h-[62dvh] min-h-[420px] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0c1834]/55 shadow-[0_32px_90px_-30px_rgba(3,8,22,0.85)] backdrop-blur-md lg:h-full lg:min-h-0">
+        <section className="cinema-surface-soft relative flex h-[62dvh] min-h-[420px] flex-col overflow-hidden rounded-[28px] lg:h-full lg:min-h-0">
           <div className="pointer-events-none absolute left-5 top-5 z-10 max-w-[90%] pr-3 sm:max-w-[85%]">
-            <h1 className="font-serif text-[20px] font-light tracking-[0.08em] text-[#fff8ee] sm:text-[24px]">
+            <h1 className="hud-ink font-serif text-[20px] font-light tracking-[0.08em] text-[#fff8ee] sm:text-[24px]">
               地球表面电台
             </h1>
             <p className="mt-1 font-serif text-[12.5px] tracking-[0.04em] text-signal/90 sm:text-[13px]">
@@ -322,7 +322,7 @@ export function RadioExperience({
 
           {pendingCity && (
             <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[#091226]/40 backdrop-blur-[2px]">
-              <div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0e1a36]/90 px-5 py-3 shadow-2xl backdrop-blur-xl">
+              <div className="cinema-surface flex items-center gap-3 rounded-full px-5 py-3">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-signal/30 border-t-signal" />
                 <span className="font-serif text-[13px] tracking-[0.06em] text-[#fff8ee]">
                   正在前往 {pendingCity}，借用一双眼睛…
@@ -332,7 +332,7 @@ export function RadioExperience({
           )}
         </section>
 
-        <aside className="flex min-h-[42dvh] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0d172e]/68 shadow-[0_28px_80px_-30px_rgba(3,8,22,0.8)] backdrop-blur-xl lg:h-full lg:min-h-0">
+        <aside className="cinema-surface flex min-h-[42dvh] flex-col overflow-hidden rounded-[28px] lg:h-full lg:min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3.5">
             <div>
               <h2 className="font-serif text-[16px] font-light tracking-[0.08em] text-[#fff8ee]">
@@ -451,7 +451,7 @@ export function RadioExperience({
 
       {toast && (
         <div className="pointer-events-none fixed bottom-20 left-1/2 z-40 w-[min(90vw,460px)] -translate-x-1/2 sm:bottom-6">
-          <div className="animate-fade-in rounded-full border border-signal/35 bg-[#0e1a36]/92 px-4 py-2.5 text-center font-serif text-[12.5px] tracking-[0.04em] text-[#fff8ee] shadow-2xl backdrop-blur-md">
+          <div className="animate-fade-in cinema-surface rounded-full border-signal/35 px-4 py-2.5 text-center font-serif text-[12.5px] tracking-[0.04em] text-[#fff8ee]">
             {toast}
           </div>
         </div>

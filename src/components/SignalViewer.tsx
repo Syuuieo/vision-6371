@@ -247,7 +247,7 @@ export function SignalViewer({
       aria-modal="true"
       aria-label={`接收来自${packet.city}的视野`}
     >
-      <header className="flex shrink-0 items-center gap-1.5 border-b border-white/10 bg-[#0d172e]/88 px-2.5 py-2.5 backdrop-blur-xl sm:gap-3 sm:px-5">
+      <header className="flex shrink-0 items-center gap-1.5 border-b border-white/10 bg-[#070e1f]/86 px-2.5 py-2.5 backdrop-blur-xl sm:gap-3 sm:px-5">
         <button
           type="button"
           onClick={onClose}
@@ -430,7 +430,7 @@ export function SignalViewer({
                     />
                   ))}
               </div>
-              <p className="animate-fade-in relative max-w-[92%] rounded-2xl border border-signal/35 bg-[#0b152c]/90 px-3.5 py-2.5 font-serif text-[12.5px] leading-[1.85] text-[#fff8ee] shadow-2xl backdrop-blur-md">
+              <p className="animate-fade-in cinema-surface relative max-w-[92%] rounded-2xl border-signal/35 px-3.5 py-2.5 font-serif text-[12.5px] leading-[1.85] text-[#fff8ee]">
                 <span className="text-signal">林微</span> · {signature.reply}
               </p>
             </div>

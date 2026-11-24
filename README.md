@@ -22,7 +22,7 @@
 
 ## 操作、无障碍与旅途印记
 
-- **视角与漫步**：桌面端支持拖拽环顾、`WASD`/方向键漫步（`Shift` 加速）与 `Space` 发出心光；触屏端自动启用双虚拟摇杆。
+- **视角与漫步**：桌面端支持拖拽环顾、`WASD`/方向键或点击草地信标漫步、按住 `Shift` **迎风滑步**（视野呼吸微扩 + 飘带风痕 + 掠草音效）、`Space` 发出心光，以及 `J` 打开传感观测手账；触屏端自动启用双虚拟摇杆。
 - **电台视窗快捷**：支持陀螺仪视差；左右方向键或顶部箭头在非输入状态下快速切换上下份视野。
 - **设置与舒适度（`SettingsDrawer`）**：四通道独立音量滑杆（总音量/环境声/语音与琴音/交互音效）、画质档位、减弱动效与封面快捷「闪烁抑制」开关。
 - **旅程印记**：本机记录八幕进度、三枚彩蛋（漂流瓶 / 风化石碑 / 暮色流星）、同频心跳、回声与点亮城市等 9 枚本地里程碑。
@@ -30,7 +30,7 @@
 ## 技术栈
 
 - **前端核心**：Vite 8（Rolldown 分包）+ React 19 + TypeScript + Tailwind CSS v4
-- **3D 与着色器**：Three.js（程序化地形/草浪/阳光散射氛围后处理/湖水涟漪/降雪雨萤/穿越地心/全息地球）
+- **3D 渲染引擎（`src/engine/`）**：基于 Three.js 重构的统一线性 HDR 渲染架构 —— `CinemaPipeline`（HalfFloat HDR + Bloom 金字塔 + 深度遮蔽晨光神迹射线 + ACES Filmic 色调映射 + IGN 抖动）、16 条切片 Worley 体云烘焙（`CloudBaker`）、浅水折射/焦散/动态波纹湖面（`LakeWater`）、世界坐标对齐 `72m` ping-pong 踩踏尾迹场（`WakeField`）、全 GPU 三圈草海与两圈花海（`MeadowWorld`）、风速飘带（`WindFX`）及地心穿越（`UndergroundWorld`）。
 - **音频引擎**：纯 Web Audio API 程序化声景合成与母带平衡 + 离线预生成角色语音引擎（46 条基于 `mimo-v2.5-tts` 预合成的静态 MP3 与耳机带通滤波，无需运行时配置密钥）
 - **云端闭环**：`functions/routes.mjs` 无服务器接口 + PostgreSQL（`database/visions.sql`），含本机降级与 48 位设备凭证撤回校验
 
@@ -40,6 +40,7 @@
 npm install
 npm run dev      # 启动本地开发服务
 npm run lint     # 运行 oxlint 代码体检
+npm run test     # 运行 Vitest 单元测试
 npm run build    # TypeScript 类型检查 + Vite 生产打包
 ```
 
@@ -56,9 +57,10 @@ public/
   voice/                     # 46 条离线预生成的序章与 14 城林微语音 MP3
 src/
   audio/                     # soundscape.ts / ambientMixer.ts / voicePlayer.ts Web Audio 引擎
-  components/                # 序章交互、IntroRitual、RadioExperience、PostVisionStudio、SignalViewer 等
+  components/                # 序章交互、IntroRitual、FieldJournalModal、RadioExperience、PostVisionStudio 等
   data/                      # 八幕叙事脚本、12 城预设种子、预设场景与更新日志
-  scenes/                    # PrologueScene.ts Three.js 主场景控制器
+  engine/                    # 模块化 3D 世界引擎（core / shaders / world / fx / player）
+  scenes/                    # PrologueScene.ts 序章世界编排器
   services/                  # visionApi.ts / journey.ts / settings.ts
   types/                     # 传感状态与视野数据包类型定义
   utils/                     # 接力状态、图像压缩、胶片与明信片 PNG 导出

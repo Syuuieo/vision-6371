@@ -498,7 +498,7 @@ export function PostVisionStudio({
       />
 
       <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-6 pt-[66px] sm:px-5 sm:pt-[78px] lg:h-full lg:min-h-0 lg:grid lg:grid-cols-[minmax(360px,0.38fr)_minmax(0,0.62fr)] lg:gap-4 lg:pb-5">
-        <section className="order-1 flex h-[44dvh] min-h-[300px] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0c1834]/65 shadow-[0_32px_90px_-30px_rgba(3,8,22,0.85)] backdrop-blur-md lg:order-2 lg:h-full lg:min-h-0">
+        <section className="cinema-surface-soft order-1 flex h-[44dvh] min-h-[300px] flex-col overflow-hidden rounded-[28px] lg:order-2 lg:h-full lg:min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
               <button
@@ -576,7 +576,7 @@ export function PostVisionStudio({
           </div>
         </section>
 
-        <aside className="order-2 flex min-h-0 flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0d172e]/72 shadow-[0_28px_80px_-30px_rgba(3,8,22,0.8)] backdrop-blur-xl lg:order-1 lg:h-full">
+        <aside className="cinema-surface order-2 flex min-h-0 flex-col overflow-hidden rounded-[28px] lg:order-1 lg:h-full">
           <div className="grid grid-cols-3 gap-1 border-b border-white/10 p-2">
             {STUDIO_TABS.map((tab) => {
               const active = step === tab.id

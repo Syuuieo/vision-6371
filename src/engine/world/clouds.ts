@@ -1,14 +1,13 @@
 import * as THREE from 'three'
+import { SHARED_UNIFORMS } from '../core/ctx'
 
 /**
- * 分片体云烘焙器（适配《视界 6371》24 小时动态昼夜光照）
+ * 16 条水平切片渐进式 GPU 体云烘焙器（借鉴 Petalwake `world/clouds.js`）。
  *
- * 借鉴 Petalwake 的 Worley + 分数布朗运动光线步进云层体积算法，
- * 分 16 条水平切片在启动后前数帧内静默完成，避免首帧卡顿。
- *
- * 仅将与光照方向无关的体积密度、云体高度、顶层透光与高空卷云
- * 烘焙进 RGBA8 贴图（兼容 100% 桌面与移动端 WebGL 驱动），具体受光色温
- * （晨雾金、暮色珊瑚、午夜深靛）在天空球 Shader 中每帧实时着色。
+ * 使用 Worley 细胞噪声 + 分数布朗运动光线步进塑造立体积云柱与高空风梳卷云，
+ * 分 16 帧静默完成烘焙并写入全域共享 `U.uCloudTex`，不阻塞启动；
+ * 贴图内保存光照方向无关的体积密度/云高/顶层透光/卷云通道，确保在
+ * 《视界 6371》昼夜 24 小时弧线（晨雾/正午/黄昏/星空）下每帧实时动态着色。
  */
 export class CloudBaker {
   private readonly renderer: THREE.WebGLRenderer
@@ -21,15 +20,17 @@ export class CloudBaker {
   private readonly scene = new THREE.Scene()
   private readonly cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
   private cursor = 0
+  private ready = 0
   private _done = false
   private disposed = false
 
-  constructor(renderer: THREE.WebGLRenderer, width = 1024, height = 256, steps = 40) {
+  constructor(renderer: THREE.WebGLRenderer, lowDetail = false) {
     this.renderer = renderer
-    this.width = width
-    this.height = height
+    this.width = lowDetail ? 512 : 1024
+    this.height = lowDetail ? 128 : 256
+    const steps = lowDetail ? 28 : 42
 
-    this.target = new THREE.WebGLRenderTarget(width, height, {
+    this.target = new THREE.WebGLRenderTarget(this.width, this.height, {
       type: THREE.UnsignedByteType,
       format: THREE.RGBAFormat,
       depthBuffer: false,
@@ -69,6 +70,9 @@ export class CloudBaker {
     this.quad = new THREE.Mesh(tri, this.material)
     this.quad.frustumCulled = false
     this.scene.add(this.quad)
+
+    SHARED_UNIFORMS.uCloudTex.value = this.target.texture
+    SHARED_UNIFORMS.uCloudReady.value = 0
   }
 
   get texture(): THREE.Texture {
@@ -79,12 +83,17 @@ export class CloudBaker {
     return this._done
   }
 
-  get progress(): number {
-    return this._done ? 1 : this.cursor / this.strips
+  update(dt: number) {
+    if (this.disposed) return
+    if (!this._done) {
+      this.step(2)
+    }
+    const target = this._done ? 1 : (this.cursor / this.strips) * 0.5
+    this.ready += (target - this.ready) * Math.min(1, dt * 4.5)
+    SHARED_UNIFORMS.uCloudReady.value = this.ready
   }
 
-  /** 每帧烘焙至多 n 条水平切片，返回总进度 0..1 */
-  step(stripsPerFrame = 2): number {
+  step(stripsPerFrame = 2) {
     if (this._done || this.disposed) return 1
 
     const r = this.renderer
