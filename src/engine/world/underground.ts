@@ -17,7 +17,7 @@ export class UndergroundWorld {
   private readonly coreAccretion: THREE.Group
   private readonly coreSparks: THREE.Points
   private readonly vehicle: THREE.Group
-  private readonly vehicleCommsRing: THREE.Mesh
+  private readonly vehicleCommsRing: THREE.Object3D
   private readonly vehicleBeacon: { mesh: THREE.Mesh; glow: THREE.Sprite; light: THREE.PointLight }
   private readonly pixelUniform = { value: 1 }
 
@@ -350,132 +350,193 @@ export class UndergroundWorld {
   }
 
   private buildVehicle(glowTexture: THREE.Texture) {
+    // 硬科幻深地航行器「落日六号 SUNSET-06」：球形耐压钛金主舱 + 隔热肋骨 + 温暖观测舷窗 + 双层陀螺中微子通讯环 + 三向稳定桁架
     const ship = new THREE.Group()
     ship.position.set(0, -290.5, -40)
-    ship.scale.setScalar(1.55)
-    ship.rotation.set(0.14, 0.82, 0.04)
+    ship.scale.setScalar(1.48)
+    ship.rotation.set(0.16, 0.56, -0.05)
 
-    const hullProfile = [
-      new THREE.Vector2(0.0, -5.8),
-      new THREE.Vector2(0.75, -5.2),
-      new THREE.Vector2(1.5, -3.5),
-      new THREE.Vector2(2.05, -1.0),
-      new THREE.Vector2(2.1, 1.8),
-      new THREE.Vector2(1.65, 4.2),
-      new THREE.Vector2(0.95, 5.8),
-      new THREE.Vector2(0.32, 6.9),
-      new THREE.Vector2(0.0, 7.35),
-    ]
-    const hullGeo = new THREE.LatheGeometry(hullProfile, 36)
-    hullGeo.rotateX(Math.PI / 2)
-    const hullMat = new THREE.MeshStandardMaterial({ color: '#242c38', metalness: 0.72, roughness: 0.32 })
-    ship.add(new THREE.Mesh(hullGeo, hullMat))
-
-    const thermalMat = new THREE.MeshStandardMaterial({
-      color: '#ff9e52',
-      emissive: new THREE.Color('#ff6e20'),
-      emissiveIntensity: 0.65,
-      metalness: 0.6,
-      roughness: 0.25,
+    const titaniumMat = new THREE.MeshStandardMaterial({
+      color: '#9aa8bd',
+      emissive: new THREE.Color('#3b2116'),
+      emissiveIntensity: 0.34,
+      metalness: 0.32,
+      roughness: 0.42,
     })
-    for (const [rz, rr] of [
-      [3.9, 1.72],
-      [4.95, 1.32],
-      [5.85, 0.92],
-    ]) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(rr, 0.075, 10, 48), thermalMat)
-      ring.position.z = rz
-      ship.add(ring)
+    const armorMat = new THREE.MeshStandardMaterial({
+      color: '#5a667a',
+      emissive: new THREE.Color('#28160f'),
+      emissiveIntensity: 0.28,
+      metalness: 0.42,
+      roughness: 0.46,
+    })
+    const goldMat = new THREE.MeshStandardMaterial({
+      color: '#f2c28b',
+      emissive: new THREE.Color('#d98438'),
+      emissiveIntensity: 0.55,
+      metalness: 0.52,
+      roughness: 0.28,
+    })
+    const thermalGlowMat = new THREE.MeshStandardMaterial({
+      color: '#ffba72',
+      emissive: new THREE.Color('#ff7b2e'),
+      emissiveIntensity: 0.92,
+      metalness: 0.2,
+      roughness: 0.24,
+    })
+
+    // 1. 球形多面体钛合金耐压核心舱
+    const coreSphere = new THREE.Mesh(new THREE.IcosahedronGeometry(2.02, 2), titaniumMat)
+    ship.add(coreSphere)
+
+    // 赤道装甲加固腰带 + 6 道纵向热盾加强肋
+    const belt = new THREE.Mesh(new THREE.CylinderGeometry(2.14, 2.14, 0.52, 24), armorMat)
+    ship.add(belt)
+    const beltTrimTop = new THREE.Mesh(new THREE.TorusGeometry(2.15, 0.055, 10, 48), goldMat)
+    beltTrimTop.rotation.x = Math.PI / 2
+    beltTrimTop.position.y = 0.27
+    ship.add(beltTrimTop)
+    const beltTrimBot = new THREE.Mesh(new THREE.TorusGeometry(2.15, 0.055, 10, 48), goldMat)
+    beltTrimBot.rotation.x = Math.PI / 2
+    beltTrimBot.position.y = -0.27
+    ship.add(beltTrimBot)
+
+    for (let i = 0; i < 6; i += 1) {
+      const rib = new THREE.Mesh(new THREE.TorusGeometry(2.04, 0.065, 8, 40), armorMat)
+      rib.rotation.y = (i / 6) * Math.PI
+      ship.add(rib)
     }
 
-    const finShape = new THREE.Shape()
-    finShape.moveTo(0, 0)
-    finShape.lineTo(3.1, -1.6)
-    finShape.lineTo(3.4, -3.2)
-    finShape.lineTo(0.3, -2.5)
-    finShape.closePath()
-    const finGeo = new THREE.ExtrudeGeometry(finShape, {
-      depth: 0.14,
-      bevelEnabled: true,
-      bevelThickness: 0.04,
-      bevelSize: 0.03,
-      bevelSegments: 2,
-    })
-    finGeo.translate(0, 0, -0.07)
-    finGeo.rotateX(Math.PI / 2)
-    const finMat = new THREE.MeshStandardMaterial({ color: '#2e3846', metalness: 0.65, roughness: 0.36 })
+    // 2. 温暖点亮的六边形全景观测舷窗（象征铁镍海洋深处亮灯的座舱）
+    const viewportGroup = new THREE.Group()
+    viewportGroup.position.set(0.32, 0.36, 1.88)
+    viewportGroup.rotation.set(-0.16, 0.16, 0)
+    const frameOuter = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 1.02, 0.34, 6), armorMat)
+    frameOuter.rotation.x = Math.PI / 2
+    viewportGroup.add(frameOuter)
+    const frameGold = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.06, 8, 6), goldMat)
+    frameGold.position.z = 0.15
+    viewportGroup.add(frameGold)
+    const glass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.76, 0.76, 0.12, 6),
+      new THREE.MeshStandardMaterial({
+        color: '#ffe8bd',
+        emissive: new THREE.Color('#ffaa44'),
+        emissiveIntensity: 1.25,
+        roughness: 0.12,
+        metalness: 0.1,
+      }),
+    )
+    glass.rotation.x = Math.PI / 2
+    glass.position.z = 0.14
+    viewportGroup.add(glass)
+    const cabinGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: '#ffcc7a',
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    )
+    cabinGlow.scale.setScalar(3.4)
+    cabinGlow.position.z = 0.35
+    viewportGroup.add(cabinGlow)
+    ship.add(viewportGroup)
+
+    // 3. 底部热熔减震盘 & 顶部雷达观测塔
+    const lowerCap = new THREE.Mesh(new THREE.CylinderGeometry(1.48, 1.08, 0.56, 12), armorMat)
+    lowerCap.position.y = -1.92
+    ship.add(lowerCap)
+    const lowerGlow = new THREE.Mesh(new THREE.TorusGeometry(1.16, 0.075, 10, 32), thermalGlowMat)
+    lowerGlow.rotation.x = Math.PI / 2
+    lowerGlow.position.y = -2.18
+    ship.add(lowerGlow)
+
+    const dorsalTower = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.78, 0.85, 8), armorMat)
+    dorsalTower.position.y = 2.15
+    ship.add(dorsalTower)
+    const antennaMast = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.08, 1.35, 8), titaniumMat)
+    antennaMast.position.y = 3.08
+    ship.add(antennaMast)
+
+    // 4. 三向深地稳定桁架与外置推进舱（打破尖锥单调轮廓）
     for (let i = 0; i < 3; i += 1) {
-      const fin = new THREE.Mesh(finGeo, finMat)
-      fin.position.z = -1.6
-      fin.rotation.z = (i / 3) * Math.PI * 2 + Math.PI / 6
-      ship.add(fin)
+      const angle = (i / 3) * Math.PI * 2 + Math.PI / 6
+      const armGroup = new THREE.Group()
+      armGroup.rotation.y = angle
+
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 1.35), armorMat)
+      strut.position.set(0, -0.35, 2.45)
+      strut.rotation.x = 0.25
+      armGroup.add(strut)
+
+      const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 1.48, 10), titaniumMat)
+      pod.position.set(0, -0.58, 3.08)
+      pod.rotation.x = 0.14
+      armGroup.add(pod)
+
+      const podRing = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.045, 8, 24), thermalGlowMat)
+      podRing.rotation.x = Math.PI / 2 + 0.14
+      podRing.position.set(0, -1.22, 3.16)
+      armGroup.add(podRing)
+
+      ship.add(armGroup)
     }
 
-    const canopyGeo = new THREE.SphereGeometry(0.95, 24, 16)
-    canopyGeo.scale(0.86, 0.56, 2.05)
-    const canopy = new THREE.Mesh(
-      canopyGeo,
-      new THREE.MeshStandardMaterial({
-        color: '#ffcf88',
-        emissive: new THREE.Color('#ff9a3c'),
-        emissiveIntensity: 0.58,
-        roughness: 0.14,
-        metalness: 0.25,
-      }),
-    )
-    canopy.position.set(0, 1.32, 1.85)
-    ship.add(canopy)
-
-    const commsRing = new THREE.Mesh(
-      new THREE.TorusGeometry(2.45, 0.048, 10, 64),
-      new THREE.MeshStandardMaterial({
-        color: '#f2c28b',
-        emissive: new THREE.Color('#d98a3c'),
-        emissiveIntensity: 0.5,
-        metalness: 0.78,
-        roughness: 0.22,
-      }),
-    )
-    commsRing.position.z = -3.4
+    // 5. 双层星仪陀螺中微子通讯环（动态缓慢旋转）
+    const commsRing = new THREE.Group()
+    const outerGimbal = new THREE.Mesh(new THREE.TorusGeometry(3.45, 0.085, 12, 72), goldMat)
+    outerGimbal.rotation.x = Math.PI / 2 - 0.32
+    commsRing.add(outerGimbal)
+    const innerGimbal = new THREE.Mesh(new THREE.TorusGeometry(2.86, 0.055, 10, 64), titaniumMat)
+    innerGimbal.rotation.set(0.42, 0.25, 0.55)
+    commsRing.add(innerGimbal)
     for (let i = 0; i < 4; i += 1) {
-      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.85, 6), finMat)
-      const angle = (i / 4) * Math.PI * 2
-      strut.position.set(Math.cos(angle) * 2.0, Math.sin(angle) * 2.0, 0)
-      strut.rotation.z = angle - Math.PI / 2
-      commsRing.add(strut)
+      const a = (i / 4) * Math.PI * 2
+      const dot = new THREE.Mesh(new THREE.OctahedronGeometry(0.15, 0), thermalGlowMat)
+      dot.position.set(Math.cos(a) * 3.45, Math.sin(a) * 3.45, 0)
+      outerGimbal.add(dot)
     }
     ship.add(commsRing)
 
+    // 6. 顶置中微子琥珀信标与多向立体塑形灯光（彻底杜绝纯黑剪影）
     const beaconMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.2, 12, 12),
-      new THREE.MeshBasicMaterial({ color: '#ffd28a' }),
+      new THREE.SphereGeometry(0.22, 14, 14),
+      new THREE.MeshBasicMaterial({ color: '#ffe09c' }),
     )
-    beaconMesh.position.set(1.85, 1.75, -1.5)
+    beaconMesh.position.set(0, 3.78, 0)
     ship.add(beaconMesh)
 
     const glow = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: glowTexture,
-        color: '#ffb85c',
+        color: '#ffc266',
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.92,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
     )
-    glow.scale.setScalar(1.6)
+    glow.scale.setScalar(2.1)
     glow.position.copy(beaconMesh.position)
     ship.add(glow)
 
-    const light = new THREE.PointLight(0xffb85c, 16, 42, 2)
+    const light = new THREE.PointLight(0xffbe68, 24, 48, 1.6)
     light.position.copy(beaconMesh.position)
     ship.add(light)
 
-    const rimWarm = new THREE.PointLight(0xffb866, 26, 60, 1.8)
-    rimWarm.position.set(9, 6, 8)
-    ship.add(rimWarm)
-    const rimCool = new THREE.PointLight(0x7ca8ff, 18, 60, 1.8)
-    rimCool.position.set(-10, -4, -7)
+    const hemi = new THREE.HemisphereLight(0xaad2ff, 0xff6e2e, 1.45)
+    ship.add(hemi)
+    const keyWarm = new THREE.PointLight(0xffcb82, 42, 68, 1.5)
+    keyWarm.position.set(8, 6, 11)
+    ship.add(keyWarm)
+    const underMagma = new THREE.PointLight(0xff5a22, 34, 58, 1.6)
+    underMagma.position.set(-4, -9, 6)
+    ship.add(underMagma)
+    const rimCool = new THREE.PointLight(0x88b8ff, 26, 64, 1.6)
+    rimCool.position.set(-10, 5, -6)
     ship.add(rimCool)
 
     return { ship, commsRing, beacon: { mesh: beaconMesh, glow, light } }

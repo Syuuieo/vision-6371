@@ -390,6 +390,12 @@ export function SignalViewer({
             onAddFocus={() => undefined}
             onHeartbeat={handleHeartbeat}
             onPlayVoice={() => void handlePlayVoice()}
+            onSceneInteract={(kind) => {
+              if (soundOn && !muted) {
+                void mixer.ensure()
+                mixer.playInteractionSfx(kind)
+              }
+            }}
           />
           {moment && (
             <div

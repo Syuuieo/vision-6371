@@ -9,20 +9,186 @@ import type { FocusTarget, SkyStage } from '../../types/sensor'
  */
 
 export const LAKE = { x: -58, z: -96, rx: 74, rz: 52, y: -1.9 }
-export const ROAM = { minX: -78, maxX: 78, minZ: -118, maxZ: 34 }
+export const ROAM = { minX: -225, maxX: 225, minZ: -265, maxZ: 175 }
 export const ROAM_CENTER = { x: 0, z: -42 }
-export const ROAM_RADIUS = 96
+export const ROAM_RADIUS = 220
 export const EYE_HEIGHT = 1.72
 export const CAMERA_HOME = new THREE.Vector3(0, 0, 12)
 
+export type WorldDiscoveryId =
+  | 'cliff_windmill'
+  | 'birch_grove'
+  | 'relay_station'
+  | 'lake_island'
+  | 'west_cairn'
+
+export interface WorldDiscoveryMeta {
+  id: WorldDiscoveryId
+  name: string
+  subtitle: string
+  clueText: string
+  x: number
+  z: number
+  radius: number
+  accent: string
+}
+
+export const WORLD_DISCOVERIES: readonly WorldDiscoveryMeta[] = [
+  {
+    id: 'cliff_windmill',
+    name: '东南风车崖',
+    subtitle: '守风人的白木测风台',
+    clueText: '风车仍在替地下三千公里的她数着地面上的风速与季候。',
+    x: 84,
+    z: -22,
+    radius: 14,
+    accent: '#e8c47a',
+  },
+  {
+    id: 'birch_grove',
+    name: '东谷白桦林',
+    subtitle: '风铃木牌与林间林荫',
+    clueText: '白桦枝头悬着地面航行时代留下的风铃木牌，风过时会轻响。',
+    x: 68,
+    z: -86,
+    radius: 15,
+    accent: '#b4d8a6',
+  },
+  {
+    id: 'relay_station',
+    name: '北岭中继站 06',
+    subtitle: '地心纪行地表声呐转播塔',
+    clueText: '「落日六号」地表最后一座微弱中继台，抛物面天线仍朝向湖心。',
+    x: 16,
+    z: -134,
+    radius: 14,
+    accent: '#8cd4f2',
+  },
+  {
+    id: 'lake_island',
+    name: '湖心浅滩石龛',
+    subtitle: '踏石长堤尽头的孤岛',
+    clueText: '踩过十八块踏石走上孤岛，风停时能在石龛倒影里看见整片山谷。',
+    x: -58,
+    z: -94,
+    radius: 14,
+    accent: '#9bd8df',
+  },
+  {
+    id: 'west_cairn',
+    name: '西原日落石阵',
+    subtitle: '七石日晷与温火盆台',
+    clueText: '七块玄石围成旧日历阵，落日前后影针正好指向湖畔的木栈道。',
+    x: -84,
+    z: -24,
+    radius: 14,
+    accent: '#f0a67e',
+  },
+] as const
+
+export interface ScenicBenchMeta {
+  id: string
+  name: string
+  hint: string
+  x: number
+  z: number
+  lookX: number
+  lookZ: number
+}
+
+export const SCENIC_BENCHES: readonly ScenicBenchMeta[] = [
+  {
+    id: 'bench_pier_overlook',
+    name: '渡口长椅',
+    hint: '面向轻舟渡口与西山湖心',
+    x: -11.5,
+    z: -33.2,
+    lookX: -48,
+    lookZ: -86,
+  },
+  {
+    id: 'bench_windmill_ridge',
+    name: '风车崖长椅',
+    hint: '俯瞰整座山谷与暮色湖湾',
+    x: 75.8,
+    z: -24.5,
+    lookX: -12,
+    lookZ: -44,
+  },
+  {
+    id: 'bench_north_relay',
+    name: '北岭望湖长椅',
+    hint: '远望孤岛踏石堤与南坡孤树',
+    x: 11.4,
+    z: -124.2,
+    lookX: -32,
+    lookZ: -74,
+  },
+] as const
+
+export interface WorldTrailMeta {
+  id: string
+  width: number
+  points: readonly (readonly [number, number])[]
+}
+
+export const WORLD_TRAILS: readonly WorldTrailMeta[] = [
+  {
+    id: 'trail_east_cliff',
+    width: 2.35,
+    points: [
+      [1.5, -10],
+      [15, -21],
+      [34, -25],
+      [56, -26],
+      [79, -23],
+    ],
+  },
+  {
+    id: 'trail_birch',
+    width: 2.2,
+    points: [
+      [34, -25],
+      [46, -44],
+      [57, -65],
+      [66, -84],
+    ],
+  },
+  {
+    id: 'trail_north_relay',
+    width: 2.25,
+    points: [
+      [10, -34],
+      [14, -64],
+      [18, -98],
+      [16, -130],
+    ],
+  },
+  {
+    id: 'trail_west_cairn',
+    width: 2.3,
+    points: [
+      [-14, -22],
+      [-36, -25],
+      [-60, -26],
+      [-81, -24],
+    ],
+  },
+] as const
+
 export const PLACES = [
-  { name: '轻舟渡口', x: -25.5, z: -49.5, radius: 16 },
+  { name: '轻舟渡口', x: -16.5, z: -38.5, radius: 16 },
   { name: '孤树山坡', x: 15.5, z: -24, radius: 22 },
   { name: '石拱谷地', x: -15.5, z: -23, radius: 22 },
   { name: '晨雾草甸', x: -3.8, z: -8.5, radius: 20 },
   { name: '湖东高岸', x: 8, z: -40, radius: 14 },
   { name: '东南雨岸', x: 30, z: -58, radius: 16 },
   { name: '东脊星野', x: 30, z: -16, radius: 14 },
+  { name: '东南风车崖', x: 84, z: -22, radius: 24 },
+  { name: '东谷白桦林', x: 68, z: -86, radius: 24 },
+  { name: '北岭中继站', x: 16, z: -134, radius: 24 },
+  { name: '湖心浅滩岛', x: -58, z: -94, radius: 22 },
+  { name: '西原石阵', x: -84, z: -24, radius: 24 },
 ] as const
 
 export const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
@@ -37,6 +203,25 @@ export const easeInOutCubic = (t: number) =>
 
 export const easeInCubic = (t: number) => t * t * t
 export const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2
+
+export function distanceToSegmentSq2D(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const vx = bx - ax
+  const vz = bz - az
+  const wx = px - ax
+  const wz = pz - az
+  const lenSq = vx * vx + vz * vz || 1
+  const t = clamp((wx * vx + wz * vz) / lenSq, 0, 1)
+  const dx = px - (ax + vx * t)
+  const dz = pz - (az + vz * t)
+  return dx * dx + dz * dz
+}
 
 /** 序章连续草原地形高度函数：草叶、野花、地标、水底与脚下碰撞共用 */
 export function heightAt(x: number, z: number): number {
@@ -53,6 +238,28 @@ export function heightAt(x: number, z: number): number {
   h -= 5.6 * (1 - smoothstep(0.55, 1.0, lakeDistance))
   h += 0.9 * Math.exp(-((x + 4.5) ** 2 + (z + 11) ** 2) / 34)
   h += 2.4 * Math.exp(-((x - 10) ** 2 + (z + 30) ** 2) / 90)
+
+  // 五处开放草原地标与远景起伏
+  h += 14.2 * Math.exp(-((x - 84) ** 2 + (z + 22) ** 2) / 680)
+  h += 1.15 * Math.exp(-((x - 68) ** 2 + (z + 86) ** 2) / 480)
+  h += 9.8 * Math.exp(-((x - 16) ** 2 + (z + 134) ** 2) / 560)
+  h += 7.8 * Math.exp(-((x + 84) ** 2 + (z + 24) ** 2) / 460)
+
+  // 外缘盆地自然起伏边界
+  const rimX = x / 245
+  const rimZ = (z + 42) / 245
+  h += 4.8 * smoothstep(0.84, 1.16, Math.sqrt(rimX * rimX + rimZ * rimZ))
+
+  // 浅滩踏石堤 (-20, -46) -> (-39, -71) -> (-58, -94) 与湖心孤岛
+  const c1 = distanceToSegmentSq2D(x, z, -20, -46, -39, -71)
+  const c2 = distanceToSegmentSq2D(x, z, -39, -71, -58, -94)
+  const causeDist = Math.sqrt(Math.min(c1, c2))
+  const causeBlend = smoothstep(8.2, 2.2, causeDist)
+  const islandBlend = Math.exp(-((x + 58) ** 2 + (z + 94) ** 2) / 145)
+  const shoalBlend = Math.min(1, causeBlend + islandBlend)
+  const targetShoalH = -1.72 + 0.34 * islandBlend
+  h = h + (targetShoalH - h) * shoalBlend
+
   return h
 }
 
@@ -606,8 +813,8 @@ export function getCameraPreset(target: FocusTarget) {
   }
   if (target === 'boat') {
     return {
-      pos: new THREE.Vector3(-14, heightAt(-14, -44) + 2.6, -44),
-      look: new THREE.Vector3(-25.5, LAKE.y + 0.6, -49.5),
+      pos: new THREE.Vector3(-8.8, heightAt(-8.8, -30.4) + 2.35, -30.4),
+      look: new THREE.Vector3(-17.8, LAKE.y + 0.55, -40.2),
       fov: 50,
     }
   }

@@ -30,6 +30,9 @@ const PostVisionStudio = lazy(() =>
 const SignalReceiver = lazy(() =>
   import('./components/SignalReceiver').then((m) => ({ default: m.SignalReceiver })),
 )
+const DioramaExperience = lazy(() =>
+  import('./components/DioramaExperience').then((m) => ({ default: m.DioramaExperience })),
+)
 
 function ChannelLoading() {
   return (
@@ -283,6 +286,24 @@ export default function App() {
                 onRelayCity={recordCityRelay}
                 onBack={goBack}
                 onOpenRadio={(code) => enterRadio(code, false)}
+              />
+            )}
+            {module === 'diorama' && (
+              <DioramaExperience
+                muted={muted}
+                flashSafe={settings.flashSafe || calmMotion}
+                relay={relay}
+                onRecordCity={recordCityRelay}
+                onGoPrologue={() => navigate('prologue')}
+                onSendToPost={(entry) => {
+                  updateRelay({
+                    memories: [
+                      ...relay.memories.filter((m) => m.title !== entry.sceneTitle),
+                      { act: '纪念册', title: entry.sceneTitle, dataUrl: entry.image },
+                    ].slice(-6),
+                  })
+                  navigate('post')
+                }}
               />
             )}
           </>

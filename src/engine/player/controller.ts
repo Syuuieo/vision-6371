@@ -1,6 +1,9 @@
 import * as THREE from 'three'
 import {
   EYE_HEIGHT,
+  SCENIC_BENCHES,
+  WORLD_DISCOVERIES,
+  type WorldDiscoveryId,
   LAKE,
   PLACES,
   ROAM_CENTER,
@@ -11,6 +14,16 @@ import {
   heightAt,
 } from '../core/ctx'
 import type { FocusTarget, PickId } from '../../types/sensor'
+
+export interface PlayerTelemetry {
+  x: number
+  z: number
+  yaw: number
+  speedNorm: number
+  nearbyBench: { id: string; name: string; hint: string } | null
+  seatedBenchId: string | null
+  nearbyDiscovery: WorldDiscoveryId | null
+}
 
 export interface HoverTargetInfo {
   id: PickId
@@ -25,6 +38,7 @@ export interface ControllerCallbacks {
   onHoverTarget?: (info: HoverTargetInfo | null) => void
   onZoomChange?: (zoom: number) => void
   onPlaceChange?: (place: string) => void
+  onTelemetry?: (telemetry: PlayerTelemetry) => void
   onBoundary?: () => void
   onWalkStart?: (point: THREE.Vector3) => void
   onSkyCall?: () => void
@@ -96,6 +110,12 @@ export class PlayerController {
   private lastCursorCheck = 0
   private lastLakeHover = 0
   private lastPlaceCheck = 0
+  private seatedBenchId: string | null = null
+  private lastTelemetryAt = 0
+  private lastTelemetryKey = ''
+  private lastTelemetryYaw = 0
+  private lastTelemetryX = 0
+  private lastTelemetryZ = 0
   private lastBoundaryReport = 0
   private currentPlace = ''
   private prevCursorXZ = new THREE.Vector2(999, 999)
@@ -168,6 +188,7 @@ export class PlayerController {
   clearInputForDescent() {
     this.flight = null
     this.walkTarget = null
+    this.seatedBenchId = null
     this.roamEnabled = false
     this.keys.clear()
     this.velXZ.set(0, 0)
@@ -178,6 +199,7 @@ export class PlayerController {
 
   resetSurfaceState() {
     this.roamEnabled = false
+    this.seatedBenchId = null
     this.keys.clear()
     this.walkTarget = null
     this.walkPhase = 0
@@ -189,8 +211,45 @@ export class PlayerController {
     this.focusTarget('home', 0.02)
   }
 
+  sitOnBench(benchId: string) {
+    if (!this.cb.isSurfaceActive()) return
+    const bench = SCENIC_BENCHES.find((b) => b.id === benchId)
+    if (!bench) return
+    this.seatedBenchId = bench.id
+    this.walkTarget = null
+    this.velXZ.set(0, 0)
+    this.speedNorm = 0
+    const benchY = heightAt(bench.x, bench.z) + 1.18
+    const lookY = heightAt(bench.lookX, bench.lookZ) + 2.2
+    const toPos = new THREE.Vector3(bench.x, benchY, bench.z)
+    const toLook = new THREE.Vector3(bench.lookX, lookY, bench.lookZ)
+    this.fovTarget = 46
+    this.cb.onZoomChange?.(55 / this.fovTarget)
+    this.flight = {
+      fromPos: this.camPos.clone(),
+      toPos,
+      fromLook: this.lookCurrent.clone(),
+      toLook,
+      fromFov: this.fov,
+      toFov: 46,
+      time: 0,
+      duration: 1.15,
+      ease: easeInOutCubic,
+    }
+    this.emitTelemetry(true)
+  }
+
+  standFromBench() {
+    if (!this.seatedBenchId) return
+    this.seatedBenchId = null
+    this.fovTarget = 55
+    this.cb.onZoomChange?.(55 / this.fovTarget)
+    this.emitTelemetry(true)
+  }
+
   focusTarget(target: FocusTarget, duration = 2.3) {
     if (!this.cb.isSurfaceActive()) return
+    this.seatedBenchId = null
     this.walkTarget = null
     const preset = getCameraPreset(target)
     this.fovTarget = preset.fov
@@ -267,6 +326,7 @@ export class PlayerController {
       let desiredVz = 0
 
       if (this.roamEnabled && (forwardInput !== 0 || rightInput !== 0)) {
+        if (this.seatedBenchId) this.standFromBench()
         this.walkTarget = null
         const forward = new THREE.Vector3(Math.sin(this.yaw), 0, -Math.cos(this.yaw))
         const right = new THREE.Vector3(Math.cos(this.yaw), 0, Math.sin(this.yaw))
@@ -275,19 +335,24 @@ export class PlayerController {
           move.normalize()
           const fast = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
           const mag = Math.min(1, Math.hypot(forwardInput, rightInput))
-          const speed = (fast ? 6.4 : 3.25) * Math.max(0.35, mag)
+          const baseSpeed = fast ? 9.6 : 3.45
+          const hHere = heightAt(this.camPos.x, this.camPos.z)
+          const hAhead = heightAt(this.camPos.x + move.x * 1.4, this.camPos.z + move.z * 1.4)
+          const slopeDown = clamp((hHere - hAhead) / 1.4, -0.35, 0.45)
+          const speed = baseSpeed * (1 + Math.max(0, slopeDown) * (fast ? 0.34 : 0.16)) * Math.max(0.35, mag)
           desiredVx = move.x * speed
           desiredVz = move.z * speed
         }
       } else if (this.roamEnabled && this.walkTarget) {
+        if (this.seatedBenchId) this.standFromBench()
         const dx = this.walkTarget.x - this.camPos.x
         const dz = this.walkTarget.z - this.camPos.z
         const dist = Math.hypot(dx, dz)
         if (dist < 0.65) {
           this.walkTarget = null
         } else {
-          desiredVx = (dx / dist) * 3.9
-          desiredVz = (dz / dist) * 3.9
+          desiredVx = (dx / dist) * 4.6
+          desiredVz = (dz / dist) * 4.6
         }
       }
 
@@ -299,7 +364,7 @@ export class PlayerController {
       if (!hasInput && this.velXZ.lengthSq() < 0.001) this.velXZ.set(0, 0)
 
       const curSpeed = this.velXZ.length()
-      this.speedNorm = clamp(curSpeed / 6.4, 0, 1)
+      this.speedNorm = clamp(curSpeed / 9.6, 0, 1)
 
       if (curSpeed > 0.02) {
         const stepX = this.velXZ.x * dt
@@ -329,15 +394,18 @@ export class PlayerController {
           this.camPos.y += (targetY - this.camPos.y) * Math.min(1, dt * 8)
         }
       } else {
-        const restY = heightAt(this.camPos.x, this.camPos.z) + EYE_HEIGHT
+        const restY = heightAt(this.camPos.x, this.camPos.z) + (this.seatedBenchId ? 1.18 : EYE_HEIGHT)
         this.camPos.y += (restY - this.camPos.y) * Math.min(1, dt * 5)
       }
 
       if (this.lookAxis.x !== 0 || this.lookAxis.y !== 0) {
-        this.targetYaw += this.lookAxis.x * dt * 1.6
-        this.targetPitch = clamp(this.targetPitch + this.lookAxis.y * dt * 1.1, -1.15, 1.28)
+        // 细腻非线性曲线，轻微推动摇杆时缓慢平稳转动，避免「雷霆转视角」
+        const curveX = Math.sign(this.lookAxis.x) * Math.pow(Math.abs(this.lookAxis.x), 1.45)
+        const curveY = Math.sign(this.lookAxis.y) * Math.pow(Math.abs(this.lookAxis.y), 1.45)
+        this.targetYaw += curveX * dt * 0.95
+        this.targetPitch = clamp(this.targetPitch + curveY * dt * 0.68, -1.15, 1.28)
       }
-      const damp = 1 - Math.exp(-dt * 9)
+      const damp = 1 - Math.exp(-dt * 6.8)
       this.yaw += (this.targetYaw - this.yaw) * damp
       this.pitch += (this.targetPitch - this.pitch) * damp
 
@@ -358,6 +426,7 @@ export class PlayerController {
 
     this.applyCamera(this.camPos, this.lookCurrent, this.fov)
     this.updatePlace()
+    this.emitTelemetry(false)
 
     // 掠草微音效：综合脚步速度 + 鼠标划草速度
     const cursorActive = this.cursorWorld.x < 450 && this.cursorWorld.z < 450 && !this.flight
@@ -393,6 +462,54 @@ export class PlayerController {
       this.skimReported = val
       this.cb.onSkimChange?.(val)
     }
+  }
+
+  private emitTelemetry(force: boolean) {
+    if (!this.cb.onTelemetry) return
+    const now = performance.now()
+    const x = this.camPos.x
+    const z = this.camPos.z
+
+    let nearbyBench: { id: string; name: string; hint: string } | null = null
+    let bestBenchDist = 3.8
+    for (const bench of SCENIC_BENCHES) {
+      const d = Math.hypot(x - bench.x, z - bench.z)
+      if (d < bestBenchDist) {
+        bestBenchDist = d
+        nearbyBench = { id: bench.id, name: bench.name, hint: bench.hint }
+      }
+    }
+
+    let nearbyDiscovery: WorldDiscoveryId | null = null
+    for (const disc of WORLD_DISCOVERIES) {
+      if (Math.hypot(x - disc.x, z - disc.z) <= disc.radius) {
+        nearbyDiscovery = disc.id
+        break
+      }
+    }
+
+    const key = [nearbyBench?.id ?? '', this.seatedBenchId ?? '', nearbyDiscovery ?? ''].join('|')
+    const moved =
+      Math.hypot(x - this.lastTelemetryX, z - this.lastTelemetryZ) > 0.35 ||
+      Math.abs(this.yaw - this.lastTelemetryYaw) > 0.015
+    if (!force && key === this.lastTelemetryKey && (!moved || now - this.lastTelemetryAt < 65)) {
+      return
+    }
+
+    this.lastTelemetryAt = now
+    this.lastTelemetryKey = key
+    this.lastTelemetryX = x
+    this.lastTelemetryZ = z
+    this.lastTelemetryYaw = this.yaw
+    this.cb.onTelemetry({
+      x,
+      z,
+      yaw: this.yaw,
+      speedNorm: this.speedNorm,
+      nearbyBench,
+      seatedBenchId: this.seatedBenchId,
+      nearbyDiscovery,
+    })
   }
 
   private updatePlace() {
@@ -517,13 +634,16 @@ export class PlayerController {
 
   private onPointerMove = (event: PointerEvent) => {
     if (this.pointer.down && !this.flight) {
-      const dx = event.clientX - this.pointer.lastX
-      const dy = event.clientY - this.pointer.lastY
+      const dx = clamp(event.clientX - this.pointer.lastX, -52, 52)
+      const dy = clamp(event.clientY - this.pointer.lastY, -52, 52)
       this.pointer.lastX = event.clientX
       this.pointer.lastY = event.clientY
       this.pointer.drag += Math.abs(dx) + Math.abs(dy)
-      this.targetYaw -= dx * 0.0036
-      this.targetPitch = clamp(this.targetPitch + dy * 0.003, -1.15, 1.28)
+      const isTouch = event.pointerType === 'touch'
+      const yawSens = isTouch ? 0.0018 : 0.0022
+      const pitchSens = isTouch ? 0.00145 : 0.0018
+      this.targetYaw -= dx * yawSens
+      this.targetPitch = clamp(this.targetPitch + dy * pitchSens, -1.15, 1.28)
       return
     }
     if (!this.cb.isSurfaceActive()) {

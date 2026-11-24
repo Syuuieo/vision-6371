@@ -12,7 +12,11 @@ import {
 import { CinemaPipeline } from '../engine/core/pipeline'
 import { WakeField } from '../engine/fx/wake'
 import { WindFX } from '../engine/fx/windfx'
-import { PlayerController, type HoverTargetInfo } from '../engine/player/controller'
+import {
+  PlayerController,
+  type HoverTargetInfo,
+  type PlayerTelemetry,
+} from '../engine/player/controller'
 import { CloudBaker } from '../engine/world/clouds'
 import { LandmarksWorld } from '../engine/world/landmarks'
 import { MeadowWorld } from '../engine/world/meadow'
@@ -24,7 +28,7 @@ import type { QualityTier } from '../services/settings'
 import type { DescentEvent, FocusTarget, PickId, SkyStage } from '../types/sensor'
 
 export { sunArc }
-export type { HoverTargetInfo }
+export type { HoverTargetInfo, PlayerTelemetry }
 
 export interface PrologueSceneOptions {
   onPick?: (id: PickId) => void
@@ -33,6 +37,7 @@ export interface PrologueSceneOptions {
   onHoverTarget?: (info: HoverTargetInfo | null) => void
   onZoomChange?: (zoom: number) => void
   onPlaceChange?: (place: string) => void
+  onTelemetry?: (telemetry: PlayerTelemetry) => void
   onBoundary?: () => void
   onSkimChange?: (amount: number) => void
 }
@@ -83,6 +88,7 @@ export class PrologueScene {
   private windFX: WindFX | null = null
   private landmarks: LandmarksWorld | null = null
   private underground: UndergroundWorld | null = null
+  private discoveredIds: string[] = []
   private controller: PlayerController | null = null
   private noiseTex: THREE.DataTexture | null = null
   private glowTex: THREE.Texture | null = null
@@ -109,7 +115,7 @@ export class PrologueScene {
   }
 
   private get roamRadius(): number {
-    return this.lowDetail ? 80 : ROAM_RADIUS
+    return this.lowDetail ? 165 : ROAM_RADIUS
   }
 
   private get pixelCap(): number {
@@ -163,7 +169,7 @@ export class PrologueScene {
     this.skyWorld = new SkyWorld(this.surfaceGroup, this.pickables, this.glowTex, this.lowDetail, dpr)
     this.terrainWorld = new TerrainWorld(this.surfaceGroup, this.roamRadius, this.lowDetail)
     this.landmarks = new LandmarksWorld(this.surfaceGroup, this.pickables, this.glowTex, this.lowDetail)
-    this.terrainWorld.bakeFields(this.landmarks.clearZones)
+    this.terrainWorld.bakeFields(this.landmarks.clearZones, this.lowDetail)
 
     this.wakeField = new WakeField(renderer)
     this.lakeWater = new LakeWater(this.surfaceGroup, this.pickables)
@@ -194,6 +200,7 @@ export class PrologueScene {
         onHoverTarget: (info) => this.options.onHoverTarget?.(info),
         onZoomChange: (zoom) => this.options.onZoomChange?.(zoom),
         onPlaceChange: (place) => this.options.onPlaceChange?.(place),
+        onTelemetry: (telemetry) => this.options.onTelemetry?.(telemetry),
         onBoundary: () => this.options.onBoundary?.(),
         onWalkStart: (pt) => this.landmarks?.triggerWalkMarker(pt),
         onSkyCall: () => this.emitSkyCall(),
@@ -227,6 +234,10 @@ export class PrologueScene {
       this.look = makeLook(stage)
       this.applyLook()
     }
+  }
+
+  setClockHour(hour: number) {
+    this.setClock(hour, true)
   }
 
   setClock(hour: number, immediate = false) {
@@ -316,9 +327,24 @@ export class PrologueScene {
     if (level > 0) this.emitSkyCall()
   }
 
-  emitSkyCall() {
+  setDiscoveredIds(ids: readonly string[]) {
+    this.discoveredIds = [...ids]
+  }
+
+  sitOnBench(benchId: string) {
+    if (this.underground?.active) return
+    this.controller?.sitOnBench(benchId)
+  }
+
+  standFromBench() {
+    this.controller?.standFromBench()
+  }
+
+  emitSkyCall(discoveredIds?: readonly string[]) {
     if (!this.controller || this.underground?.active) return
+    if (discoveredIds) this.discoveredIds = [...discoveredIds]
     this.landmarks?.emitSkyCall(this.controller.camPos)
+    this.landmarks?.triggerEchoBeams(this.discoveredIds)
   }
 
   setConstellationActive(active: boolean) {
@@ -333,7 +359,7 @@ export class PrologueScene {
     if (!this.renderer || !this.pipeline || this.disposed) return null
     try {
       this.pipeline.render(this.scene, this.camera)
-      return this.renderer.domElement.toDataURL('image/jpeg', 0.84)
+      return this.renderer.domElement.toDataURL('image/jpeg', 0.94)
     } catch {
       return null
     }

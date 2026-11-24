@@ -945,11 +945,105 @@ const drawGinkgo: Renderer = (ctx, w, h, rand) => {
 
 /* ------------------------------------------------------------------ */
 
+const drawSydneySummer: Renderer = (ctx, w, h, rand) => {
+  ctx.save()
+  ctx.scale(w / DW, h / DH)
+  const sky = ctx.createLinearGradient(0, 0, 0, 640)
+  sky.addColorStop(0, '#124670')
+  sky.addColorStop(0.45, '#4688b4')
+  sky.addColorStop(0.82, '#e2ad84')
+  sky.addColorStop(1, '#ffd9a4')
+  ctx.fillStyle = sky
+  ctx.fillRect(0, 0, DW, DH)
+  glow(ctx, 1180, 440, 400, '255,218,162', 0.48)
+  const shells: [number, number, number, number][] = [
+    [760, 635, 195, 210],
+    [905, 635, 170, 178],
+    [1028, 635, 138, 138],
+    [1160, 635, 155, 162],
+    [1276, 635, 118, 114],
+  ]
+  shells.forEach(([sx, sy, sw, sh], idx) => {
+    ctx.fillStyle = idx % 2 === 0 ? '#fff5e6' : '#f0d8be'
+    ctx.beginPath()
+    ctx.moveTo(sx - sw * 0.45, sy)
+    ctx.quadraticCurveTo(sx - sw * 0.08, sy - sh * 0.92, sx + sw * 0.52, sy - sh)
+    ctx.quadraticCurveTo(sx + sw * 0.42, sy - sh * 0.3, sx + sw * 0.35, sy)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+  })
+  ctx.fillStyle = '#192a42'
+  ctx.fillRect(680, 634, 720, 24)
+  const sea = ctx.createLinearGradient(0, 650, 0, DH)
+  sea.addColorStop(0, '#1f6282')
+  sea.addColorStop(0.55, '#123e5e')
+  sea.addColorStop(1, '#081b30')
+  ctx.fillStyle = sea
+  ctx.fillRect(0, 650, DW, 350)
+  for (let i = 0; i < 85; i += 1) {
+    ctx.fillStyle = rand() > 0.35 ? 'rgba(255,228,176,0.38)' : 'rgba(138,228,244,0.28)'
+    ctx.fillRect(rand() * DW, 668 + rand() * 310, 26 + rand() * 88, 2.4)
+  }
+  ctx.restore()
+  finish(ctx, w, h, rand, '#f2b880')
+}
+
+const drawObservatory: Renderer = (ctx, w, h, rand) => {
+  ctx.save()
+  ctx.scale(w / DW, h / DH)
+  const sky = ctx.createLinearGradient(0, 0, 0, DH)
+  sky.addColorStop(0, '#040916')
+  sky.addColorStop(0.52, '#0d1d38')
+  sky.addColorStop(1, '#1a3250')
+  ctx.fillStyle = sky
+  ctx.fillRect(0, 0, DW, DH)
+  for (let i = 0; i < 320; i += 1) {
+    const sx = rand() * DW
+    const sy = rand() * 680
+    const r = 0.7 + rand() * 2.1
+    ctx.fillStyle = rand() > 0.8 ? '#ffe2b0' : '#d8ecff'
+    ctx.globalAlpha = 0.25 + rand() * 0.75
+    ctx.beginPath()
+    ctx.arc(sx, sy, r, 0, TAU)
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
+  glow(ctx, 820, 290, 420, '124,186,255', 0.22)
+  // 几何山脊与白色天文台圆顶
+  ctx.fillStyle = '#0b1424'
+  ctx.beginPath()
+  ctx.moveTo(0, 760)
+  ctx.lineTo(420, 580)
+  ctx.lineTo(940, 650)
+  ctx.lineTo(1320, 560)
+  ctx.lineTo(DW, 680)
+  ctx.lineTo(DW, DH)
+  ctx.lineTo(0, DH)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#d4dde8'
+  ctx.beginPath()
+  ctx.arc(1140, 575, 84, Math.PI, 0)
+  ctx.fill()
+  ctx.fillStyle = '#253852'
+  ctx.fillRect(1056, 575, 168, 68)
+  ctx.fillStyle = '#ffd796'
+  ctx.fillRect(1118, 594, 42, 26)
+  glow(ctx, 1139, 607, 70, '255,204,132', 0.42)
+  ctx.restore()
+  finish(ctx, w, h, rand, '#7fa8e8')
+}
+
 const RENDERERS: Record<string, Renderer> = {
   library: drawLibrary,
   sea: drawSea,
   rain: drawRainRoom,
   ginkgo: drawGinkgo,
+  sydney: drawSydneySummer,
+  observatory: drawObservatory,
 }
 
 export const VISION_PRESETS: VisionPreset[] = [
@@ -959,7 +1053,7 @@ export const VISION_PRESETS: VisionPreset[] = [
     sender: '阿遥',
     city: '南京',
     particles: 'firefly',
-    ambience: 'wind',
+    ambience: 'library',
     tempC: 19,
     windLevel: 1,
     scentTag: '桂花与旧书页',
@@ -1061,6 +1155,48 @@ export const VISION_PRESETS: VisionPreset[] = [
       },
     ],
   },
+  {
+    id: 'sydney',
+    title: '悉尼海港 · 南半球盛夏',
+    sender: '南风渡客',
+    city: '悉尼',
+    particles: 'dust',
+    ambience: 'ocean',
+    tempC: 28,
+    windLevel: 2,
+    scentTag: '盛夏海盐与微风',
+    essence: 'SOUTHERN SUMMER · 18:40',
+    palette: '#f2b880',
+    focus: [
+      {
+        id: 'sydney-f1',
+        x: 0.62,
+        y: 0.54,
+        note: '北半球正在下雪，我从地球另一边寄来 28°C 的盛夏晚风。',
+      },
+    ],
+  },
+  {
+    id: 'observatory',
+    title: '高山观星台 · 猎户座夜空',
+    sender: '星图记录员',
+    city: '拉萨',
+    particles: 'dust',
+    ambience: 'night',
+    tempC: 3,
+    windLevel: 1,
+    scentTag: '高原寒夜与松木',
+    essence: 'STAR DOME · 23:12',
+    palette: '#9ac6ff',
+    focus: [
+      {
+        id: 'obs-f1',
+        x: 0.52,
+        y: 0.28,
+        note: '点击夜空就能连起你看到的星。今晚的银河离山顶很近。',
+      },
+    ],
+  },
 ]
 
 const imageCache = new Map<string, string>()
@@ -1079,7 +1215,7 @@ function renderPreset(id: string, width: number, height: number, quality: number
 export function getPresetImage(id: string): string {
   const cached = imageCache.get(id)
   if (cached) return cached
-  const url = renderPreset(id, 1600, 1000, 0.9)
+  const url = renderPreset(id, 1600, 1000, 0.96)
   imageCache.set(id, url)
   return url
 }
@@ -1101,8 +1237,11 @@ export const PARTICLE_OPTIONS: { id: ParticleKind; label: string; english: strin
 ]
 
 export const AMBIENCE_OPTIONS: { id: AmbientKind; label: string; english: string }[] = [
+  { id: 'library', label: '图书馆翻书', english: 'LIBRARY' },
   { id: 'wind', label: '微风', english: 'BREEZE' },
   { id: 'rain', label: '夜雨', english: 'RAIN' },
+  { id: 'snow', label: '落雪踏雪', english: 'SNOW' },
+  { id: 'city', label: '城市街渡', english: 'CITY' },
   { id: 'ocean', label: '海浪', english: 'OCEAN' },
   { id: 'cicada', label: '夏夜蝉鸣', english: 'CICADA' },
   { id: 'night', label: '深夜静谧', english: 'NIGHT' },

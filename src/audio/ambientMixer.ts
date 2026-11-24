@@ -55,6 +55,12 @@ const STATIONS: Record<string, Station> = {
   西安: stationOf(146.83, DORIAN, 68, 'triangle', 1600),
   杭州: stationOf(110, MINOR_PENTA, 72, 'sine', 1900),
   南京: stationOf(130.81, MINOR_PENTA, 66, 'sine', 1700),
+  悉尼: stationOf(196.0, MAJOR_PENTA, 94, 'triangle', 2700),
+  夏威夷: stationOf(174.61, MAJOR_PENTA, 86, 'sine', 2500),
+  雷克雅未克: stationOf(146.83, DORIAN, 58, 'sine', 2900),
+  开普敦: stationOf(164.81, MAJOR_PENTA, 88, 'triangle', 2400),
+  京都: stationOf(138.59, MINOR_PENTA, 64, 'sine', 2000),
+  巴黎: stationOf(146.83, DORIAN, 78, 'triangle', 1950),
 }
 
 const DEFAULT_STATION = stationOf(146.83, MINOR_PENTA, 72, 'triangle', 1900)
@@ -420,6 +426,307 @@ export class AmbientMixer {
     this.scheduleCrickets('night')
   }
 
+  private buildLibrary() {
+    if (!this.ctx) return
+    const room = this.noiseSource()
+    if (room) {
+      const lowpass = this.ctx.createBiquadFilter()
+      lowpass.type = 'lowpass'
+      lowpass.frequency.value = 260
+      const gain = this.layerGain(0.22, 1.8)
+      if (gain) {
+        room.connect(lowpass)
+        lowpass.connect(gain)
+        const breathe = this.lfo(gain.gain, 0.05, 0.04)
+        this.track(gain, [room, ...(breathe ? [breathe] : [])])
+      }
+    }
+    this.scheduleLibraryAccents()
+  }
+
+  private buildSnow() {
+    if (!this.ctx) return
+    const air = this.noiseSource()
+    if (air) {
+      const hp = this.ctx.createBiquadFilter()
+      hp.type = 'highpass'
+      hp.frequency.value = 180
+      const lp = this.ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = 880
+      const gain = this.layerGain(0.32, 1.8)
+      if (gain) {
+        air.connect(hp)
+        hp.connect(lp)
+        lp.connect(gain)
+        const drift = this.lfo(gain.gain, 0.06, 0.1)
+        this.track(gain, [air, ...(drift ? [drift] : [])])
+      }
+    }
+    const frost = this.noiseSource()
+    if (frost) {
+      const hp = this.ctx.createBiquadFilter()
+      hp.type = 'highpass'
+      hp.frequency.value = 3400
+      const gain = this.layerGain(0.065, 2.2)
+      if (gain) {
+        frost.connect(hp)
+        hp.connect(gain)
+        const shimmer = this.lfo(gain.gain, 0.12, 0.025)
+        this.track(gain, [frost, ...(shimmer ? [shimmer] : [])])
+      }
+    }
+    this.scheduleSnowAccents()
+  }
+
+  private buildCity() {
+    if (!this.ctx) return
+    const hum = this.noiseSource()
+    if (hum) {
+      const hp = this.ctx.createBiquadFilter()
+      hp.type = 'highpass'
+      hp.frequency.value = 85
+      const lp = this.ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = 520
+      const gain = this.layerGain(0.36, 1.6)
+      if (gain) {
+        hum.connect(hp)
+        hp.connect(lp)
+        lp.connect(gain)
+        const traffic = this.lfo(gain.gain, 0.085, 0.12)
+        const sweep = this.lfo(lp.frequency, 0.055, 190)
+        this.track(gain, [hum, ...(traffic ? [traffic] : []), ...(sweep ? [sweep] : [])])
+      }
+    }
+    const street = this.noiseSource()
+    if (street) {
+      const bp = this.ctx.createBiquadFilter()
+      bp.type = 'bandpass'
+      bp.frequency.value = 1150
+      bp.Q.value = 0.85
+      const gain = this.layerGain(0.09, 2.0)
+      if (gain) {
+        street.connect(bp)
+        bp.connect(gain)
+        const pass = this.lfo(gain.gain, 0.14, 0.05)
+        this.track(gain, [street, ...(pass ? [pass] : [])])
+      }
+    }
+    this.scheduleCityAccents()
+  }
+
+  private scheduleLibraryAccents() {
+    if (this.kind !== 'library') return
+    const delay = 1400 + Math.random() * 2400
+    this.accentTimer = window.setTimeout(() => {
+      this.accentTimer = null
+      if (this.disposed || this.kind !== 'library') return
+      const ctx = this.ctx
+      const bus = this.ambienceBus
+      if (ctx && bus && this.noise && ctx.state === 'running') {
+        const now = ctx.currentTime + 0.02
+        if (Math.random() < 0.65) {
+          // 轻柔翻书沙沙声
+          const src = ctx.createBufferSource()
+          src.buffer = this.noise
+          const bp = ctx.createBiquadFilter()
+          bp.type = 'bandpass'
+          bp.frequency.setValueAtTime(1600, now)
+          bp.frequency.exponentialRampToValueAtTime(3200, now + 0.07)
+          bp.frequency.exponentialRampToValueAtTime(1100, now + 0.22)
+          bp.Q.value = 1.6
+          const g = ctx.createGain()
+          g.gain.setValueAtTime(0.0001, now)
+          g.gain.exponentialRampToValueAtTime(0.16 + Math.random() * 0.08, now + 0.05)
+          g.gain.exponentialRampToValueAtTime(0.0001, now + 0.24)
+          const pan = ctx.createStereoPanner()
+          pan.pan.value = Math.random() * 1.4 - 0.7
+          src.connect(bp)
+          bp.connect(g)
+          g.connect(pan)
+          pan.connect(bus)
+          src.start(now, Math.random() * 1.2, 0.28)
+          window.setTimeout(() => pan.disconnect(), 420)
+        } else {
+          // 远处轻柔脚步两步
+          const pan = ctx.createStereoPanner()
+          pan.pan.value = Math.random() * 1.4 - 0.7
+          pan.connect(bus)
+          for (let step = 0; step < 2; step += 1) {
+            const at = now + step * 0.48
+            const osc = ctx.createOscillator()
+            osc.type = 'sine'
+            osc.frequency.setValueAtTime(115, at)
+            osc.frequency.exponentialRampToValueAtTime(62, at + 0.09)
+            const g = ctx.createGain()
+            g.gain.setValueAtTime(0.0001, at)
+            g.gain.exponentialRampToValueAtTime(0.055, at + 0.012)
+            g.gain.exponentialRampToValueAtTime(0.0001, at + 0.11)
+            osc.connect(g)
+            g.connect(pan)
+            osc.start(at)
+            osc.stop(at + 0.13)
+          }
+          window.setTimeout(() => pan.disconnect(), 900)
+        }
+      }
+      this.scheduleLibraryAccents()
+    }, delay)
+  }
+
+  private scheduleSnowAccents() {
+    if (this.kind !== 'snow') return
+    const delay = 1800 + Math.random() * 2600
+    this.accentTimer = window.setTimeout(() => {
+      this.accentTimer = null
+      if (this.disposed || this.kind !== 'snow') return
+      const ctx = this.ctx
+      const bus = this.ambienceBus
+      if (ctx && bus && this.noise && ctx.state === 'running') {
+        const now = ctx.currentTime + 0.02
+        const src = ctx.createBufferSource()
+        src.buffer = this.noise
+        const bp = ctx.createBiquadFilter()
+        bp.type = 'bandpass'
+        bp.frequency.setValueAtTime(2400 + Math.random() * 1200, now)
+        bp.Q.value = 1.9
+        const g = ctx.createGain()
+        g.gain.setValueAtTime(0.0001, now)
+        g.gain.exponentialRampToValueAtTime(0.09, now + 0.04)
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.2)
+        const pan = ctx.createStereoPanner()
+        pan.pan.value = Math.random() * 1.4 - 0.7
+        src.connect(bp)
+        bp.connect(g)
+        g.connect(pan)
+        pan.connect(bus)
+        src.start(now, Math.random() * 1.5, 0.24)
+        window.setTimeout(() => pan.disconnect(), 360)
+      }
+      this.scheduleSnowAccents()
+    }, delay)
+  }
+
+  private scheduleCityAccents() {
+    if (this.kind !== 'city') return
+    const delay = 2600 + Math.random() * 3400
+    this.accentTimer = window.setTimeout(() => {
+      this.accentTimer = null
+      if (this.disposed || this.kind !== 'city') return
+      const ctx = this.ctx
+      const bus = this.ambienceBus
+      if (ctx && bus && ctx.state === 'running') {
+        const now = ctx.currentTime + 0.02
+        const pan = ctx.createStereoPanner()
+        pan.pan.value = Math.random() * 1.4 - 0.7
+        pan.connect(bus)
+        // 远处江轮或有轨电车的温柔泛音
+        const base = Math.random() < 0.5 ? 220 : 293.66
+        ;[base, base * 1.5].forEach((freq, idx) => {
+          const osc = ctx.createOscillator()
+          osc.type = 'triangle'
+          osc.frequency.value = freq
+          const lp = ctx.createBiquadFilter()
+          lp.type = 'lowpass'
+          lp.frequency.value = 680
+          const g = ctx.createGain()
+          g.gain.setValueAtTime(0.0001, now)
+          g.gain.exponentialRampToValueAtTime(idx === 0 ? 0.026 : 0.012, now + 0.35)
+          g.gain.exponentialRampToValueAtTime(0.0001, now + 1.9)
+          osc.connect(lp)
+          lp.connect(g)
+          g.connect(pan)
+          osc.start(now)
+          osc.stop(now + 2.0)
+        })
+        window.setTimeout(() => pan.disconnect(), 2200)
+      }
+      this.scheduleCityAccents()
+    }, delay)
+  }
+
+  playInteractionSfx(kind: 'lamp' | 'star' | 'ripple' | 'snow' | 'shutter' | 'horn') {
+    if (!this.ctx || !this.sfxBus || this.muted || !this.active) return
+    if (this.ctx.state !== 'running') return
+    const ctx = this.ctx
+    const bus = this.sfxBus
+    const now = ctx.currentTime + 0.01
+
+    if (kind === 'shutter') {
+      if (this.noise) {
+        const src = ctx.createBufferSource()
+        src.buffer = this.noise
+        const hp = ctx.createBiquadFilter()
+        hp.type = 'highpass'
+        hp.frequency.value = 1800
+        const g = ctx.createGain()
+        g.gain.setValueAtTime(0.0001, now)
+        g.gain.exponentialRampToValueAtTime(0.28, now + 0.008)
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 0.075)
+        src.connect(hp)
+        hp.connect(g)
+        g.connect(bus)
+        src.start(now, Math.random(), 0.09)
+      }
+      const click = ctx.createOscillator()
+      click.type = 'triangle'
+      click.frequency.setValueAtTime(920, now + 0.04)
+      click.frequency.exponentialRampToValueAtTime(420, now + 0.11)
+      const cg = ctx.createGain()
+      cg.gain.setValueAtTime(0.0001, now + 0.04)
+      cg.gain.exponentialRampToValueAtTime(0.11, now + 0.048)
+      cg.gain.exponentialRampToValueAtTime(0.0001, now + 0.12)
+      click.connect(cg)
+      cg.connect(bus)
+      click.start(now + 0.04)
+      click.stop(now + 0.13)
+      return
+    }
+
+    if (kind === 'horn') {
+      ;[146.83, 220].forEach((freq, idx) => {
+        const osc = ctx.createOscillator()
+        osc.type = 'sawtooth'
+        osc.frequency.value = freq
+        const lp = ctx.createBiquadFilter()
+        lp.type = 'lowpass'
+        lp.frequency.value = 540
+        const g = ctx.createGain()
+        g.gain.setValueAtTime(0.0001, now)
+        g.gain.exponentialRampToValueAtTime(idx === 0 ? 0.09 : 0.045, now + 0.18)
+        g.gain.exponentialRampToValueAtTime(0.0001, now + 1.35)
+        osc.connect(lp)
+        lp.connect(g)
+        g.connect(bus)
+        osc.start(now)
+        osc.stop(now + 1.45)
+      })
+      return
+    }
+
+    const notes: Record<'lamp' | 'star' | 'ripple' | 'snow', number[]> = {
+      lamp: [523.25, 659.25],
+      star: [783.99, 1046.5, 1318.5],
+      ripple: [392.0, 587.33],
+      snow: [880.0, 1174.66],
+    }
+    notes[kind].forEach((freq, i) => {
+      const at = now + i * 0.075
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, at)
+      const g = ctx.createGain()
+      g.gain.setValueAtTime(0.0001, at)
+      g.gain.exponentialRampToValueAtTime(0.075 / (i + 1), at + 0.012)
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.65)
+      osc.connect(g)
+      g.connect(bus)
+      osc.start(at)
+      osc.stop(at + 0.7)
+    })
+  }
+
   private rebuildLayers() {
     if (!this.ctx) return
     this.clearAccent()
@@ -452,6 +759,15 @@ export class AmbientMixer {
         break
       case 'night':
         this.buildNight()
+        break
+      case 'library':
+        this.buildLibrary()
+        break
+      case 'snow':
+        this.buildSnow()
+        break
+      case 'city':
+        this.buildCity()
         break
       default:
         break

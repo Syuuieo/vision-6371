@@ -562,6 +562,12 @@ export function PostVisionStudio({
               onAddFocus={handleAddFocus}
               onHeartbeat={handleHeartbeat}
               onPlayVoice={() => void handlePlayVoice()}
+              onSceneInteract={(kind) => {
+                if (soundOn && !muted) {
+                  void mixer.ensure()
+                  mixer.playInteractionSfx(kind)
+                }
+              }}
               photoFilterCss={activeToneMeta.cssFilter}
             />
             {dragging && (

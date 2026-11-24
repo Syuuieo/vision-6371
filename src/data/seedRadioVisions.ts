@@ -26,6 +26,12 @@ type SceneKind =
   | 'city-wall'
   | 'tropic-coast'
   | 'plateau'
+  | 'sydney-harbor'
+  | 'hawaii-sunset'
+  | 'iceland-aurora'
+  | 'capetown-summer'
+  | 'kyoto-river'
+  | 'paris-seine'
 
 interface Palette {
   top: string
@@ -1753,6 +1759,24 @@ function renderScene(ctx: CanvasRenderingContext2D, meta: SeedMeta, w: number, h
     case 'plateau':
       renderPlateau(ctx, rand, meta.palette)
       break
+    case 'sydney-harbor':
+      renderSydneyHarbor(ctx, rand, meta.palette)
+      break
+    case 'hawaii-sunset':
+      renderHawaiiSunset(ctx, rand, meta.palette)
+      break
+    case 'iceland-aurora':
+      renderIcelandAurora(ctx, rand, meta.palette)
+      break
+    case 'capetown-summer':
+      renderCapeTownSummer(ctx, rand, meta.palette)
+      break
+    case 'kyoto-river':
+      renderKyotoRiver(ctx, rand, meta.palette)
+      break
+    case 'paris-seine':
+      renderParisSeine(ctx, rand, meta.palette)
+      break
   }
   renderCityLandmark(ctx, meta.city, meta.palette)
   grain(ctx, rand, w > 800 ? 1300 : 420)
@@ -1766,6 +1790,218 @@ function dataUrl(canvas: HTMLCanvasElement) {
 }
 
 const imageCache = new Map<string, string>()
+
+function renderSydneyHarbor(ctx: CanvasRenderingContext2D, rand: Rand, p: Palette) {
+  ctx.fillStyle = fillLinear(ctx, 0, 0, 0, H * 0.68, [[0, p.top], [0.46, p.mid], [1, p.bottom]])
+  ctx.fillRect(0, 0, W, H)
+  glow(ctx, W * 0.76, H * 0.34, 420, p.glow, 0.52)
+  ctx.save()
+  for (let i = 0; i < 8; i += 1) {
+    ctx.fillStyle = 'rgba(255, 224, 186, 0.18)'
+    ctx.beginPath()
+    ctx.ellipse(180 + i * 210, 210 + (i % 3) * 44, 170 + rand() * 80, 18 + rand() * 14, -0.06, 0, TAU)
+    ctx.fill()
+  }
+  ctx.restore()
+  ctx.save()
+  ctx.strokeStyle = 'rgba(28, 42, 68, 0.78)'
+  ctx.lineWidth = 10
+  ctx.beginPath()
+  ctx.arc(W * 0.28, H * 0.78, 300, Math.PI * 1.12, Math.PI * 1.88)
+  ctx.stroke()
+  ctx.lineWidth = 3
+  for (let i = 0; i < 12; i += 1) {
+    const x = W * 0.11 + i * 44
+    ctx.beginPath()
+    ctx.moveTo(x, H * 0.62)
+    ctx.lineTo(x, H * 0.51)
+    ctx.stroke()
+  }
+  ctx.restore()
+  ctx.save()
+  const shells: [number, number, number, number][] = [
+    [820, 628, 175, 190],
+    [945, 628, 155, 162],
+    [1055, 628, 128, 125],
+    [1175, 628, 145, 148],
+    [1280, 628, 112, 106],
+  ]
+  shells.forEach(([sx, sy, sw, sh], idx) => {
+    ctx.fillStyle = idx % 2 === 0 ? '#fff2df' : '#f2d9be'
+    ctx.beginPath()
+    ctx.moveTo(sx - sw * 0.45, sy)
+    ctx.quadraticCurveTo(sx - sw * 0.1, sy - sh * 0.92, sx + sw * 0.52, sy - sh)
+    ctx.quadraticCurveTo(sx + sw * 0.42, sy - sh * 0.32, sx + sw * 0.36, sy)
+    ctx.closePath()
+    ctx.fill()
+  })
+  ctx.fillStyle = '#1b2b44'
+  ctx.fillRect(740, 626, 660, 26)
+  ctx.restore()
+  ctx.fillStyle = fillLinear(ctx, 0, H * 0.64, 0, H, [[0, '#1e5b7a'], [0.45, '#133e5c'], [1, '#081d33']])
+  ctx.fillRect(0, H * 0.64, W, H * 0.36)
+  for (let i = 0; i < 65; i += 1) {
+    const y = H * 0.66 + rand() * (H * 0.32)
+    const x = W * 0.42 + (rand() - 0.35) * 900
+    ctx.fillStyle = rand() > 0.4 ? 'rgba(255, 224, 168, 0.35)' : 'rgba(130, 224, 240, 0.25)'
+    ctx.fillRect(x, y, 24 + rand() * 88, 2.2)
+  }
+}
+
+function renderHawaiiSunset(ctx: CanvasRenderingContext2D, rand: Rand, p: Palette) {
+  ctx.fillStyle = fillLinear(ctx, 0, 0, 0, H * 0.65, [[0, p.top], [0.48, p.mid], [1, p.bottom]])
+  ctx.fillRect(0, 0, W, H)
+  glow(ctx, W * 0.52, H * 0.52, 460, p.glow, 0.72)
+  ctx.fillStyle = '#fff0c8'
+  ctx.beginPath()
+  ctx.arc(W * 0.52, H * 0.52, 74, 0, TAU)
+  ctx.fill()
+  ctx.fillStyle = '#2e2238'
+  ctx.beginPath()
+  ctx.moveTo(0, H * 0.64)
+  ctx.lineTo(W * 0.18, H * 0.47)
+  ctx.lineTo(W * 0.34, H * 0.52)
+  ctx.lineTo(W * 0.48, H * 0.64)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = fillLinear(ctx, 0, H * 0.62, 0, H, [[0, '#c8685c'], [0.35, '#2b5876'], [1, '#12263a']])
+  ctx.fillRect(0, H * 0.62, W, H * 0.38)
+  for (let i = 0; i < 80; i += 1) {
+    const y = H * 0.63 + rand() * H * 0.34
+    const spread = 140 + ((y - H * 0.63) / (H * 0.34)) * 460
+    const x = W * 0.52 + (rand() - 0.5) * spread
+    ctx.fillStyle = 'rgba(255, 222, 160, 0.46)'
+    ctx.fillRect(x, y, 22 + rand() * 64, 2.6)
+  }
+  ctx.save()
+  ctx.strokeStyle = '#181224'
+  ctx.lineCap = 'round'
+  for (const [bx, lean] of [[180, 110], [1420, -120]] as const) {
+    ctx.lineWidth = 22
+    ctx.beginPath()
+    ctx.moveTo(bx, H)
+    ctx.quadraticCurveTo(bx + lean * 0.45, H * 0.62, bx + lean, H * 0.32)
+    ctx.stroke()
+    const tx = bx + lean
+    const ty = H * 0.32
+    for (let f = 0; f < 7; f += 1) {
+      const a = -Math.PI + (f / 6) * Math.PI * 1.45
+      ctx.lineWidth = 7
+      ctx.beginPath()
+      ctx.moveTo(tx, ty)
+      ctx.quadraticCurveTo(tx + Math.cos(a) * 110, ty + Math.sin(a) * 60 - 25, tx + Math.cos(a) * 195, ty + Math.sin(a) * 125 + 40)
+      ctx.stroke()
+    }
+  }
+  ctx.restore()
+}
+
+function renderIcelandAurora(ctx: CanvasRenderingContext2D, rand: Rand, p: Palette) {
+  ctx.fillStyle = fillLinear(ctx, 0, 0, 0, H, [[0, p.top], [0.5, p.mid], [1, p.bottom]])
+  ctx.fillRect(0, 0, W, H)
+  stars(ctx, rand, 280, 0, H * 0.65)
+  ctx.save()
+  ctx.globalCompositeOperation = 'screen'
+  for (let band = 0; band < 3; band += 1) {
+    const grad = ctx.createLinearGradient(0, 90 + band * 70, 0, 520 + band * 40)
+    grad.addColorStop(0, 'rgba(110, 255, 190, 0)')
+    grad.addColorStop(0.45, band === 1 ? 'rgba(98, 224, 255, 0.36)' : 'rgba(84, 248, 178, 0.44)')
+    grad.addColorStop(1, 'rgba(40, 120, 140, 0)')
+    ctx.fillStyle = grad
+    ctx.beginPath()
+    ctx.moveTo(-40, 420)
+    for (let x = 0; x <= W + 80; x += 60) {
+      const y = 180 + band * 65 + Math.sin(x * 0.0042 + band * 1.6) * 85
+      ctx.lineTo(x, y)
+    }
+    ctx.lineTo(W + 40, 560)
+    ctx.lineTo(-40, 560)
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.restore()
+  mountain(ctx, rand, H * 0.72, '#102234', 6, 250)
+  ctx.fillStyle = fillLinear(ctx, 0, H * 0.7, 0, H, [[0, '#0c2638'], [1, '#06131f']])
+  ctx.fillRect(0, H * 0.7, W, H * 0.3)
+  glow(ctx, W * 0.48, H * 0.78, 360, '#5ef0be', 0.28)
+  snow(ctx, rand, 120)
+}
+
+function renderCapeTownSummer(ctx: CanvasRenderingContext2D, rand: Rand, p: Palette) {
+  ctx.fillStyle = fillLinear(ctx, 0, 0, 0, H * 0.66, [[0, p.top], [0.52, p.mid], [1, p.bottom]])
+  ctx.fillRect(0, 0, W, H)
+  glow(ctx, W * 0.24, H * 0.28, 380, p.glow, 0.56)
+  ctx.fillStyle = '#2d3b52'
+  ctx.beginPath()
+  ctx.moveTo(140, H * 0.64)
+  ctx.lineTo(360, H * 0.36)
+  ctx.lineTo(1140, H * 0.36)
+  ctx.lineTo(1380, H * 0.64)
+  ctx.closePath()
+  ctx.fill()
+  for (let i = 0; i < 14; i += 1) {
+    const cx = 360 + i * 58
+    glow(ctx, cx, H * 0.37 + rand() * 34, 88, '#fff4e6', 0.44)
+  }
+  ctx.fillStyle = fillLinear(ctx, 0, H * 0.63, 0, H, [[0, '#2a7aa0'], [0.55, '#195478'], [1, '#0c2b44']])
+  ctx.fillRect(0, H * 0.63, W, H * 0.37)
+  for (let i = 0; i < 70; i += 1) {
+    ctx.fillStyle = 'rgba(255, 240, 210, 0.34)'
+    ctx.fillRect(rand() * W, H * 0.65 + rand() * H * 0.33, 30 + rand() * 90, 2.5)
+  }
+}
+
+function renderKyotoRiver(ctx: CanvasRenderingContext2D, rand: Rand, p: Palette) {
+  ctx.fillStyle = fillLinear(ctx, 0, 0, 0, H * 0.65, [[0, p.top], [0.5, p.mid], [1, p.bottom]])
+  ctx.fillRect(0, 0, W, H)
+  mountain(ctx, rand, H * 0.58, '#282a42', 5, 175)
+  ctx.fillStyle = '#181826'
+  ctx.fillRect(0, H * 0.48, W, H * 0.16)
+  for (let i = 0; i < 16; i += 1) {
+    const lx = 70 + i * 96
+    glow(ctx, lx, H * 0.56, 46, '#ffb870', 0.45)
+    ctx.fillStyle = '#ffe0a8'
+    ctx.beginPath()
+    ctx.ellipse(lx, H * 0.56, 10, 14, 0, 0, TAU)
+    ctx.fill()
+  }
+  ctx.fillStyle = fillLinear(ctx, 0, H * 0.63, 0, H, [[0, '#242c48'], [1, '#0e1424']])
+  ctx.fillRect(0, H * 0.63, W, H * 0.37)
+  for (let i = 0; i < 16; i += 1) {
+    const lx = 70 + i * 96
+    for (let j = 0; j < 7; j += 1) {
+      ctx.fillStyle = 'rgba(255, 198, 128, 0.28)'
+      ctx.fillRect(lx - 14 + (rand() - 0.5) * 14, H * 0.66 + j * 38, 28, 3)
+    }
+  }
+}
+
+function renderParisSeine(ctx: CanvasRenderingContext2D, rand: Rand, p: Palette) {
+  ctx.fillStyle = fillLinear(ctx, 0, 0, 0, H * 0.65, [[0, p.top], [0.5, p.mid], [1, p.bottom]])
+  ctx.fillRect(0, 0, W, H)
+  glow(ctx, W * 0.66, H * 0.48, 360, p.glow, 0.44)
+  skyline(ctx, rand, H * 0.62, 70, 165, '#192038', 10)
+  ctx.save()
+  ctx.fillStyle = '#141a2e'
+  ctx.beginPath()
+  ctx.moveTo(W * 0.66, H * 0.18)
+  ctx.lineTo(W * 0.62, H * 0.62)
+  ctx.lineTo(W * 0.7, H * 0.62)
+  ctx.closePath()
+  ctx.fill()
+  glow(ctx, W * 0.66, H * 0.21, 52, '#ffe09e', 0.65)
+  ctx.restore()
+  ctx.fillStyle = fillLinear(ctx, 0, H * 0.62, 0, H, [[0, '#202d4a'], [1, '#0c1324']])
+  ctx.fillRect(0, H * 0.62, W, H * 0.38)
+  for (let i = 0; i < 10; i += 1) {
+    const lx = 110 + i * 155
+    glow(ctx, lx, H * 0.61, 44, '#ffd088', 0.48)
+    for (let j = 0; j < 6; j += 1) {
+      ctx.fillStyle = 'rgba(255, 214, 146, 0.3)'
+      ctx.fillRect(lx - 18, H * 0.66 + j * 42, 36, 2.8)
+    }
+  }
+}
 
 function imageFor(meta: SeedMeta, width: number, height: number) {
   const key = `${meta.code}:${width}x${height}`
@@ -1948,7 +2184,7 @@ const SEEDS: SeedMeta[] = [
     lat: 45.8038,
     lon: 126.5349,
     particles: 'snow',
-    ambience: 'wind',
+    ambience: 'snow',
     tempC: -8,
     windLevel: 2,
     scentTag: '雪与铁栏杆',
@@ -2050,7 +2286,7 @@ const SEEDS: SeedMeta[] = [
     lat: 31.2304,
     lon: 121.4737,
     particles: 'dust',
-    ambience: 'night',
+    ambience: 'city',
     tempC: 13,
     windLevel: 1,
     scentTag: '金属与冷咖啡',
@@ -2403,6 +2639,276 @@ const SEEDS: SeedMeta[] = [
       },
     ],
   },
+  {
+    code: 'VRSY13',
+    city: '悉尼',
+    title: '悉尼 · 南半球盛夏海港',
+    sender: '南风渡客',
+    scene: 'sydney-harbor',
+    lat: -33.8688,
+    lon: 151.2093,
+    particles: 'dust',
+    ambience: 'ocean',
+    tempC: 28,
+    windLevel: 2,
+    scentTag: '海盐、防晒霜与盛夏晚风',
+    hearts: 392,
+    publishedAt: Date.UTC(2026, 10, 24, 7, 20),
+    palette: {
+      top: '#184e77',
+      mid: '#528aae',
+      bottom: '#f2b880',
+      glow: '#ffd699',
+      accent: '#fff0d2',
+      ground: '#0a2239',
+    },
+    focus: [
+      {
+        id: 'sy13-1',
+        x: 0.62,
+        y: 0.54,
+        note: '北半球正在降温下雪，可悉尼歌剧院的白色贝壳正泡在 28°C 的盛夏晚霞里。',
+      },
+      {
+        id: 'sy13-2',
+        x: 0.28,
+        y: 0.56,
+        note: '渡轮从大桥底下开过去，带起一长条碎金色的水花，替你收进眼睛里。',
+      },
+    ],
+    echoes: [
+      {
+        id: 'sy13-e1',
+        message: '把南半球的夏天寄给正在过冬的人，大概是最浪漫的时差。',
+        createdAt: Date.UTC(2026, 10, 24, 8, 12),
+      },
+    ],
+  },
+  {
+    code: 'VRHW14',
+    city: '夏威夷',
+    title: '夏威夷 · 珊瑚日落湾',
+    sender: '浪尖邮差',
+    scene: 'hawaii-sunset',
+    lat: 21.3069,
+    lon: -157.8583,
+    particles: 'firefly',
+    ambience: 'ocean',
+    tempC: 27,
+    windLevel: 2,
+    scentTag: '鸡蛋花、椰风与暖海潮',
+    hearts: 438,
+    publishedAt: Date.UTC(2026, 10, 24, 4, 45),
+    palette: {
+      top: '#24224a',
+      mid: '#b85c6a',
+      bottom: '#f6a868',
+      glow: '#ffd996',
+      accent: '#ffe9be',
+      ground: '#161b30',
+    },
+    focus: [
+      {
+        id: 'hw14-1',
+        x: 0.52,
+        y: 0.52,
+        note: '太阳掉进太平洋的那三分钟，整片海都是温热的蜜橘色。',
+      },
+      {
+        id: 'hw14-2',
+        x: 0.16,
+        y: 0.44,
+        note: '椰子树叶被海风吹得沙沙响，和草原上的风是完全不同的夏天。',
+      },
+    ],
+    echoes: [
+      {
+        id: 'hw14-e1',
+        message: '听着太平洋的浪声发呆，真想把这片晚霞叠起来放进口袋。',
+        createdAt: Date.UTC(2026, 10, 24, 5, 30),
+      },
+    ],
+  },
+  {
+    code: 'VRIS15',
+    city: '雷克雅未克',
+    title: '雷克雅未克 · 极光冰湾',
+    sender: '北纬六十四',
+    scene: 'iceland-aurora',
+    lat: 64.1466,
+    lon: -21.9426,
+    particles: 'snow',
+    ambience: 'snow',
+    tempC: -2,
+    windLevel: 2,
+    scentTag: '冰川冷空气与松针雪',
+    hearts: 465,
+    publishedAt: Date.UTC(2026, 10, 23, 23, 15),
+    palette: {
+      top: '#040b18',
+      mid: '#0c2338',
+      bottom: '#14424e',
+      glow: '#7cf5c4',
+      accent: '#c8ffeb',
+      ground: '#05101a',
+    },
+    focus: [
+      {
+        id: 'is15-1',
+        x: 0.48,
+        y: 0.28,
+        note: '极光是地球磁场和太阳风撞出的光——你在地核最深处，一定也和它连着同一根磁感线。',
+      },
+      {
+        id: 'is15-2',
+        x: 0.68,
+        y: 0.78,
+        note: '冰湾的水面安静得像镜子，把一整条绿色星河接住了。',
+      },
+    ],
+    echoes: [
+      {
+        id: 'is15-e1',
+        message: '站在冰岛看极光时，突然觉得整颗地球都在轻声呼吸。',
+        createdAt: Date.UTC(2026, 10, 24, 1, 5),
+      },
+    ],
+  },
+  {
+    code: 'VRCT16',
+    city: '开普敦',
+    title: '开普敦 · 桌山云瀑与南大洋',
+    sender: '好望角旅人',
+    scene: 'capetown-summer',
+    lat: -33.9249,
+    lon: 18.4241,
+    particles: 'dust',
+    ambience: 'wind',
+    tempC: 25,
+    windLevel: 3,
+    scentTag: '南大洋海风与桉树清香',
+    hearts: 318,
+    publishedAt: Date.UTC(2026, 10, 23, 15, 20),
+    palette: {
+      top: '#1c5a8a',
+      mid: '#6ba8c8',
+      bottom: '#f4d3a2',
+      glow: '#fff0cc',
+      accent: '#ffffff',
+      ground: '#13314a',
+    },
+    focus: [
+      {
+        id: 'ct16-1',
+        x: 0.54,
+        y: 0.39,
+        note: '桌山顶上铺着一层白雾，像有人给南半球的夏天盖了条桌布。',
+      },
+      {
+        id: 'ct16-2',
+        x: 0.44,
+        y: 0.76,
+        note: '大西洋和印度洋的风在这儿撞在一起，吹得整个人都轻快起来。',
+      },
+    ],
+    echoes: [
+      {
+        id: 'ct16-e1',
+        message: '南半球的阳光好透亮，连云朵都像刚晒过一样蓬松。',
+        createdAt: Date.UTC(2026, 10, 23, 17, 10),
+      },
+    ],
+  },
+  {
+    code: 'VRKY17',
+    city: '京都',
+    title: '京都 · 鸭川暮色风铃',
+    sender: '木廊听风',
+    scene: 'kyoto-river',
+    lat: 35.0116,
+    lon: 135.7681,
+    particles: 'firefly',
+    ambience: 'wind',
+    tempC: 16,
+    windLevel: 1,
+    scentTag: '桧木廊檐与河畔晚风',
+    hearts: 356,
+    publishedAt: Date.UTC(2026, 10, 23, 11, 40),
+    palette: {
+      top: '#181e3a',
+      mid: '#4a4068',
+      bottom: '#d48a78',
+      glow: '#ffd098',
+      accent: '#ffe6bd',
+      ground: '#121526',
+    },
+    focus: [
+      {
+        id: 'ky17-1',
+        x: 0.52,
+        y: 0.56,
+        note: '河岸一排町屋刚点亮暖灯，风铃隔几秒轻轻响一下。',
+      },
+      {
+        id: 'ky17-2',
+        x: 0.44,
+        y: 0.78,
+        note: '水声盖住了车流，坐在石阶上能听见很远以外的笑声。',
+      },
+    ],
+    echoes: [
+      {
+        id: 'ky17-e1',
+        message: '傍晚的鸭川让人觉得一天可以走得很慢很慢。',
+        createdAt: Date.UTC(2026, 10, 23, 13, 18),
+      },
+    ],
+  },
+  {
+    code: 'VRPR18',
+    city: '巴黎',
+    title: '巴黎 · 塞纳河黄昏路灯',
+    sender: '左岸散步者',
+    scene: 'paris-seine',
+    lat: 48.8566,
+    lon: 2.3522,
+    particles: 'dust',
+    ambience: 'city',
+    tempC: 14,
+    windLevel: 1,
+    scentTag: '旧书摊纸香与晚风咖啡',
+    hearts: 374,
+    publishedAt: Date.UTC(2026, 10, 22, 19, 30),
+    palette: {
+      top: '#131d38',
+      mid: '#3e4268',
+      bottom: '#d89a7a',
+      glow: '#ffd89e',
+      accent: '#ffebc8',
+      ground: '#0d1426',
+    },
+    focus: [
+      {
+        id: 'pr18-1',
+        x: 0.66,
+        y: 0.32,
+        note: '整点一到，铁塔尖的灯光轻轻闪起来，桥上路过的人都停下了脚步。',
+      },
+      {
+        id: 'pr18-2',
+        x: 0.36,
+        y: 0.72,
+        note: '河边人来人往的脚步声和远处手风琴混在一起，是活生生的人间烟火。',
+      },
+    ],
+    echoes: [
+      {
+        id: 'pr18-e1',
+        message: '左岸的晚风总是带着烤栗子和旧书页的味道。',
+        createdAt: Date.UTC(2026, 10, 22, 21, 5),
+      },
+    ],
+  },
 ]
 
 export const RADIO_CITY_COORDS: Record<string, { lat: number; lon: number }> = {
@@ -2424,6 +2930,12 @@ export const RADIO_CITY_COORDS: Record<string, { lat: number; lon: number }> = {
   深圳: { lat: 22.5431, lon: 114.0579 },
   苏州: { lat: 31.2989, lon: 120.5853 },
   厦门: { lat: 24.4798, lon: 118.0894 },
+  悉尼: { lat: -33.8688, lon: 151.2093 },
+  夏威夷: { lat: 21.3069, lon: -157.8583 },
+  雷克雅未克: { lat: 64.1466, lon: -21.9426 },
+  开普敦: { lat: -33.9249, lon: 18.4241 },
+  京都: { lat: 35.0116, lon: 135.7681 },
+  巴黎: { lat: 48.8566, lon: 2.3522 },
 }
 
 export function cityCoords(city: string) {

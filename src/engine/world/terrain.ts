@@ -3,6 +3,8 @@ import {
   LAKE,
   ROAM_CENTER,
   SHARED_UNIFORMS,
+  WORLD_TRAILS,
+  distanceToSegmentSq2D,
   heightAt,
   normalAt,
   shared,
@@ -51,8 +53,8 @@ export class TerrainWorld {
   }
 
   /** 在所有地标与彩蛋放置完成后烘焙精确的高度、净空遮罩与花海分布图 */
-  bakeFields(clearZones: ClearZone[]) {
-    const resolution = 512
+  bakeFields(clearZones: ClearZone[], lowDetail = false) {
+    const resolution = lowDetail ? 512 : 768
     const span = 600
     const origin = { x: -span / 2, z: -42 - span / 2 }
     const texel = span / resolution
@@ -95,9 +97,32 @@ export class TerrainWorld {
         const lakeDX = (x - LAKE.x) / (LAKE.rx * 1.03)
         const lakeDZ = (z - LAKE.z) / (LAKE.rz * 1.03)
         const lakeEllip = Math.sqrt(lakeDX * lakeDX + lakeDZ * lakeDZ)
-        const inLake = lakeEllip < 1 || y < LAKE.y + 0.45
+        const inWater = y < LAKE.y + 0.32
         const shoreGlow = Math.max(0, 1 - smoothstep(0.45, 0.95, y - LAKE.y))
-        heightData[offset + 2] = inLake ? 255 : Math.round(shoreGlow * 140)
+        let trailClear = 0
+        if (!inWater) {
+          for (const trail of WORLD_TRAILS) {
+            const pts = trail.points
+            for (let s = 0; s < pts.length - 1; s += 1) {
+              const dSq = distanceToSegmentSq2D(
+                x,
+                z,
+                pts[s][0],
+                pts[s][1],
+                pts[s + 1][0],
+                pts[s + 1][1],
+              )
+              const w = trail.width
+              if (dSq < w * w * 1.9) {
+                const dist = Math.sqrt(dSq)
+                trailClear = Math.max(trailClear, 1 - smoothstep(w * 0.48, w * 1.18, dist))
+              }
+            }
+          }
+        }
+        heightData[offset + 2] = inWater
+          ? 255
+          : Math.max(Math.round(shoreGlow * 140), Math.round(trailClear * 205))
 
         // A 通道编码到湖面的有符号距离 [-28m, +28m]
         const approxShoreDist = (lakeEllip - 1) * 58
@@ -110,7 +135,7 @@ export class TerrainWorld {
         const wet = 1 - smoothstep(0.2, 4.2, y - LAKE.y)
         const rock = smoothstep(0.11, 0.29, slope)
 
-        splatData[offset] = inLake
+        splatData[offset] = inWater
           ? 0
           : Math.round(smoothstep(0.32, 0.78, patch) * (1 - rock) * 255)
         splatData[offset + 1] = Math.round(species * 255)
@@ -179,7 +204,7 @@ export class TerrainWorld {
   }
 
   private buildTerrainMesh(lowDetail: boolean) {
-    const half = 450
+    const half = 520
     const centerZ = -42
     const segments = lowDetail ? 140 : 210
     const stride = segments + 1
@@ -463,6 +488,13 @@ void main() {
   // 远景花田色晕（近处由三维 GPU 野花接管，40~160 米渐渐融入地表花毯）
   float flowerMask = flowers * smoothstep(26.0, 96.0, dist) * (0.55 + 0.55 * nzB.b);
   meadowCol = mix(meadowCol, flowerMean(species) * 0.62, saturate(flowerMask));
+
+  // 远近踏青小径与净空地面土色过渡
+  float clearMask = texture2D(uHeightTex, worldHeightUV(P.xz)).b;
+  float dryLand = smoothstep(0.42, 1.05, P.y - uWaterY);
+  float trailMask = smoothstep(0.28, 0.78, clearMask) * dryLand;
+  vec3 trailCol = mix(vec3(0.27, 0.23, 0.17), vec3(0.19, 0.17, 0.13), nzC.g) * (0.86 + 0.28 * nzA.r);
+  meadowCol = mix(meadowCol, trailCol, trailMask * 0.88);
 
   // 湖畔湿润砂砾过渡带
   float shoreH = smoothstep(1.3, -0.4, P.y - uWaterY + (nzA.b - 0.5) * 0.45);

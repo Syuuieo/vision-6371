@@ -4,6 +4,15 @@ import { citySignature } from '../data/citySignature'
 import { getSettings } from '../services/settings'
 import type { FocusPoint, ParticleKind, StudioMode, VisionPacket } from '../types/vision'
 
+export type SceneInteractKind = 'lamp' | 'star' | 'ripple' | 'snow'
+
+interface SceneSpark {
+  id: number
+  x: number
+  y: number
+  kind: SceneInteractKind
+}
+
 interface VisionViewport3DProps {
   packet: VisionPacket
   mode: StudioMode
@@ -11,7 +20,22 @@ interface VisionViewport3DProps {
   onSelectFocus?: (id: string | null) => void
   onHeartbeat: () => number | void
   onPlayVoice?: () => void
+  onSceneInteract?: (kind: SceneInteractKind) => void
   photoFilterCss?: string
+}
+
+function detectInteractFlavor(packet: VisionPacket): { kind: SceneInteractKind; action: string; counter: string } {
+  const text = `${packet.title} ${packet.city} ${packet.scentTag}`
+  if (packet.ambience === 'library' || /图书|自习|书页/.test(text)) {
+    return { kind: 'lamp', action: '轻点窗格亮起一盏灯', counter: '已点亮灯火' }
+  }
+  if (packet.ambience === 'night' || /星|极光|拉萨|雷克雅未克|观星|银河/.test(text)) {
+    return { kind: 'star', action: '轻点夜空观测一颗星', counter: '已观测星点' }
+  }
+  if (packet.particles === 'snow' || packet.ambience === 'snow' || /雪|哈尔滨/.test(text)) {
+    return { kind: 'snow', action: '轻点画面扬起一片雪', counter: '已唤起雪花' }
+  }
+  return { kind: 'ripple', action: '轻点画面荡起一道光波', counter: '已荡起涟漪' }
 }
 
 const HEARTBEAT_ECHOS = [
@@ -27,6 +51,7 @@ interface SceneApi {
   setParticles: (kind: ParticleKind) => void
   setFocus: (focus: FocusPoint[]) => void
   setMode: (mode: StudioMode) => void
+  setHoldLevel: (level: number) => void
   triggerPulse: () => void
 }
 
@@ -155,6 +180,7 @@ export function VisionViewport3D({
   onSelectFocus,
   onHeartbeat,
   onPlayVoice,
+  onSceneInteract,
   photoFilterCss,
 }: VisionViewport3DProps) {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -184,10 +210,35 @@ export function VisionViewport3D({
   const [heartbeatAt, setHeartbeatAt] = useState(0)
   const [sent, setSent] = useState(false)
   const [heartbeatEcho, setHeartbeatEcho] = useState<{ bpm: number; text: string } | null>(null)
+  const [sparks, setSparks] = useState<SceneSpark[]>([])
+  const [playPropsInEdit, setPlayPropsInEdit] = useState(false)
+  const sparkIdRef = useRef(1)
+  const playPropsRef = useRef(false)
+  const interactCbRef = useRef(onSceneInteract)
   const sentTimerRef = useRef<number | null>(null)
   const holdTimerRef = useRef<number | null>(null)
   const holdStartRef = useRef(0)
   const holdingRef = useRef(false)
+  const vibStageRef = useRef(0)
+
+  const flavor = detectInteractFlavor(packet)
+  const flavorRef = useRef(flavor)
+
+  useEffect(() => {
+    interactCbRef.current = onSceneInteract
+  }, [onSceneInteract])
+
+  useEffect(() => {
+    flavorRef.current = flavor
+  }, [flavor])
+
+  useEffect(() => {
+    playPropsRef.current = playPropsInEdit
+  }, [playPropsInEdit])
+
+  useEffect(() => {
+    setSparks([])
+  }, [packet.id])
 
   const selected = selectedId ? packet.focus.find((point) => point.id === selectedId) ?? null : null
 
@@ -255,6 +306,8 @@ export function VisionViewport3D({
     let focusLive: FocusPoint[] = packetRef.current.focus
     let elapsed = 0
     let pulseStart = -10
+    let holdTarget = 0
+    let holdSmooth = 0
     let pointerX = 0
     let pointerY = 0
     let smoothX = 0
@@ -416,8 +469,8 @@ export function VisionViewport3D({
 
       viewH = 2 * Math.tan((FOV / 2) * (Math.PI / 180)) * CAMERA_Z
       viewW = viewH * camera.aspect
-      plateW = viewW * 1.24
-      plateH = viewH * 1.24
+      plateW = viewW * 1.07
+      plateH = viewH * 1.07
       plate.scale.set(plateW, plateH, 1)
       fitTexture()
       rebuildBeacons(focusLive)
@@ -440,6 +493,9 @@ export function VisionViewport3D({
         if (disposed || loadedUrl !== url) return
         const texture = new THREE.Texture(img)
         texture.colorSpace = THREE.SRGBColorSpace
+        texture.generateMipmaps = false
+        texture.minFilter = THREE.LinearFilter
+        texture.magFilter = THREE.LinearFilter
         texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy())
         texture.wrapS = THREE.ClampToEdgeWrapping
         texture.wrapT = THREE.ClampToEdgeWrapping
@@ -513,6 +569,10 @@ export function VisionViewport3D({
       if (next !== 'preview') setSelectedId(null)
     }
 
+    function setHoldLevel(level: number) {
+      holdTarget = clamp(level, 0, 1)
+    }
+
     function triggerPulse() {
       pulseStart = elapsed
       if (particleUniforms) particleUniforms.uPulse.value = 0.001
@@ -526,6 +586,7 @@ export function VisionViewport3D({
         rebuildBeacons(focus)
       },
       setMode,
+      setHoldLevel,
       triggerPulse,
     }
 
@@ -580,15 +641,26 @@ export function VisionViewport3D({
         }
         return
       }
-      if (modeLive === 'edit') {
-        const rect = renderer.domElement.getBoundingClientRect()
-        if (!rect.width || !rect.height) return
-        const x = clamp((event.clientX - rect.left) / rect.width, 0.04, 0.96)
-        const y = clamp((event.clientY - rect.top) / rect.height, 0.06, 0.94)
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      const x = clamp((event.clientX - rect.left) / rect.width, 0.04, 0.96)
+      const y = clamp((event.clientY - rect.top) / rect.height, 0.06, 0.94)
+      if (modeLive === 'edit' && !playPropsRef.current) {
         addFocusRef.current(x, y)
       } else {
-        setSelectedId(null)
-        selectFocusRef.current?.(null)
+        if (modeLive === 'preview') {
+          setSelectedId(null)
+          selectFocusRef.current?.(null)
+        }
+        const kind = flavorRef.current.kind
+        const id = sparkIdRef.current++
+        setSparks((prev) => [...prev.slice(-11), { id, x, y, kind }])
+        interactCbRef.current?.(kind)
+        try {
+          navigator.vibrate?.(12)
+        } catch {
+          /* ignore */
+        }
       }
     }
 
@@ -630,12 +702,16 @@ export function VisionViewport3D({
       smoothY += (targetY - smoothY) * smooth
 
       const wantParallax = getSettings().parallax
+      const calm = getSettings().reducedMotion
       parallaxMix += ((wantParallax ? 1 : 0) - parallaxMix) * (1 - Math.pow(0.02, Math.min(delta, 0.05)))
-      camera.position.x = smoothX * 0.16 * parallaxMix + gyro.x * 0.2
-      camera.position.y = smoothY * 0.11 * parallaxMix + gyro.y * 0.14
-      camera.position.z = CAMERA_Z
+      holdSmooth += (holdTarget - holdSmooth) * (1 - Math.exp(-Math.min(delta, 0.05) * 8))
+      const pulseWave = pulseStart >= 0 ? Math.max(0, 1 - (elapsed - pulseStart) / 1.4) : 0
+      const resonanceZoom = calm ? 0 : holdSmooth * 0.46 + Math.sin(pulseWave * Math.PI) * 0.2
+      camera.position.x = smoothX * 0.14 * parallaxMix + gyro.x * 0.16
+      camera.position.y = smoothY * 0.1 * parallaxMix + gyro.y * 0.12
+      camera.position.z = CAMERA_Z - resonanceZoom
       camera.lookAt(0, 0, 0)
-      plate.position.y = Math.sin(elapsed * 0.45) * 0.004
+      plate.position.y = Math.sin(elapsed * 0.45) * 0.003
 
       beaconNodes.forEach((node) => {
         const breathe = 0.5 + 0.5 * Math.sin(elapsed * 1.5 + node.seed)
@@ -653,7 +729,9 @@ export function VisionViewport3D({
       if (particleUniforms && particleMaterial) {
         particleUniforms.uTime.value = elapsed
         particleUniforms.uPixel.value = Math.min(window.devicePixelRatio || 1, 2)
-        if (pulseStart >= 0) {
+        if (holdSmooth > 0.02) {
+          particleUniforms.uPulse.value = clamp(0.18 + holdSmooth * 0.55, 0.02, 0.82)
+        } else if (pulseStart >= 0) {
           const pulse = clamp((elapsed - pulseStart) / 1.8, 0, 1)
           particleUniforms.uPulse.value = pulse >= 1 ? 0 : pulse
         } else {
@@ -770,6 +848,7 @@ export function VisionViewport3D({
       holdTimerRef.current = null
     }
     setHold(0)
+    apiRef.current?.setHoldLevel(0)
     setHeartbeatAt(Date.now())
     setSent(true)
     apiRef.current?.triggerPulse()
@@ -793,14 +872,29 @@ export function VisionViewport3D({
     if (holdingRef.current) return
     holdingRef.current = true
     holdStartRef.current = performance.now()
+    vibStageRef.current = 0
     setHold(0.001)
+    apiRef.current?.setHoldLevel(0.08)
+    try {
+      navigator.vibrate?.(12)
+    } catch {
+      /* ignore */
+    }
     if (holdTimerRef.current !== null) window.clearInterval(holdTimerRef.current)
     holdTimerRef.current = window.setInterval(() => {
       if (!holdingRef.current) return
       const progress = clamp((performance.now() - holdStartRef.current) / HOLD_MS, 0, 1)
       setHold(progress)
+      apiRef.current?.setHoldLevel(progress)
+      if (progress > 0.28 && vibStageRef.current < 1) {
+        vibStageRef.current = 1
+        try { navigator.vibrate?.(18) } catch { /* ignore */ }
+      } else if (progress > 0.62 && vibStageRef.current < 2) {
+        vibStageRef.current = 2
+        try { navigator.vibrate?.(28) } catch { /* ignore */ }
+      }
       if (progress >= 1) fireHeartbeat()
-    }, 40)
+    }, 35)
   }
 
   const endHold = () => {
@@ -811,6 +905,7 @@ export function VisionViewport3D({
       holdTimerRef.current = null
     }
     setHold(0)
+    apiRef.current?.setHoldLevel(0)
   }
 
   const canGyro = isCoarse && typeof window !== 'undefined' && 'DeviceOrientationEvent' in window
@@ -880,11 +975,123 @@ export function VisionViewport3D({
         </div>
       )}
 
+      {/* 交互场景彩蛋层：点亮窗灯 / 连起观测星点 / 雪花与光波 */}
+      {sparks.length > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-[4] overflow-hidden" aria-hidden="true">
+          {flavor.kind === 'star' && sparks.length >= 2 && (
+            <svg className="absolute inset-0 h-full w-full">
+              {sparks.slice(1).map((pt, idx) => {
+                const prev = sparks[idx]
+                return (
+                  <line
+                    key={pt.id}
+                    x1={`${prev.x * 100}%`}
+                    y1={`${prev.y * 100}%`}
+                    x2={`${pt.x * 100}%`}
+                    y2={`${pt.y * 100}%`}
+                    stroke="rgba(210, 232, 255, 0.52)"
+                    strokeWidth="1.2"
+                    strokeDasharray="4 4"
+                  />
+                )
+              })}
+            </svg>
+          )}
+          {sparks.map((sp) => (
+            <div
+              key={sp.id}
+              className="absolute -translate-x-1/2 -translate-y-1/2 animate-fade-in"
+              style={{ left: `${sp.x * 100}%`, top: `${sp.y * 100}%` }}
+            >
+              {sp.kind === 'lamp' && (
+                <span className="relative flex h-8 w-8 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full bg-[#ffd285]/40 blur-md" />
+                  <span className="h-3.5 w-5 rounded-[3px] border border-[#ffe8ba]/80 bg-[#ffd994] shadow-[0_0_24px_8px_rgba(255,206,120,0.68)]" />
+                </span>
+              )}
+              {sp.kind === 'star' && (
+                <span className="relative flex h-6 w-6 items-center justify-center">
+                  <span className="h-2 w-2 rotate-45 bg-[#eef6ff] shadow-[0_0_16px_5px_rgba(182,220,255,0.88)]" />
+                  <span className="absolute h-5 w-px bg-white/65" />
+                  <span className="absolute h-px w-5 bg-white/65" />
+                </span>
+              )}
+              {sp.kind === 'snow' && (
+                <span className="relative flex h-8 w-8 items-center justify-center">
+                  <span className="h-3 w-3 rounded-full bg-white/90 shadow-[0_0_20px_7px_rgba(216,240,255,0.75)]" />
+                </span>
+              )}
+              {sp.kind === 'ripple' && (
+                <span className="relative flex h-12 w-12 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full border border-signal/70 animate-[pulseRing_2.4s_ease-out_infinite]" />
+                  <span className="h-2 w-2 rounded-full bg-signal shadow-[0_0_14px_rgba(242,194,139,0.9)]" />
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 长按共鸣时的实时场景光环呼吸反馈 */}
+      {hold > 0 && (
+        <div
+          className="pointer-events-none absolute inset-0 z-[6] flex items-center justify-center"
+          aria-hidden="true"
+        >
+          <div
+            className="rounded-full border border-signal/60 transition-transform duration-75"
+            style={{
+              width: `${120 + hold * 340}px`,
+              height: `${120 + hold * 340}px`,
+              opacity: 0.24 + hold * 0.55,
+              boxShadow: `0 0 ${28 + hold * 56}px rgba(242, 194, 139, ${0.25 + hold * 0.4})`,
+            }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `radial-gradient(circle at 50% 50%, rgba(242, 194, 139, ${hold * 0.22}), transparent 66%)`,
+            }}
+          />
+        </div>
+      )}
+
+      {sparks.length > 0 && (
+        <div className="pointer-events-auto absolute bottom-16 right-4 z-20 flex items-center gap-2 rounded-full border border-signal/35 bg-[#081022]/75 px-3 py-1 font-serif text-[11px] text-signal backdrop-blur-md">
+          <span>
+            {flavor.counter} {sparks.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSparks([])}
+            className="text-white/55 transition hover:text-white"
+            aria-label="清空互动光点"
+          >
+            清空
+          </button>
+        </div>
+      )}
+
       {mode === 'edit' && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center px-4">
-          <div className="rounded-full border border-white/15 bg-[#0b152c]/78 px-4 py-1.5 font-serif text-[12px] tracking-[0.04em] text-[#fff8ee]/90 shadow-lg backdrop-blur-md">
-            {focusCount >= 3 ? '已贴满 3 条留言 · 可在下方修改或删除' : '轻点画面任意处，贴上一句想留下的话'}
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex flex-wrap items-center justify-center gap-2 px-4">
+          <div className="rounded-full border border-white/15 bg-[#0b152c]/78 px-3.5 py-1.5 font-serif text-[12px] tracking-[0.04em] text-[#fff8ee]/90 shadow-lg backdrop-blur-md">
+            {playPropsInEdit
+              ? flavor.action
+              : focusCount >= 3
+                ? '已贴满 3 条留言 · 可在下方修改或删除'
+                : '轻点画面任意处，贴上一句想留下的话'}
           </div>
+          <button
+            type="button"
+            onClick={() => setPlayPropsInEdit((v) => !v)}
+            className={`pointer-events-auto rounded-full border px-3 py-1.5 font-serif text-[11.5px] tracking-[0.04em] backdrop-blur-md transition ${
+              playPropsInEdit
+                ? 'border-signal bg-signal text-[#170f07] font-medium'
+                : 'border-signal/40 bg-[#0b152c]/78 text-signal hover:bg-signal/16'
+            }`}
+          >
+            {playPropsInEdit ? '切回贴留言' : `场景互动 · ${flavor.kind === 'lamp' ? '点窗灯' : flavor.kind === 'star' ? '观星' : flavor.kind === 'snow' ? '扬雪' : '起波纹'}`}
+          </button>
         </div>
       )}
 

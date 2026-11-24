@@ -1,6 +1,6 @@
 export type ParticleKind = 'rain' | 'firefly' | 'snow' | 'dust' | 'none'
 
-export type AmbientKind = 'wind' | 'rain' | 'ocean' | 'cicada' | 'night' | 'none'
+export type AmbientKind = 'wind' | 'rain' | 'ocean' | 'cicada' | 'night' | 'library' | 'snow' | 'city' | 'none'
 
 export type StudioMode = 'edit' | 'preview'
 

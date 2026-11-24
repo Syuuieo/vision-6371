@@ -1,5 +1,16 @@
 import * as THREE from 'three'
-import { LAKE, ROAM, heightAt, shared, smoothstep } from '../core/ctx'
+import {
+  LAKE,
+  ROAM,
+  SCENIC_BENCHES,
+  WORLD_DISCOVERIES,
+  WORLD_TRAILS,
+  distanceToSegmentSq2D,
+  heightAt,
+  shared,
+  smoothstep,
+  type WorldDiscoveryId,
+} from '../core/ctx'
 import { GLSL_ATMOSPHERE, GLSL_CLOUD_SHADOW, GLSL_NOISE } from '../shaders/common'
 import type { PickId } from '../../types/sensor'
 import type { ClearZone } from './terrain'
@@ -312,6 +323,15 @@ export class LandmarksWorld {
   private sanctuaryRuneMat: THREE.MeshBasicMaterial | null = null
   private sanctuaryRuneLevel = 0
   private lakeBoat: THREE.Group | null = null
+  private windmillRotor: THREE.Group | null = null
+  private relayDish: THREE.Group | null = null
+  private relayLedMat: THREE.MeshBasicMaterial | null = null
+  private cairnFlameMat: THREE.MeshBasicMaterial | null = null
+  private readonly windChimes: THREE.Mesh[] = []
+  private readonly echoBeams = new Map<
+    WorldDiscoveryId,
+    { beam: THREE.Mesh; ring: THREE.Mesh; age: number; active: boolean; baseOpacity: number }
+  >()
   private walkMarker: { mesh: THREE.Mesh; age: number; active: boolean } | null = null
   private callWave: { mesh: THREE.Mesh; age: number; active: boolean } | null = null
 
@@ -328,16 +348,32 @@ export class LandmarksWorld {
     this.buildScenery(surfaceGroup, glowTexture, lowDetail)
     this.buildScatter(surfaceGroup, lowDetail)
     this.buildEasterEggs(surfaceGroup, pickables, glowTexture)
+    this.buildOpenWorld(surfaceGroup, glowTexture, lowDetail)
     this.buildBeacons(surfaceGroup, pickables, glowTexture)
     this.buildContactShadows(surfaceGroup)
     this.buildWalkMarker(surfaceGroup)
     this.buildCallWave(surfaceGroup)
 
-    // 注册全场景净空遮罩区域
+    // 注册全场景净空遮罩区域（主花、木栈道全段与岸坡接驳、轻舟及所有地标投影）
     this.clearZones.push({ x: -3.8, z: -8.5, radius: 2.2 })
-    for (let s = 0; s <= 4; s += 1) {
-      const t = s / 4
-      this.clearZones.push({ x: -22 - t * 3.8, z: -46 - t * 3.8, radius: 1.7 })
+    for (let s = 0; s <= 7; s += 1) {
+      const t = s / 7
+      this.clearZones.push({
+        x: -11.6 + (-19.2 - -11.6) * t,
+        z: -31.5 + (-42.0 - -31.5) * t,
+        radius: 2.35,
+      })
+    }
+    this.clearZones.push({ x: -19.5, z: -42.1, radius: 2.6 })
+    this.clearZones.push(
+      { x: 84, z: -22, radius: 9.5 },
+      { x: 68, z: -86, radius: 6.5 },
+      { x: 16, z: -134, radius: 8.5 },
+      { x: -58, z: -94, radius: 6.2 },
+      { x: -84, z: -24, radius: 8.5 },
+    )
+    for (const bench of SCENIC_BENCHES) {
+      this.clearZones.push({ x: bench.x, z: bench.z, radius: 2.6 })
     }
     for (const spec of this.shadowSpecs) {
       this.clearZones.push({ x: spec.x, z: spec.z, radius: Math.max(0.55, spec.radius * 0.72) })
@@ -763,54 +799,92 @@ export class LandmarksWorld {
     surfaceGroup.add(ruin)
     this.shadowSpecs.push({ x: ruinX, z: ruinZ, radius: 5.8 })
 
-    // 3. 湖畔木栈道与摇曳木舟
+    // 3. 湖畔木栈道（严格锚定干岸并斜坡平滑延伸至深水，零悬空零穿模）与摇曳木舟
+    const pierX = -15.4
+    const pierZ = -36.8
+    const pierY = LAKE.y + 0.44
+    const pierRotY = Math.atan2(LAKE.x - pierX, LAKE.z - pierZ)
     const pier = new THREE.Group()
-    pier.position.set(-22, LAKE.y + 0.16, -46)
-    pier.rotation.y = Math.atan2(-58 - -22, -96 - -46)
-    const woodMat = makeStylizedMat({ color: '#563c2d' })
-    this.materials.push(woodMat)
-    for (let i = 0; i < 8; i += 1) {
-      const plank = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.08, 0.44), woodMat)
-      plank.position.set((Math.random() - 0.5) * 0.03, 0.05, -2.1 + i * 0.54)
+    pier.position.set(pierX, pierY, pierZ)
+    pier.rotation.y = pierRotY
+
+    const woodMat = makeStylizedMat({ color: '#5c4030' })
+    const beamMat = makeStylizedMat({ color: '#422d21' })
+    const abutmentStoneMat = makeStylizedMat({ color: '#6b675f' })
+    this.materials.push(woodMat, beamMat, abutmentStoneMat)
+
+    // 纵向承重木梁（避免木板悬空）
+    for (const bx of [-0.66, 0.66]) {
+      const stringer = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 7.2), beamMat)
+      stringer.position.set(bx, -0.08, -0.2)
+      pier.add(stringer)
+    }
+
+    // 14 块栈道横板（离水面 +0.44m，避开浪峰与岸坡草丛）
+    for (let i = 0; i < 14; i += 1) {
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.08, 0.44), woodMat)
+      plank.position.set((Math.sin(i * 2.1) - 0.5) * 0.025, 0.04, -3.55 + i * 0.53)
       pier.add(plank)
     }
-    for (const [px, pz] of [
-      [-0.72, -1.5],
-      [0.72, -1.5],
-      [-0.72, 1.55],
-      [0.72, 1.55],
+
+    // 干岸石砌引桥与缓坡木阶，平滑衔接岸边地形
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.1, 1.35), woodMat)
+    ramp.position.set(0, -0.1, -4.35)
+    ramp.rotation.x = 0.24
+    pier.add(ramp)
+    for (const [sx, sy, sz, sw, sh, sd] of [
+      [-0.42, -0.34, -4.95, 0.96, 0.34, 0.72],
+      [0.44, -0.38, -5.05, 0.88, 0.32, 0.68],
+      [0.0, -0.42, -5.55, 1.32, 0.28, 0.62],
     ]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.105, 2.75, 8), woodMat)
-      post.position.set(px, -0.92, pz)
-      pier.add(post)
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.11, 0.09, 8), woodMat)
-      cap.position.set(px, 0.48, pz)
-      pier.add(cap)
+      const stepStone = new THREE.Mesh(new THREE.BoxGeometry(sw, sh, sd), abutmentStoneMat)
+      stepStone.position.set(sx, sy, sz)
+      stepStone.rotation.y = sx * 0.25
+      pier.add(stepStone)
     }
 
-    const ropeCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-0.72, 0.42, -1.5),
-      new THREE.Vector3(-0.72, 0.16, 0.0),
-      new THREE.Vector3(-0.72, 0.42, 1.55),
-    ])
+    // 8 根实心木桩深插湖底与岸基，顶部配护桩帽
+    for (const pz of [-3.4, -1.2, 1.1, 3.2]) {
+      for (const px of [-0.76, 0.76]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.088, 0.11, 3.4, 8), beamMat)
+        post.position.set(px, -1.18, pz)
+        pier.add(post)
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.112, 0.09, 8), woodMat)
+        cap.position.set(px, 0.54, pz)
+        pier.add(cap)
+      }
+    }
+
+    // 两侧垂坠粗麻护绳
     const ropeMat = makeStylizedMat({ color: '#8f7254' })
     this.materials.push(ropeMat)
-    pier.add(new THREE.Mesh(new THREE.TubeGeometry(ropeCurve, 16, 0.024, 6, false), ropeMat))
+    for (const rx of [-0.76, 0.76]) {
+      const ropeCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(rx, 0.48, -3.4),
+        new THREE.Vector3(rx, 0.26, -2.3),
+        new THREE.Vector3(rx, 0.48, -1.2),
+        new THREE.Vector3(rx, 0.26, -0.05),
+        new THREE.Vector3(rx, 0.48, 1.1),
+        new THREE.Vector3(rx, 0.26, 2.15),
+        new THREE.Vector3(rx, 0.48, 3.2),
+      ])
+      pier.add(new THREE.Mesh(new THREE.TubeGeometry(ropeCurve, 28, 0.024, 6, false), ropeMat))
+    }
 
-    const lanternPost = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 2.35, 8), woodMat)
-    lanternPost.position.set(0.74, 1.18, 1.6)
+    const lanternPost = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.085, 2.5, 8), beamMat)
+    lanternPost.position.set(0.76, 1.24, 3.25)
     pier.add(lanternPost)
     const armCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.74, 2.15, 1.6),
-      new THREE.Vector3(0.56, 2.38, 1.6),
-      new THREE.Vector3(0.38, 2.22, 1.6),
+      new THREE.Vector3(0.76, 2.26, 3.25),
+      new THREE.Vector3(0.56, 2.48, 3.25),
+      new THREE.Vector3(0.36, 2.3, 3.25),
     ])
-    pier.add(new THREE.Mesh(new THREE.TubeGeometry(armCurve, 10, 0.025, 6, false), woodMat))
+    pier.add(new THREE.Mesh(new THREE.TubeGeometry(armCurve, 10, 0.025, 6, false), beamMat))
     const pierLantern = new THREE.Mesh(
       new THREE.CylinderGeometry(0.11, 0.09, 0.24, 6),
       new THREE.MeshBasicMaterial({ color: '#ffd699' }),
     )
-    pierLantern.position.set(0.38, 2.08, 1.6)
+    pierLantern.position.set(0.36, 2.16, 3.25)
     pier.add(pierLantern)
     const pierGlow = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -822,14 +896,14 @@ export class LandmarksWorld {
         depthWrite: false,
       }),
     )
-    pierGlow.position.set(0.38, 2.08, 1.6)
+    pierGlow.position.set(0.36, 2.16, 3.25)
     pierGlow.scale.setScalar(2.4)
     pier.add(pierGlow)
     surfaceGroup.add(pier)
 
     const boat = new THREE.Group()
-    boat.position.set(-25.8, LAKE.y + 0.06, -49.5)
-    boat.rotation.y = 0.72
+    boat.position.set(-19.5, LAKE.y + 0.08, -42.1)
+    boat.rotation.y = 0.76
     const hullMat = makeStylizedMat({ color: '#5f402e', side: THREE.DoubleSide })
     this.materials.push(hullMat)
     const hullProfile = [
@@ -913,16 +987,25 @@ export class LandmarksWorld {
 
   private buildScatter(surfaceGroup: THREE.Group, lowDetail: boolean) {
     const keepOut: [number, number, number][] = [
+      [84, -22, 14],
+      [68, -86, 15],
+      [16, -134, 14],
+      [-58, -94, 12],
+      [-84, -24, 14],
+      [-39, -71, 7],
+      ...SCENIC_BENCHES.map((b) => [b.x, b.z, 4] as [number, number, number]),
       [-3.8, -8.5, 3.6],
       [15.5, -24, 4.5],
       [-15.5, -23, 5.5],
-      [-25.5, -49.5, 4.5],
+      [-15.4, -36.8, 5.2],
+      [-12.2, -32.2, 4.2],
+      [-19.5, -42.1, 4.6],
       [-3.3, -7.25, 3],
       [8, -40, 3.5],
       [30, -58, 3.5],
       [24, -34, 3.5],
       [-26, -12, 3.5],
-      [-14, -44, 3.5],
+      [-8.8, -30.4, 3.5],
       [30, -16, 3.5],
     ]
     const placed: [number, number][] = []
@@ -933,6 +1016,24 @@ export class LandmarksWorld {
         const y = heightAt(x, z)
         if (y < LAKE.y + 0.55) continue
         if (keepOut.some(([kx, kz, kr]) => Math.hypot(x - kx, z - kz) < kr)) continue
+        if (
+          WORLD_TRAILS.some((trail) => {
+            for (let s = 0; s < trail.points.length - 1; s += 1) {
+              const dSq = distanceToSegmentSq2D(
+                x,
+                z,
+                trail.points[s][0],
+                trail.points[s][1],
+                trail.points[s + 1][0],
+                trail.points[s + 1][1],
+              )
+              if (dSq < (trail.width + 1.15) ** 2) return true
+            }
+            return false
+          })
+        ) {
+          continue
+        }
         if (placed.some(([px, pz]) => Math.hypot(x - px, z - pz) < minGap)) continue
         placed.push([x, z])
         return { x, y, z }
@@ -949,7 +1050,7 @@ export class LandmarksWorld {
 
     const rockMat = makeStylizedMat({ vertexColors: true })
     this.materials.push(rockMat)
-    const rockCount = lowDetail ? 34 : 76
+    const rockCount = lowDetail ? 56 : 138
     for (const [vi, seed] of [2.9, 8.1].entries()) {
       const geo = makeSculptedBoulderGeo(seed)
       const mesh = new THREE.InstancedMesh(geo, rockMat, rockCount)
@@ -1011,7 +1112,7 @@ export class LandmarksWorld {
       flutter: true,
     })
     this.materials.push(shrubMat)
-    const shrubCount = lowDetail ? 70 : 165
+    const shrubCount = lowDetail ? 110 : 275
     const shrubs = new THREE.InstancedMesh(shrubGeo, shrubMat, shrubCount)
     let sn = 0
     for (let i = 0; i < shrubCount; i += 1) {
@@ -1041,10 +1142,10 @@ export class LandmarksWorld {
     pickables: THREE.Object3D[],
     glowTexture: THREE.Texture,
   ) {
-    // 1. 湖畔漂流瓶
+    // 1. 湖畔漂流瓶（停留在栈道下游浅水苇岸边，岸上清晰可见可拾取）
     const bottle = new THREE.Group()
-    bottle.position.set(-26, LAKE.y + 0.08, -54)
-    bottle.rotation.y = -0.7
+    bottle.position.set(-20.4, LAKE.y + 0.08, -36.8)
+    bottle.rotation.y = -0.65
     const glassMat = new THREE.MeshBasicMaterial({
       color: '#9ee4d0',
       transparent: true,
@@ -1488,6 +1589,582 @@ export class LandmarksWorld {
         this.callWave.mesh.scale.setScalar(1 + t * 43)
         const fade = 1 - t
         ;(this.callWave.mesh.material as THREE.MeshBasicMaterial).opacity = fade * fade * 0.78
+      }
+    }
+
+    if (this.windmillRotor) {
+      this.windmillRotor.rotation.z -= dt * (0.48 + 0.14 * Math.sin(elapsed * 0.45))
+    }
+
+    if (this.relayDish) {
+      this.relayDish.rotation.y = Math.sin(elapsed * 0.22) * 0.48 - 0.55
+    }
+
+    if (this.relayLedMat) {
+      const blink = 0.5 + 0.5 * Math.sin(elapsed * 3.4)
+      this.relayLedMat.opacity = 0.28 + Math.pow(blink, 3) * 0.72
+    }
+
+    if (this.cairnFlameMat) {
+      this.cairnFlameMat.opacity = 0.56 + 0.28 * Math.sin(elapsed * 5.2 + 0.8)
+    }
+
+    this.windChimes.forEach((chime, idx) => {
+      chime.rotation.z = Math.sin(elapsed * (2.1 + idx * 0.45) + idx * 1.4) * 0.14
+      chime.rotation.x = Math.cos(elapsed * (1.7 + idx * 0.3) + idx) * 0.08
+    })
+
+    for (const echo of this.echoBeams.values()) {
+      if (!echo.active) continue
+      echo.age += dt
+      const t = echo.age / 4.4
+      if (t >= 1) {
+        echo.active = false
+        echo.beam.visible = false
+        echo.ring.visible = false
+      } else {
+        const env = Math.sin(t * Math.PI)
+        ;(echo.beam.material as THREE.MeshBasicMaterial).opacity = echo.baseOpacity * env
+        echo.beam.rotation.y += dt * 0.55
+        echo.ring.scale.setScalar(1 + t * 5.5)
+        ;(echo.ring.material as THREE.MeshBasicMaterial).opacity = echo.baseOpacity * 0.9 * (1 - t)
+      }
+    }
+  }
+
+  triggerEchoBeams(discoveredIds: readonly string[] = []) {
+    const discovered = new Set(discoveredIds)
+    const allFound = discovered.size >= WORLD_DISCOVERIES.length
+    for (const meta of WORLD_DISCOVERIES) {
+      const echo = this.echoBeams.get(meta.id)
+      if (!echo) continue
+      const isFound = discovered.has(meta.id)
+      if (isFound && !allFound) continue
+      echo.active = true
+      echo.age = 0
+      echo.baseOpacity = allFound ? 0.26 : 0.52
+      echo.beam.visible = true
+      echo.ring.visible = true
+      echo.ring.scale.setScalar(1)
+    }
+  }
+
+  private buildOpenWorld(
+    surfaceGroup: THREE.Group,
+    glowTexture: THREE.Texture,
+    lowDetail: boolean,
+  ) {
+    const reg = <T extends THREE.Material>(m: T): T => {
+      this.materials.push(m)
+      return m
+    }
+
+    // ── 1. 东南风车崖 (84, -22) ─────────────────────────────
+    {
+      const cx = 84
+      const cz = -22
+      const cy = heightAt(cx, cz)
+      const g = new THREE.Group()
+      g.position.set(cx, cy - 0.15, cz)
+      g.rotation.y = -Math.PI * 0.68
+
+      const plinthMat = reg(makeStylizedMat({ color: '#454b52' }))
+      const towerMat = reg(makeStylizedMat({ color: '#ddd6c6' }))
+      const timberMat = reg(makeStylizedMat({ color: '#5b4330' }))
+      const sailMat = reg(makeStylizedMat({ color: '#efe8d5', side: THREE.DoubleSide }))
+
+      const plinth = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 3.2, 1.3, 8), plinthMat)
+      plinth.position.y = 0.45
+      g.add(plinth)
+
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.92, 7.6, 8), towerMat)
+      tower.position.y = 4.6
+      g.add(tower)
+
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.56, 2.25, 8), timberMat)
+      roof.position.y = 9.4
+      g.add(roof)
+
+      const deck = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 0.22, 10), timberMat)
+      deck.position.y = 1.15
+      g.add(deck)
+
+      for (let i = 0; i < 8; i += 1) {
+        const ang = (i / 8) * Math.PI * 2
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.9, 0.12), timberMat)
+        post.position.set(Math.cos(ang) * 3.15, 1.62, Math.sin(ang) * 3.15)
+        g.add(post)
+      }
+
+      const rotor = new THREE.Group()
+      rotor.position.set(0, 7.35, 1.38)
+      const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.85, 10), timberMat)
+      axle.rotation.x = Math.PI / 2
+      rotor.add(axle)
+      for (let b = 0; b < 4; b += 1) {
+        const armGroup = new THREE.Group()
+        armGroup.rotation.z = (b * Math.PI) / 2 + Math.PI / 4
+        const spar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 4.7, 0.1), timberMat)
+        spar.position.y = 2.45
+        armGroup.add(spar)
+        const sail = new THREE.Mesh(new THREE.BoxGeometry(0.56, 3.5, 0.03), sailMat)
+        sail.position.set(0.24, 2.85, -0.02)
+        armGroup.add(sail)
+        rotor.add(armGroup)
+      }
+      g.add(rotor)
+      this.windmillRotor = rotor
+
+      const doorGlow = new THREE.Sprite(
+        reg(
+          new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: '#ffd08a',
+            transparent: true,
+            opacity: 0.55,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        ),
+      )
+      doorGlow.position.set(0, 2.2, 1.95)
+      doorGlow.scale.set(2.2, 2.2, 1)
+      g.add(doorGlow)
+
+      g.name = 'landmark-windmill-cliff'
+      surfaceGroup.add(g)
+      this.shadowSpecs.push({ x: cx, z: cz, radius: 5.4 })
+    }
+
+    // ── 2. 东谷白桦林与风铃门 (68, -86) ───────────────────────
+    {
+      const gx = 68
+      const gz = -86
+      const gy = heightAt(gx, gz)
+
+      // 中心风铃木门
+      const gate = new THREE.Group()
+      gate.position.set(gx, gy - 0.1, gz)
+      gate.rotation.y = 0.55
+      const cedarMat = reg(makeStylizedMat({ color: '#614835' }))
+      const chimeMat = reg(makeStylizedMat({ color: '#dfc38d', emissive: '#e8c47a', emissiveStrength: 0.25 }))
+
+      for (const sx of [-1.45, 1.45]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 3.25, 8), cedarMat)
+        post.position.set(sx, 1.58, 0)
+        gate.add(post)
+      }
+      const beamTop = new THREE.Mesh(new THREE.BoxGeometry(3.85, 0.2, 0.24), cedarMat)
+      beamTop.position.y = 3.02
+      gate.add(beamTop)
+      const beamSub = new THREE.Mesh(new THREE.BoxGeometry(3.15, 0.12, 0.16), cedarMat)
+      beamSub.position.y = 2.48
+      gate.add(beamSub)
+
+      for (let c = -1; c <= 1; c += 1) {
+        const chime = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.62, 0.04), chimeMat)
+        chime.position.set(c * 0.55, 2.02, 0)
+        gate.add(chime)
+        this.windChimes.push(chime)
+      }
+
+      const stonePad = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.75, 0.92, 0.34, 7),
+        reg(makeStylizedMat({ color: '#5d665b' })),
+      )
+      stonePad.position.set(0, 0.17, 0)
+      gate.add(stonePad)
+      gate.name = 'landmark-birch-gate'
+      surfaceGroup.add(gate)
+      this.shadowSpecs.push({ x: gx, z: gz, radius: 2.8 })
+
+      // 实例化白桦林
+      const treeCount = lowDetail ? 20 : 38
+      const trunkGeo = new THREE.CylinderGeometry(0.1, 0.16, 1, 7)
+      const barkMat = reg(makeStylizedMat({ color: '#e6e3da' }))
+      const bandGeo = new THREE.CylinderGeometry(0.125, 0.135, 0.22, 7)
+      const bandMat = reg(makeStylizedMat({ color: '#33363b' }))
+      const canopyGeo = new THREE.IcosahedronGeometry(1.18, 1)
+      const canopyMat = reg(makeStylizedMat({ color: '#9bc482' }))
+
+      const trunks = new THREE.InstancedMesh(trunkGeo, barkMat, treeCount)
+      const bands = new THREE.InstancedMesh(bandGeo, bandMat, treeCount * 2)
+      const canopies = new THREE.InstancedMesh(canopyGeo, canopyMat, treeCount * 2)
+      const mtx = new THREE.Matrix4()
+      const q = new THREE.Quaternion()
+      const eu = new THREE.Euler()
+      const p = new THREE.Vector3()
+      const sc = new THREE.Vector3()
+
+      let seed = 4219
+      const rand = () => {
+        seed = (seed * 16807) % 2147483647
+        return (seed - 1) / 2147483646
+      }
+
+      let placed = 0
+      for (let attempt = 0; attempt < treeCount * 4 && placed < treeCount; attempt += 1) {
+        const ang = rand() * Math.PI * 2
+        const dist = 4.6 + rand() * 14.5
+        const tx = gx + Math.cos(ang) * dist
+        const tz = gz + Math.sin(ang) * dist
+        if (Math.hypot(tx - gx, tz - gz) < 4.1) continue
+        const ty = heightAt(tx, tz)
+        if (ty < LAKE.y + 0.5) continue
+
+        const h = 4.2 + rand() * 2.8
+        const s = 0.85 + rand() * 0.45
+        p.set(tx, ty + h * 0.48, tz)
+        eu.set((rand() - 0.5) * 0.08, rand() * Math.PI * 2, (rand() - 0.5) * 0.08)
+        q.setFromEuler(eu)
+        sc.set(s, h, s)
+        mtx.compose(p, q, sc)
+        trunks.setMatrixAt(placed, mtx)
+
+        for (let bi = 0; bi < 2; bi += 1) {
+          p.set(tx, ty + h * (0.34 + bi * 0.3), tz)
+          sc.set(s, 1, s)
+          mtx.compose(p, q, sc)
+          bands.setMatrixAt(placed * 2 + bi, mtx)
+
+          const cw = 1.05 + rand() * 0.65
+          p.set(
+            tx + (bi === 0 ? 0 : (rand() - 0.5) * 0.85),
+            ty + h * (bi === 0 ? 0.92 : 0.72),
+            tz + (bi === 0 ? 0 : (rand() - 0.5) * 0.85),
+          )
+          sc.set(cw, cw * 0.68, cw * (0.9 + rand() * 0.2))
+          mtx.compose(p, q, sc)
+          canopies.setMatrixAt(placed * 2 + bi, mtx)
+        }
+
+        this.shadowSpecs.push({ x: tx, z: tz, radius: 1.45 * s })
+        placed += 1
+      }
+      trunks.count = placed
+      bands.count = placed * 2
+      canopies.count = placed * 2
+      trunks.instanceMatrix.needsUpdate = true
+      bands.instanceMatrix.needsUpdate = true
+      canopies.instanceMatrix.needsUpdate = true
+      trunks.name = 'birch-grove-trunks'
+      bands.name = 'birch-grove-bands'
+      canopies.name = 'birch-grove-canopies'
+      surfaceGroup.add(trunks, bands, canopies)
+    }
+
+    // ── 3. 北岭深地中继站 06 (16, -134) ──────────────────────
+    {
+      const rx = 16
+      const rz = -134
+      const ry = heightAt(rx, rz)
+      const g = new THREE.Group()
+      g.position.set(rx, ry - 0.1, rz)
+
+      const concreteMat = reg(makeStylizedMat({ color: '#5c6670' }))
+      const hullMat = reg(makeStylizedMat({ color: '#e4e8ec' }))
+      const darkMetalMat = reg(makeStylizedMat({ color: '#29333f' }))
+
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 4.3, 0.55, 6), concreteMat)
+      pad.position.y = 0.22
+      g.add(pad)
+
+      const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(2.15, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.54),
+        hullMat,
+      )
+      dome.position.y = 0.45
+      g.add(dome)
+
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.2, 5.2, 8), darkMetalMat)
+      mast.position.set(1.65, 2.8, -0.45)
+      g.add(mast)
+
+      const dishPivot = new THREE.Group()
+      dishPivot.position.set(1.65, 5.25, -0.45)
+      const dishGeo = new THREE.SphereGeometry(1.1, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.42)
+      const dishMesh = new THREE.Mesh(
+        dishGeo,
+        reg(makeStylizedMat({ color: '#d4dce2', side: THREE.DoubleSide })),
+      )
+      dishMesh.rotation.x = Math.PI * 0.66
+      dishPivot.add(dishMesh)
+      const feedPin = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.95, 6), darkMetalMat)
+      feedPin.rotation.x = Math.PI * 0.16
+      feedPin.position.set(0, -0.18, 0.45)
+      dishPivot.add(feedPin)
+      g.add(dishPivot)
+      this.relayDish = dishPivot
+
+      const ledMat = reg(
+        new THREE.MeshBasicMaterial({
+          color: '#72e6ff',
+          transparent: true,
+          opacity: 0.85,
+        }),
+      )
+      this.relayLedMat = ledMat
+      const led = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 8), ledMat)
+      led.position.set(1.65, 5.7, -0.45)
+      g.add(led)
+
+      const ledGlow = new THREE.Sprite(
+        reg(
+          new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: '#72e6ff',
+            transparent: true,
+            opacity: 0.48,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        ),
+      )
+      ledGlow.position.set(1.65, 5.7, -0.45)
+      ledGlow.scale.set(2.2, 2.2, 1)
+      g.add(ledGlow)
+
+      const plaque = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.85, 0.18), darkMetalMat)
+      plaque.position.set(-1.35, 0.85, 2.35)
+      plaque.rotation.y = 0.45
+      g.add(plaque)
+
+      g.name = 'landmark-relay-station'
+      surfaceGroup.add(g)
+      this.shadowSpecs.push({ x: rx, z: rz, radius: 5.0 })
+    }
+
+    // ── 4. 踏石长堤（18 块踏石）与湖心浅滩石龛 (-58, -94) ──────
+    {
+      const stoneGeo = makeSculptedBoulderGeo(77)
+      const stoneMat = reg(makeStylizedMat({ vertexColors: true }))
+      const stones = new THREE.InstancedMesh(stoneGeo, stoneMat, 18)
+      const mtx = new THREE.Matrix4()
+      const q = new THREE.Quaternion()
+      const eu = new THREE.Euler()
+      const p = new THREE.Vector3()
+      const sc = new THREE.Vector3()
+
+      for (let i = 0; i < 18; i += 1) {
+        const t = 0.04 + (i / 17) * 0.91
+        const px = -20 + (-56 - -20) * t + Math.sin(i * 1.6) * 0.45
+        const pz = -46 + (-91 - -46) * t + Math.cos(i * 1.3) * 0.4
+        const py = Math.max(heightAt(px, pz), LAKE.y + 0.02)
+        p.set(px, py + 0.04, pz)
+        eu.set((Math.random() - 0.5) * 0.08, i * 0.72, (Math.random() - 0.5) * 0.08)
+        q.setFromEuler(eu)
+        const r = 0.62 + (i % 3) * 0.14
+        sc.set(r, 0.24, r * 0.86)
+        mtx.compose(p, q, sc)
+        stones.setMatrixAt(i, mtx)
+      }
+      stones.instanceMatrix.needsUpdate = true
+      stones.name = 'lake-stepping-stones'
+      surfaceGroup.add(stones)
+
+      const ix = -58
+      const iz = -94
+      const iy = heightAt(ix, iz)
+      const island = new THREE.Group()
+      island.position.set(ix, iy - 0.05, iz)
+      const stoneMat2 = reg(makeStylizedMat({ color: '#6b7578' }))
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(2.05, 2.45, 0.52, 8), stoneMat2)
+      base.position.y = 0.24
+      island.add(base)
+
+      for (const sx of [-0.72, 0.72]) {
+        const col = new THREE.Mesh(new THREE.BoxGeometry(0.32, 1.9, 0.36), stoneMat2)
+        col.position.set(sx, 1.3, 0)
+        island.add(col)
+      }
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(2.15, 0.32, 0.72), stoneMat2)
+      cap.position.y = 2.34
+      island.add(cap)
+
+      const shrineGlow = new THREE.Sprite(
+        reg(
+          new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: '#9bd8df',
+            transparent: true,
+            opacity: 0.65,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        ),
+      )
+      shrineGlow.position.set(0, 1.25, 0)
+      shrineGlow.scale.set(2.4, 2.4, 1)
+      island.add(shrineGlow)
+
+      island.name = 'landmark-lake-island-shrine'
+      surfaceGroup.add(island)
+      this.shadowSpecs.push({ x: ix, z: iz, radius: 3.1 })
+    }
+
+    // ── 5. 西原日落石阵 (-84, -24) ───────────────────────────
+    {
+      const wx = -84
+      const wz = -24
+      const wy = heightAt(wx, wz)
+      const g = new THREE.Group()
+      g.position.set(wx, wy - 0.1, wz)
+
+      const rockMat = reg(makeStylizedMat({ vertexColors: true }))
+      const monoGeo = makeSculptedBoulderGeo(93)
+      for (let i = 0; i < 7; i += 1) {
+        const ang = (i / 7) * Math.PI * 2 + 0.25
+        const r = 5.4
+        const sx = Math.cos(ang) * r
+        const sz = Math.sin(ang) * r
+        const localY = heightAt(wx + sx, wz + sz) - wy
+        const monolith = new THREE.Mesh(monoGeo, rockMat)
+        const hScale = 1.35 + (i % 3) * 0.45
+        monolith.position.set(sx, localY + hScale * 0.68, sz)
+        monolith.scale.set(0.75 + (i % 2) * 0.22, hScale, 0.62)
+        monolith.rotation.set(0, -ang + 0.3, (i % 2 === 0 ? 1 : -1) * 0.08)
+        g.add(monolith)
+        this.shadowSpecs.push({ x: wx + sx, z: wz + sz, radius: 1.25 })
+      }
+
+      const plinth = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.15, 1.45, 0.72, 7),
+        reg(makeStylizedMat({ color: '#4c4743' })),
+      )
+      plinth.position.y = 0.34
+      g.add(plinth)
+
+      const gnomon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.08, 1.9, 6),
+        reg(makeStylizedMat({ color: '#a87d56' })),
+      )
+      gnomon.position.set(0, 1.32, 0)
+      gnomon.rotation.x = 0.38
+      gnomon.rotation.z = -0.32
+      g.add(gnomon)
+
+      const emberMat = reg(
+        new THREE.MeshBasicMaterial({
+          color: '#ff9c64',
+          transparent: true,
+          opacity: 0.76,
+        }),
+      )
+      this.cairnFlameMat = emberMat
+      const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), emberMat)
+      ember.position.set(0, 0.78, 0)
+      g.add(ember)
+
+      const brazierGlow = new THREE.Sprite(
+        reg(
+          new THREE.SpriteMaterial({
+            map: glowTexture,
+            color: '#ff9c64',
+            transparent: true,
+            opacity: 0.56,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+          }),
+        ),
+      )
+      brazierGlow.position.set(0, 1.05, 0)
+      brazierGlow.scale.set(2.5, 2.5, 1)
+      g.add(brazierGlow)
+
+      g.name = 'landmark-west-cairn-ring'
+      surfaceGroup.add(g)
+      this.shadowSpecs.push({ x: wx, z: wz, radius: 2.2 })
+    }
+
+    // ── 6. 3 处可坐下观景长椅 ────────────────────────────────
+    {
+      const woodMat = reg(makeStylizedMat({ color: '#78583e' }))
+      const legMat = reg(makeStylizedMat({ color: '#454a50' }))
+      for (const b of SCENIC_BENCHES) {
+        const bg = new THREE.Group()
+        bg.position.set(b.x, heightAt(b.x, b.z) - 0.04, b.z)
+        bg.rotation.y = Math.atan2(b.lookX - b.x, b.lookZ - b.z)
+
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.08, 0.56), woodMat)
+        seat.position.y = 0.48
+        bg.add(seat)
+
+        const back = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.42, 0.07), woodMat)
+        back.position.set(0, 0.82, -0.24)
+        back.rotation.x = -0.18
+        bg.add(back)
+
+        for (const lx of [-0.78, 0.78]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 0.52), legMat)
+          leg.position.set(lx, 0.24, 0)
+          bg.add(leg)
+        }
+
+        const lanternPost = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.32, 6), legMat)
+        lanternPost.position.set(1.22, 0.64, -0.05)
+        bg.add(lanternPost)
+
+        const lanternGlow = new THREE.Sprite(
+          reg(
+            new THREE.SpriteMaterial({
+              map: glowTexture,
+              color: '#ffcf8f',
+              transparent: true,
+              opacity: 0.46,
+              blending: THREE.AdditiveBlending,
+              depthWrite: false,
+            }),
+          ),
+        )
+        lanternGlow.position.set(1.22, 1.32, -0.05)
+        lanternGlow.scale.set(1.35, 1.35, 1)
+        bg.add(lanternGlow)
+
+        bg.name = 'bench-' + b.id
+        surfaceGroup.add(bg)
+        this.shadowSpecs.push({ x: b.x, z: b.z, radius: 1.85 })
+      }
+    }
+
+    // ── 7. 呼唤天穹垂直回响光柱 (Space 激活) ─────────────────
+    {
+      const beamGeo = new THREE.CylinderGeometry(0.18, 0.72, 68, 12, 1, true)
+      const ringGeo = new THREE.RingGeometry(1.2, 2.0, 32)
+      ringGeo.rotateX(-Math.PI / 2)
+
+      for (const meta of WORLD_DISCOVERIES) {
+        const gy = heightAt(meta.x, meta.z)
+        const beamMat = reg(
+          new THREE.MeshBasicMaterial({
+            color: meta.accent,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        )
+        const beam = new THREE.Mesh(beamGeo, beamMat)
+        beam.position.set(meta.x, gy + 33, meta.z)
+        beam.visible = false
+        surfaceGroup.add(beam)
+
+        const ringMat = reg(
+          new THREE.MeshBasicMaterial({
+            color: meta.accent,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+          }),
+        )
+        const ring = new THREE.Mesh(ringGeo, ringMat)
+        ring.position.set(meta.x, gy + 0.18, meta.z)
+        ring.visible = false
+        surfaceGroup.add(ring)
+
+        this.echoBeams.set(meta.id, { beam, ring, age: 0, active: false, baseOpacity: 0.5 })
       }
     }
   }

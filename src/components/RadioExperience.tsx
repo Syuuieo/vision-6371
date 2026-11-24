@@ -18,6 +18,10 @@ interface RadioExperienceProps {
 }
 
 type SortMode = 'new' | 'hot'
+type RegionFilter = 'all' | 'china' | 'south' | 'global'
+
+const SOUTH_CITIES = new Set(['悉尼', '开普敦'])
+const GLOBAL_CITIES = new Set(['悉尼', '夏威夷', '雷克雅未克', '开普敦', '京都', '巴黎'])
 
 const ORIGIN_RANK: Record<VisionOrigin, number> = { cloud: 3, local: 2, seed: 1 }
 
@@ -66,6 +70,7 @@ export function RadioExperience({
   onRecordCity,
 }: RadioExperienceProps) {
   const [sort, setSort] = useState<SortMode>('new')
+  const [region, setRegion] = useState<RegionFilter>('all')
   const [reloadKey, setReloadKey] = useState(0)
   const [items, setItems] = useState<RadioSignalPreview[]>(() => previewLocalSignals('new'))
   const [loading, setLoading] = useState(true)
@@ -125,7 +130,13 @@ export function RadioExperience({
     }
   }, [sort, reloadKey])
 
-  const beacons = useMemo(() => buildBeacons(items), [items])
+  const filteredItems = useMemo(() => {
+    if (region === 'all') return items
+    if (region === 'south') return items.filter((item) => SOUTH_CITIES.has(item.city) || item.city === '夏威夷')
+    if (region === 'global') return items.filter((item) => GLOBAL_CITIES.has(item.city))
+    return items.filter((item) => !GLOBAL_CITIES.has(item.city))
+  }, [items, region])
+  const beacons = useMemo(() => buildBeacons(filteredItems.length ? filteredItems : items), [filteredItems, items])
   const selectedCount = useMemo(
     () => (selectedCity ? items.filter((item) => item.city === selectedCity).length : 0),
     [items, selectedCity],
@@ -253,10 +264,10 @@ export function RadioExperience({
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-signal animate-[blinkDot_2.2s_ease-in-out_infinite]" />
               <span className="truncate">
                 {relay?.completedPrologue
-                  ? `落日六号接力中 · 已替林微点亮 ${relay.relayedCities.length}/12 座城${relay.promise ? ` · ${relay.promise}` : ''}`
+                  ? `落日六号接力中 · 已点亮 ${relay.relayedCities.length}/18 座全球城市${relay.promise ? ` · ${relay.promise}` : ''}`
                   : selectedCity
                     ? getCityWhisper(selectedCity)
-                    : '地心 6,371 公里处的林微正在收听 · 点击发光地标接力视野'}
+                    : '覆盖南北半球冬夏 18 城 · 拖拽旋转地球，轻触任意发光地标'}
               </span>
             </div>
           </div>
@@ -269,9 +280,43 @@ export function RadioExperience({
               onSelect={handleBeaconSelect}
               className="h-full w-full"
             />
+            <div className="pointer-events-none absolute right-4 top-5 z-10 hidden items-center gap-1.5 rounded-full border border-white/14 bg-[#070e1f]/55 px-3 py-1 font-serif text-[11px] tracking-[0.04em] text-white/78 backdrop-blur-md sm:flex">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-signal">
+                <path d="M4 12a8 8 0 1 1 2.2 5.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                <path d="M4 18v-5h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>可拖拽旋转地球 · 滚轮缩放</span>
+            </div>
           </div>
 
-          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2.5 sm:inset-x-4 sm:bottom-4">
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2 sm:inset-x-4 sm:bottom-4">
+            <div className="pointer-events-auto flex flex-wrap items-center gap-1.5">
+              {([
+                ['all', '全球 18 城', null],
+                ['south', '南半球盛夏 · 热带', '悉尼'],
+                ['global', '异域极境', '雷克雅未克'],
+                ['china', '中国城市', '南京'],
+              ] as const).map(([id, label, focusTarget]) => {
+                const active = region === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => {
+                      setRegion(id)
+                      if (focusTarget) globeRef.current?.focusCity(focusTarget)
+                    }}
+                    className={`rounded-full border px-2.5 py-1 font-serif text-[11px] tracking-[0.04em] backdrop-blur-md transition ${
+                      active
+                        ? 'border-signal/65 bg-signal/20 text-signal'
+                        : 'border-white/12 bg-[#081022]/55 text-white/68 hover:border-signal/40 hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
             <div className="pointer-events-auto no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5">
               {beacons.map((beacon) => {
                 const active = selectedCity === beacon.id
@@ -339,7 +384,7 @@ export function RadioExperience({
                 最近抵达的风景
               </h2>
               <p className="mt-0.5 font-serif text-[11.5px] text-white/55">
-                {loading ? '正在刷新城市视野…' : `共 ${items.length} 份来自地表的目光`}
+                {loading ? '正在刷新城市视野…' : `共 ${filteredItems.length} 份来自地表的目光`}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -389,7 +434,7 @@ export function RadioExperience({
                     className="h-[88px] animate-pulse rounded-2xl border border-white/8 bg-white/[0.03]"
                   />
                 ))
-              : items.map((item) => {
+              : filteredItems.map((item) => {
                   const active = item.code === pendingCode
                   return (
                     <button

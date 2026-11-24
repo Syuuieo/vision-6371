@@ -11,7 +11,13 @@ import {
   STEPS,
   TRUTH,
 } from '../data/narrative'
-import { PrologueScene, type HoverTargetInfo } from '../scenes/PrologueScene'
+import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../engine/core/ctx'
+import {
+  PrologueScene,
+  type HoverTargetInfo,
+  type PlayerTelemetry,
+} from '../scenes/PrologueScene'
+import { saveAlbumEntry } from '../services/albumStorage'
 import { LandscapeHint, TouchControls } from './TouchControls'
 import { getSettings, isCoarsePointer, prefersReducedMotion, subscribeSettings, updateSettings, type QualityTier } from '../services/settings'
 import {
@@ -41,6 +47,7 @@ import type {
 import { exportMemoryFilmstrip, type MemoryFrame } from '../utils/memoryStripExport'
 import type { StoryRelayState } from '../utils/storyRelay'
 import { CalibrationDial } from './CalibrationDial'
+import { CompassBar } from './CompassBar'
 import { FieldJournalModal } from './FieldJournalModal'
 import { IntroRitual } from './IntroRitual'
 import { SensorHud } from './SensorHud'
@@ -76,6 +83,48 @@ interface DropColumn {
 const TUNE_TARGET = 0.71
 const TUNE_WINDOW = 0.055
 const LINGER_SECONDS = 15
+const DISCOVERIES_KEY = 'vision6371_discoveries_v1'
+const VALID_DISCOVERY_IDS: readonly WorldDiscoveryId[] = WORLD_DISCOVERIES.map((d) => d.id)
+const MEADOW_QUICK_NOTES = [
+  '替你在风起的高崖上，把整片谷地的草浪拍了下来。',
+  '这里的日光和风声都很慢，我替你多看了一会儿。',
+  '把这段二十四小时之外的天色，写进今天的风里。',
+] as const
+
+function loadDiscoveries(): WorldDiscoveryId[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(DISCOVERIES_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is WorldDiscoveryId =>
+      VALID_DISCOVERY_IDS.includes(id as WorldDiscoveryId),
+    )
+  } catch {
+    return []
+  }
+}
+
+function persistDiscoveries(ids: readonly WorldDiscoveryId[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(DISCOVERIES_KEY, JSON.stringify(ids))
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatClockHour(hour: number): string {
+  const norm = ((hour % 24) + 24) % 24
+  let h = Math.floor(norm)
+  let m = Math.round((norm - h) * 60)
+  if (m >= 60) {
+    m = 0
+    h = (h + 1) % 24
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
 const RAIN_TARGET_COUNT = 5
 const FIREFLY_TARGET_COUNT = 6
 const VALID_EGG_IDS: EggId[] = ['bottle', 'tablet', 'meteor']
@@ -200,6 +249,18 @@ export function PrologueExperience({
   const [epilogueNote, setEpilogueNote] = useState<string | null>(() => relay?.promise ?? null)
   const [wishNote, setWishNote] = useState<string | null>(() => relay?.wish ?? null)
   const [tapRipples, setTapRipples] = useState<TapRipple[]>([])
+  const [telemetry, setTelemetry] = useState<PlayerTelemetry | null>(null)
+  const [discoveriesFound, setDiscoveriesFound] = useState<WorldDiscoveryId[]>(() => loadDiscoveries())
+  const [freeRoam, setFreeRoam] = useState(false)
+  const [customHour, setCustomHour] = useState(16.5)
+  const [meadowShot, setMeadowShot] = useState<{ image: string; placeName: string; hour: number } | null>(null)
+  const [meadowNote, setMeadowNote] = useState('')
+  const [meadowSaved, setMeadowSaved] = useState(false)
+  const telemetryRef = useRef<PlayerTelemetry | null>(telemetry)
+  const discoveriesRef = useRef<WorldDiscoveryId[]>(discoveriesFound)
+  const freeRoamRef = useRef(freeRoam)
+  const meadowShotRef = useRef(meadowShot)
+  const telemetryHandlerRef = useRef<(t: PlayerTelemetry) => void>(() => {})
 
   const phaseRef = useRef<Phase>(phase)
   const introBeatRef = useRef(introBeat)
@@ -304,6 +365,10 @@ export function PrologueExperience({
     rainCatchesRef.current = rainCatches
     fireflyCountRef.current = fireflyCount
     constellationCountRef.current = constellationCount
+    telemetryRef.current = telemetry
+    discoveriesRef.current = discoveriesFound
+    freeRoamRef.current = freeRoam
+    meadowShotRef.current = meadowShot
   }, [
     phase,
     introBeat,
@@ -322,6 +387,10 @@ export function PrologueExperience({
     rainCatches,
     fireflyCount,
     constellationCount,
+    telemetry,
+    discoveriesFound,
+    freeRoam,
+    meadowShot,
   ])
 
   useEffect(() => {
@@ -364,6 +433,7 @@ export function PrologueExperience({
       onZoomChange: (nextZoom) => setZoom(nextZoom),
       onSkimChange: (amount) => sound.setGrassSkim(amount),
       onPlaceChange: (nextPlace) => setPlace(nextPlace),
+      onTelemetry: (nextTelemetry) => telemetryHandlerRef.current(nextTelemetry),
       onBoundary: () => boundaryHandlerRef.current?.(),
     })
     scene.setActiveTask('flower')
@@ -402,20 +472,42 @@ export function PrologueExperience({
   const clockHour = Number(clockLabel.slice(0, 2)) + Number(clockLabel.slice(3, 5)) / 60
 
   useEffect(() => {
+    telemetryHandlerRef.current = (next) => {
+      setTelemetry(next)
+      if (next.nearbyDiscovery && !discoveriesRef.current.includes(next.nearbyDiscovery)) {
+        const nextList = [...discoveriesRef.current, next.nearbyDiscovery]
+        discoveriesRef.current = nextList
+        persistDiscoveries(nextList)
+        setDiscoveriesFound(nextList)
+        sceneRef.current?.setDiscoveredIds(nextList)
+        const meta = WORLD_DISCOVERIES.find((d) => d.id === next.nearbyDiscovery)
+        sound.playChime([523.25, 659.25, 783.99], 0.055, 2.2)
+        if (meta) {
+          showToast(`发现新地标 · ${meta.name}（${nextList.length}/${WORLD_DISCOVERIES.length}）`, 3400)
+        }
+      }
+    }
+  }, [showToast, sound])
+
+  useEffect(() => {
+    sceneRef.current?.setDiscoveredIds(discoveriesFound)
+  }, [discoveriesFound])
+
+  useEffect(() => {
     const scene = sceneRef.current
-    if (!scene) return
+    if (!scene || freeRoam) return
     scene.setStage(stage)
     scene.setClock(clockHour)
-  }, [stage, clockHour])
+  }, [stage, clockHour, freeRoam])
 
   useEffect(() => {
     sceneRef.current?.setActiveTask(activeTask)
   }, [activeTask])
 
   useEffect(() => {
-    const enabled = active && phase === 'explore' && !lore && !finalizing
+    const enabled = active && phase === 'explore' && !lore && !finalizing && !meadowShot
     sceneRef.current?.setRoamEnabled(enabled)
-  }, [active, phase, lore, finalizing])
+  }, [active, phase, lore, finalizing, meadowShot])
 
   const handleMoveAxis = useCallback((x: number, y: number) => {
     sceneRef.current?.setMoveAxis(x, y)
@@ -504,9 +596,81 @@ export function PrologueExperience({
       triggerRuinPulse()
       return
     }
-    sceneRef.current?.emitSkyCall()
+    sceneRef.current?.emitSkyCall(discoveriesRef.current)
     sound.skyCall()
   }, [active, sound, triggerRuinPulse])
+
+  const toggleFreeRoam = useCallback(() => {
+    const next = !freeRoam
+    freeRoamRef.current = next
+    setFreeRoam(next)
+    if (next) {
+      lingerRef.current = null
+      setLinger(null)
+      setPanel('none')
+      panelRef.current = 'none'
+      setActiveTask(null)
+      setCustomHour(clockHour)
+      sound.playChime([523.25, 659.25], 0.04, 1.8)
+      showToast('自由漫游已开启 · 可切换 24h 天色与踏勘 5 处新地标，按 P 随时留影', 3200)
+    } else {
+      sceneRef.current?.setStage(stage)
+      sceneRef.current?.setClock(clockHour)
+      showToast('已切回章节叙事模式', 2000)
+    }
+  }, [clockHour, freeRoam, showToast, sound, stage])
+
+  const handleHourScrub = useCallback((nextHour: number) => {
+    setCustomHour(nextHour)
+    sceneRef.current?.setClockHour(nextHour)
+  }, [])
+
+  const handleBenchToggle = useCallback(() => {
+    const cur = telemetryRef.current
+    if (!cur) return
+    if (cur.seatedBenchId) {
+      sceneRef.current?.standFromBench()
+      showToast('起身继续漫步', 1600)
+    } else if (cur.nearbyBench) {
+      sceneRef.current?.sitOnBench(cur.nearbyBench.id)
+      sound.playChime([587.33, 783.99], 0.035, 1.6)
+      showToast(`在「${cur.nearbyBench.name}」坐下观景 · 按 E 或 WASD 起身`, 2600)
+    }
+  }, [showToast, sound])
+
+  const openMeadowCapture = useCallback(() => {
+    if (!active || phaseRef.current !== 'explore' || quoteRef.current || loreRef.current || finalizingRef.current) return
+    const dataUrl = sceneRef.current?.captureSnapshot()
+    if (!dataUrl) {
+      showToast('当前画面尚未就绪，稍后再拍', 1800)
+      return
+    }
+    const activeHour = freeRoam ? customHour : clockHour
+    setMeadowShot({ image: dataUrl, placeName: place, hour: activeHour })
+    setMeadowNote('')
+    setMeadowSaved(false)
+    sound.playChime([659.25, 880], 0.04, 1.5)
+  }, [active, clockHour, customHour, freeRoam, place, showToast, sound])
+
+  const confirmSaveMeadowShot = useCallback(() => {
+    if (!meadowShot) return
+    const isNight = meadowShot.hour >= 19.5 || meadowShot.hour < 5.5
+    saveAlbumEntry({
+      id: `meadow-${Date.now()}`,
+      sceneId: 'meadow',
+      sceneTitle: `${meadowShot.placeName} · ${formatClockHour(meadowShot.hour)}`,
+      city: '大草原',
+      mood: isNight ? 'night' : 'dusk',
+      image: meadowShot.image,
+      note: meadowNote.trim() || `在${meadowShot.placeName}替你定格了一阵地面上的风。`,
+      interactions: discoveriesRef.current.length,
+      createdAt: Date.now(),
+      promiseQuote: epilogueNote ?? undefined,
+    })
+    setMeadowSaved(true)
+    sound.playChime([523.25, 659.25, 783.99], 0.045, 2.0)
+    showToast('已收入「第 04 章 · 视界纪念册」', 2600)
+  }, [epilogueNote, meadowNote, meadowShot, showToast, sound])
 
   const advanceIntroBeat = useCallback(() => {
     if (phaseRef.current !== 'intro_call') return
@@ -541,19 +705,50 @@ export function PrologueExperience({
         advanceIntroBeat()
         return
       }
+      if (event.code === 'Escape' && meadowShotRef.current) {
+        event.preventDefault()
+        setMeadowShot(null)
+        return
+      }
       if (event.code === 'KeyJ' && active && phaseRef.current === 'explore' && !finalizingRef.current) {
         event.preventDefault()
         setJournalOpen((current) => !current)
         return
       }
+      if (
+        event.code === 'KeyE' &&
+        active &&
+        phaseRef.current === 'explore' &&
+        !quoteRef.current &&
+        !loreRef.current &&
+        !finalizingRef.current &&
+        !meadowShotRef.current
+      ) {
+        event.preventDefault()
+        handleBenchToggle()
+        return
+      }
+      if (
+        event.code === 'KeyP' &&
+        active &&
+        phaseRef.current === 'explore' &&
+        !quoteRef.current &&
+        !loreRef.current &&
+        !finalizingRef.current &&
+        !meadowShotRef.current
+      ) {
+        event.preventDefault()
+        openMeadowCapture()
+        return
+      }
       if (event.code !== 'Space') return
-      if (!active || phaseRef.current !== 'explore' || quoteRef.current || loreRef.current || finalizingRef.current) return
+      if (!active || phaseRef.current !== 'explore' || quoteRef.current || loreRef.current || finalizingRef.current || meadowShotRef.current) return
       event.preventDefault()
       triggerSkyCall()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, advanceIntroBeat, triggerSkyCall])
+  }, [active, advanceIntroBeat, handleBenchToggle, openMeadowCapture, triggerSkyCall])
 
   useEffect(() => {
     if (panel !== 'wind') return
@@ -650,6 +845,9 @@ export function PrologueExperience({
   const exitToRitual = useCallback(() => {
     clearTimers()
     voicePlayer.stop()
+    setFreeRoam(false)
+    freeRoamRef.current = false
+    setMeadowShot(null)
     setQuote(null)
     quoteRef.current = null
     setPanel('none')
@@ -1153,7 +1351,7 @@ export function PrologueExperience({
     const tick = (left: number) => {
       if (lingerRef.current?.key !== key) return
       // 读彩蛋时不推进，避免把人从文字里拽走
-      if (loreRef.current) {
+      if (loreRef.current || freeRoamRef.current) {
         later(() => tick(left), 1000)
         return
       }
@@ -1476,6 +1674,9 @@ export function PrologueExperience({
     setWishNote(null)
     setHover(null)
     setZoom(1)
+    setFreeRoam(false)
+    freeRoamRef.current = false
+    setMeadowShot(null)
     resetTransient()
     sceneRef.current?.resetToSurface()
     sceneRef.current?.setStage(0, true)
@@ -1850,14 +2051,112 @@ export function PrologueExperience({
         </div>
       )}
 
+      {meadowShot && (
+        <div
+          className="fixed inset-0 z-[58] flex items-center justify-center bg-[#030712]/72 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="定格草原留影"
+          onClick={() => setMeadowShot(null)}
+        >
+          <div
+            className="cinema-surface animate-fade-up w-full max-w-[560px] rounded-[28px] p-5 sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="hud-label text-signal/85">MEADOW KEEPSAKE · 草原留影</div>
+                <h3 className="mt-1 font-serif text-[19px] font-light tracking-[0.06em] text-[#fff8ee]">
+                  {meadowShot.placeName} · {formatClockHour(meadowShot.hour)}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMeadowShot(null)}
+                className="rounded-full border border-white/14 px-3 py-1 font-serif text-[11.5px] text-white/70 transition hover:border-signal/50 hover:text-signal"
+              >
+                收起 ×
+              </button>
+            </div>
+
+            <div className="mt-3.5 overflow-hidden rounded-2xl border border-white/14 bg-black/40">
+              <img
+                src={meadowShot.image}
+                alt={meadowShot.placeName}
+                className="aspect-video w-full object-cover"
+              />
+            </div>
+
+            <label className="mt-4 block">
+              <span className="font-serif text-[12.5px] tracking-[0.06em] text-signal/90">
+                写一句带进纪念册的风声附言
+              </span>
+              <textarea
+                value={meadowNote}
+                onChange={(e) => setMeadowNote(e.target.value)}
+                rows={2}
+                maxLength={140}
+                placeholder={`在${meadowShot.placeName}替你定格了一阵地面上的风。`}
+                className="mt-2 w-full resize-none rounded-2xl border border-white/14 bg-[#070e1f]/75 px-3.5 py-2 font-serif text-[13px] leading-[1.7] text-[#fff8ee] outline-none placeholder:text-white/35 focus:border-signal/60"
+              />
+            </label>
+
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {MEADOW_QUICK_NOTES.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setMeadowNote(preset)}
+                  className="rounded-full border border-white/12 bg-white/[0.03] px-2.5 py-1 font-serif text-[11px] text-white/68 transition hover:border-signal/45 hover:text-signal"
+                >
+                  {preset.slice(0, 14)}…
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2.5">
+              <button type="button" onClick={() => setMeadowShot(null)} className="btn-ghost">
+                继续漫步
+              </button>
+              {meadowSaved ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMeadowShot(null)
+                    onNavigate('diorama')
+                  }}
+                  className="btn-primary"
+                >
+                  去纪念册查看 ›
+                </button>
+              ) : (
+                <button type="button" onClick={confirmSaveMeadowShot} className="btn-primary">
+                  收进纪念册
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <FieldJournalModal
         open={phase === 'explore' && journalOpen}
         cluesFound={cluesFound}
         eggsFound={eggsFound}
+        discoveriesFound={discoveriesFound}
         memories={memories}
         act={act}
         onClose={() => setJournalOpen(false)}
       />
+
+      {phase === 'explore' && !finalizing && !attenuating && !quote && !lore && telemetry && (
+        <CompassBar
+          yaw={telemetry.yaw}
+          x={telemetry.x}
+          z={telemetry.z}
+          discoveriesFound={discoveriesFound}
+        />
+      )}
 
       {(phase === 'explore' || phase === 'descending' || phase === 'core_pulse') && (
         <SensorHud
@@ -1911,6 +2210,32 @@ export function PrologueExperience({
             <span className="cinema-gem h-1.5 w-1.5 bg-signal/80" />
             <span>手账</span>
           </button>
+          <span className="mx-0.5 h-3.5 w-px bg-white/15" />
+          <button
+            type="button"
+            onClick={toggleFreeRoam}
+            aria-pressed={freeRoam}
+            title="切换无倒计时自由漫游与 24h 天色"
+            className={`flex h-6 items-center gap-1 rounded-full px-2 font-serif text-[11px] transition ${
+              freeRoam
+                ? 'bg-signal text-[#170f07] font-medium shadow-[0_0_12px_rgba(242,194,139,0.65)]'
+                : 'text-white/76 hover:bg-white/10 hover:text-signal'
+            }`}
+          >
+            <span>自由漫游</span>
+          </button>
+          <button
+            type="button"
+            onClick={openMeadowCapture}
+            aria-label="定格草原留影（快捷键 P）"
+            title="定格草原留影 · 收入纪念册 (P)"
+            className="flex h-6 w-6 items-center justify-center rounded-full text-white/72 transition hover:bg-white/10 hover:text-signal"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="12" cy="12.5" r="3" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={() => sceneRef.current?.focusTarget('home', 2.2)}
@@ -1925,6 +2250,68 @@ export function PrologueExperience({
           </button>
         </div>
       )}
+
+      {freeRoam && phase === 'explore' && !finalizing && !attenuating && !quote && !lore && (
+        <div className="cinema-surface-soft pointer-events-auto fixed right-4 top-[118px] z-30 flex items-center gap-2 rounded-full px-3 py-1.5 backdrop-blur-md">
+          <div className="flex items-center gap-1">
+            {[
+              { label: '晨', h: 6.4 },
+              { label: '昼', h: 12.5 },
+              { label: '暮', h: 18.2 },
+              { label: '夜', h: 22.5 },
+            ].map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => handleHourScrub(preset.h)}
+                className={`rounded-full px-1.5 py-0.5 font-serif text-[10.5px] transition ${
+                  Math.abs(customHour - preset.h) < 1.1
+                    ? 'bg-signal/25 text-signal'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={24}
+            step={0.1}
+            value={customHour}
+            onChange={(e) => handleHourScrub(Number(e.target.value))}
+            aria-label="调节草原 24 小时天色"
+            className="h-1 w-24 cursor-pointer accent-[#f2c28b] sm:w-28"
+          />
+          <span className="w-10 text-right font-mono text-[10.5px] text-signal">
+            {formatClockHour(customHour)}
+          </span>
+        </div>
+      )}
+
+      {phase === 'explore' &&
+        !quote &&
+        !lore &&
+        !finalizing &&
+        !attenuating &&
+        !meadowShot &&
+        (telemetry?.seatedBenchId || telemetry?.nearbyBench) && (
+          <div className="pointer-events-none fixed inset-x-0 bottom-[122px] z-30 flex justify-center px-3 sm:bottom-[92px]">
+            <button
+              type="button"
+              onClick={handleBenchToggle}
+              className="cinema-surface pointer-events-auto flex items-center gap-2 rounded-full border-signal/40 px-4 py-1.5 font-serif text-[12px] text-[#fff8ee] transition hover:border-signal/75 hover:bg-signal/15 active:scale-95"
+            >
+              <span className="cinema-kbd">E</span>
+              <span>
+                {telemetry.seatedBenchId
+                  ? '站起继续漫步（也可直接按 WASD）'
+                  : `坐下观景 · ${telemetry.nearbyBench?.name}`}
+              </span>
+            </button>
+          </div>
+        )}
 
       {toast && (
         <div className="pointer-events-none fixed left-1/2 top-[112px] z-40 w-max max-w-[90vw] -translate-x-1/2 sm:top-[82px]">
@@ -1999,7 +2386,7 @@ export function PrologueExperience({
             <div className="animate-fade-in cinema-surface-soft hud-ink-soft rounded-full px-3.5 py-1 font-serif text-[11.5px] text-white/82">
               {coarsePointer
                 ? '左摇杆漫步 · 右摇杆环顾 · 点击光点读她的细语'
-                : '拖拽环顾 · WASD / 点击漫步 · 按住 Shift 迎风滑步 · 空格心光 · J 手账'}
+                : '拖拽环顾 · WASD / 点击漫步 · 按住 Shift 迎风滑步 · 空格心光 · E 长椅 · P 留影 · J 手账'}
             </div>
           )}
 
@@ -2022,6 +2409,14 @@ export function PrologueExperience({
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-signal" />
                 <span>心光呼唤</span>
+              </button>
+              <button
+                type="button"
+                onClick={openMeadowCapture}
+                aria-label="随手拍收入纪念册（快捷键 P）"
+                className="hidden items-center gap-1.5 rounded-full border border-white/16 bg-white/[0.04] px-3 py-1.5 font-serif text-[12px] text-white/85 transition hover:border-signal/55 hover:text-signal active:scale-95 sm:flex"
+              >
+                <span>随手拍</span>
               </button>
               <button
                 type="button"
@@ -2050,6 +2445,25 @@ export function PrologueExperience({
                 </button>
               )
             })}
+            <span className="mx-0.5 h-3.5 w-px bg-white/15" />
+            <button
+              type="button"
+              onClick={toggleFreeRoam}
+              aria-pressed={freeRoam}
+              className={`rounded-full px-2 py-0.5 font-serif text-[10.5px] transition ${
+                freeRoam ? 'bg-signal text-[#170f07] font-medium' : 'text-white/75'
+              }`}
+            >
+              漫游
+            </button>
+            <button
+              type="button"
+              onClick={openMeadowCapture}
+              aria-label="草原随手拍"
+              className="rounded-full px-2 py-0.5 font-serif text-[10.5px] text-white/75"
+            >
+              留影
+            </button>
           </div>
         </div>
       )}

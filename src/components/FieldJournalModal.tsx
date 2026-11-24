@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../engine/core/ctx'
 import { EASTER_EGGS, QUOTES } from '../data/narrative'
 import type { ActId, EggId } from '../types/sensor'
 import type { MemoryFrame } from '../utils/memoryStripExport'
@@ -7,6 +8,7 @@ interface FieldJournalModalProps {
   open: boolean
   cluesFound: string[]
   eggsFound: EggId[]
+  discoveriesFound?: WorldDiscoveryId[]
   memories?: MemoryFrame[]
   act?: ActId
   onClose: () => void
@@ -49,10 +51,19 @@ const EGG_HINTS: Record<EggId, string> = {
   meteor: '第 VII 幕 22:30 入夜后仰望天穹，点住划过星海的流星',
 }
 
+const DISCOVERY_HINTS: Record<WorldDiscoveryId, string> = {
+  cliff_windmill: '沿晨雾中心小径向东南攀上高崖，可见随风转动的白木风车',
+  birch_grove: '自东南风车小径岔道向北下坡，深入东谷林荫与风铃木门',
+  relay_station: '沿湖东长径向北攀上高脊，寻找带有蓝色信标灯的白色圆顶中继站',
+  lake_island: '由轻舟渡口南侧岸坡踏过十八块水上踏石，抵达湖心石龛孤岛',
+  west_cairn: '穿过石拱谷地继续向西漫步，见七块立石与日晷温火盆台',
+}
+
 export function FieldJournalModal({
   open,
   cluesFound,
   eggsFound,
+  discoveriesFound = [],
   memories = [],
   act,
   onClose,
@@ -93,7 +104,7 @@ export function FieldJournalModal({
               替她收好的风声与异常回响
             </h2>
             <p className="mt-1 font-serif text-[12px] tracking-[0.04em] text-white/58">
-              {act ? `当前第 ${act} 幕 · ` : ''}已捕获叙事伏笔 {cluesFound.length}/4 · 草原奇物 {eggsFound.length}/3
+              {act ? `当前第 ${act} 幕 · ` : ''}已捕获叙事伏笔 {cluesFound.length}/4 · 草原奇物 {eggsFound.length}/3 · 草原地标 {discoveriesFound.length}/{WORLD_DISCOVERIES.length}
               {memories.length > 0 ? ` · 胶片 ${memories.length} 帧` : ''}
             </p>
           </div>
@@ -212,6 +223,57 @@ export function FieldJournalModal({
                       方位提示：{EGG_HINTS[id]}
                     </p>
                   )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* 5 处开放草原地标 */}
+        <div className="cinema-rule-cool my-5" />
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="font-serif text-[13px] tracking-[0.12em] text-signal/90">
+              开放草原遗迹与观景点 ({discoveriesFound.length}/{WORLD_DISCOVERIES.length})
+            </h3>
+            <span className="font-mono text-[10px] tracking-[0.16em] text-white/38">OPEN MEADOW LOG</span>
+          </div>
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {WORLD_DISCOVERIES.map((spot) => {
+              const found = discoveriesFound.includes(spot.id)
+              return (
+                <div
+                  key={spot.id}
+                  className={`rounded-2xl border p-3.5 transition ${
+                    found
+                      ? 'border-white/20 bg-white/[0.045]'
+                      : 'border-white/10 bg-white/[0.02]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`cinema-gem h-2 w-2 ${found ? '' : 'border border-white/35 bg-transparent'}`}
+                        style={
+                          found
+                            ? { backgroundColor: spot.accent, boxShadow: `0 0 10px ${spot.accent}` }
+                            : undefined
+                        }
+                      />
+                      <span className="font-serif text-[13px] tracking-[0.04em] text-[#fff8ee]">
+                        {spot.name}
+                      </span>
+                    </div>
+                    <span className={`font-serif text-[10.5px] ${found ? 'text-signal/85' : 'text-white/35'}`}>
+                      {found ? '已抵达' : '待探索'}
+                    </span>
+                  </div>
+                  <p className="mt-1 font-mono text-[10px] tracking-[0.08em] text-white/44">
+                    {spot.subtitle}
+                  </p>
+                  <p className={`mt-1.5 font-serif text-[12px] leading-[1.7] ${found ? 'text-white/76' : 'text-white/45'}`}>
+                    {found ? spot.clueText : `${DISCOVERY_HINTS[spot.id]}（按空格发出心光可唤起远方光柱）`}
+                  </p>
                 </div>
               )
             })}

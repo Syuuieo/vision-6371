@@ -46,6 +46,9 @@ const AMB_LABELS: Record<VisionPacket['ambience'], string> = {
   ocean: '海浪',
   cicada: '夏夜蝉鸣',
   night: '深夜静谧',
+  library: '图书馆翻书',
+  snow: '落雪踏雪',
+  city: '城市街渡',
   none: '无环境声',
 }
 

@@ -151,8 +151,10 @@ function makeEarthTexture() {
         [-97, 26], [-89, 30], [-82, 25], [-80, 32], [-70, 42], [-60, 46],
         [-54, 52], [-65, 61], [-80, 63], [-95, 69], [-125, 71], [-155, 71],
       ],
-      // Greenland
+      // Greenland & Iceland & Hawaii
       [[-52, 60], [-44, 60], [-20, 74], [-28, 82], [-58, 80], [-56, 68]],
+      [[-24, 64], [-14, 64], [-15, 66.5], [-23, 66.2]],
+      [[-160, 21.5], [-155.2, 19.3], [-154.8, 20.3], [-158.8, 22.1]],
       // South America
       [
         [-78, 9], [-72, 12], [-61, 10], [-49, 1], [-35, -6], [-39, -18],
@@ -457,6 +459,12 @@ const LABEL_OFFSETS: Record<string, [number, number, number]> = {
   拉萨: [-0.26, 0.06, 0.2],
   大理: [-0.22, -0.15, 0.2],
   三亚: [0.2, -0.14, 0.2],
+  悉尼: [0.24, -0.06, 0.22],
+  夏威夷: [0.22, 0.08, 0.22],
+  雷克雅未克: [0.24, 0.08, 0.22],
+  开普敦: [0.24, -0.08, 0.22],
+  京都: [0.26, 0.08, 0.22],
+  巴黎: [-0.22, 0.1, 0.22],
 }
 
 function labelOffsetFor(city: string): [number, number, number] {
@@ -525,14 +533,17 @@ export const EarthRadioGlobe = forwardRef<EarthRadioGlobeHandle, EarthRadioGlobe
       const root = new THREE.Group()
       scene.add(root)
 
-      const sunLight = new THREE.DirectionalLight(0xfff2d9, 2.35)
-      sunLight.position.set(5, 3.5, 6)
+      const sunLight = new THREE.DirectionalLight(0xfff5e2, 2.55)
+      sunLight.position.set(5, 3.5, 6.2)
       scene.add(sunLight)
-      scene.add(new THREE.HemisphereLight(0xaad8ff, 0x1d3b68, 1.25))
-      scene.add(new THREE.AmbientLight(0x5e86bc, 0.55))
+      const rimFill = new THREE.DirectionalLight(0x7cb8ff, 1.15)
+      rimFill.position.set(-6, -2.5, 4)
+      scene.add(rimFill)
+      scene.add(new THREE.HemisphereLight(0xc2e4ff, 0x2c568e, 1.55))
+      scene.add(new THREE.AmbientLight(0x7aa4da, 0.92))
 
       const globe = new THREE.Group()
-      globe.quaternion.copy(targetQuaternionFor(22, 112))
+      globe.quaternion.copy(targetQuaternionFor(12, 122))
       root.add(globe)
 
       const glowTexture = makeGlowTexture()
@@ -885,7 +896,7 @@ export const EarthRadioGlobe = forwardRef<EarthRadioGlobeHandle, EarthRadioGlobe
             focusTarget = null
           }
         } else if (!pointer.down && performance.now() > autoPauseUntil) {
-          tempQuat.setFromAxisAngle(worldUp, dt * 0.055)
+          tempQuat.setFromAxisAngle(worldUp, dt * 0.115)
           globe.quaternion.premultiply(tempQuat)
         }
 

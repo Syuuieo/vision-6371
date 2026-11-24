@@ -82,6 +82,42 @@ export const CITY_SIGNATURES: Record<string, CitySignature> = {
     reply: '叶子在积水里打了个旋。她说这声音像有人在轻轻敲门。',
     effect: 'drizzle',
   },
+  悉尼: {
+    weather: '南半球盛夏',
+    verb: '听一声港湾汽笛',
+    reply: '北半球正在过冬，可这里的海风还是热的。她说原来地球另一边一直藏着夏天。',
+    effect: 'ripple',
+  },
+  夏威夷: {
+    weather: '热带椰风',
+    verb: '捧起一捧温热海沙',
+    reply: '金红色的夕阳落进太平洋。她说热浪拍在脚背上，比岩浆温柔一万倍。',
+    effect: 'bloom',
+  },
+  雷克雅未克: {
+    weather: '极光冰夜',
+    verb: '仰头追一道极光',
+    reply: '绿色的光幕在冰原上慢慢折起。她说这是她从未见过的天空的呼吸。',
+    effect: 'starlight',
+  },
+  开普敦: {
+    weather: '南大洋晴夏',
+    verb: '迎着好望角张开手',
+    reply: '云像瀑布一样从桌山边缘倾泻下来。她说风从两大洋交汇的地方吹过来真宽敞。',
+    effect: 'sway',
+  },
+  京都: {
+    weather: '鸭川晚岚',
+    verb: '拨响檐下风铃',
+    reply: '清脆的一声顺着河面飘走。她说木廊和河水的声音让人瞬间安静下来。',
+    effect: 'sway',
+  },
+  巴黎: {
+    weather: '塞纳河暮色',
+    verb: '听远处街头手风琴',
+    reply: '路灯倒映在河水里晃成一条金带。她说人群走过的脚步声原来这么暖。',
+    effect: 'bloom',
+  },
 }
 
 const AMBIENCE_FALLBACK: Record<AmbientKind, SignatureEffect> = {
@@ -90,6 +126,9 @@ const AMBIENCE_FALLBACK: Record<AmbientKind, SignatureEffect> = {
   night: 'starlight',
   cicada: 'bloom',
   wind: 'sway',
+  library: 'bloom',
+  snow: 'frost',
+  city: 'starlight',
   none: 'sway',
 }
 
