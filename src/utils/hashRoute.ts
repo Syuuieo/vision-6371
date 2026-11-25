@@ -14,6 +14,10 @@ export function formatModuleHash(module: ModuleId): string {
   return `#/${module}`
 }
 
+export function isAdminHash(hash: string): boolean {
+  return hash.trim().replace(/^#\/?/, '').toLowerCase() === 'admin'
+}
+
 export function syncModuleHash(module: ModuleId, replace = false): void {
   if (typeof window === 'undefined') return
   const target = formatModuleHash(module)

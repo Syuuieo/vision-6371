@@ -141,15 +141,15 @@ export async function exportMemoryFilmstrip(frames: MemoryFrame[]): Promise<void
   ctx.fillText('DEPTH 6,371.4 KM  ·  EARTH CORE', width / 2, height - 74)
 
   ctx.fillStyle = 'rgba(255, 240, 222, 0.72)'
-  ctx.font = '300 15px "Songti SC", "STSong", Georgia, serif'
-  ctx.fillText('视界 6371 · TAKE HER EYES', width / 2, height - 42)
+  ctx.font = '400 15px "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif'
+  ctx.fillText('风信 · WINDPOST', width / 2, height - 42)
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
   if (!blob) return
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'vision-6371-memory-roll.png'
+  link.download = 'windpost-memory-roll.png'
   document.body.appendChild(link)
   link.click()
   link.remove()

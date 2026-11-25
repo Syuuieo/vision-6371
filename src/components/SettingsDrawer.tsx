@@ -14,6 +14,7 @@ interface SettingsDrawerProps {
   onChange: (patch: Partial<VisionSettings>) => void
   onReset: () => void
   onClose: () => void
+  onOpenAdmin?: () => void
 }
 
 const QUALITY_OPTIONS: { id: QualityTier; label: string; hint: string }[] = [
@@ -111,6 +112,7 @@ export function SettingsDrawer({
   onChange,
   onReset,
   onClose,
+  onOpenAdmin,
 }: SettingsDrawerProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const journey = useJourney()
@@ -157,7 +159,7 @@ export function SettingsDrawer({
       <div className="cinema-surface no-scrollbar max-h-[calc(100dvh-2.5rem)] w-full max-w-[560px] overflow-y-auto rounded-[26px] p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="hud-label text-signal/75">SETTINGS · 视界 6371</div>
+            <div className="hud-label text-signal/75">SETTINGS · 风信</div>
             <h2 className="mt-1.5 font-serif text-[19px] font-normal tracking-[0.08em] text-[#fff6ea]">
               设置与关于
             </h2>
@@ -347,8 +349,19 @@ export function SettingsDrawer({
         <section className="mt-6 space-y-3">
           <SectionTitle index="05" title="关于" />
           <div className="rounded-2xl border border-white/12 bg-white/[0.03] p-4">
-            <div className="font-serif text-[15px] tracking-[0.08em] text-[#fff6ea]">
-              视界 6371 · Take Her Eyes
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="font-serif text-[15px] tracking-[0.08em] text-[#fff6ea]">
+                风信 · Windpost
+              </div>
+              {onOpenAdmin && (
+                <button
+                  type="button"
+                  onClick={onOpenAdmin}
+                  className="rounded-full border border-white/12 px-2.5 py-0.5 font-serif text-[11px] text-white/48 transition hover:border-signal/45 hover:text-signal"
+                >
+                  站长后台
+                </button>
+              )}
             </div>
             <div className="hud-value mt-1 text-[11px] text-signal/80">版本 {APP_VERSION}</div>
             <p className="mt-3 text-[12px] leading-relaxed text-white/60">

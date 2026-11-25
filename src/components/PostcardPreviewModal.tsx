@@ -175,7 +175,7 @@ export function PostcardPreviewModal({
     if (!activeCard) return
     const anchor = document.createElement('a')
     anchor.href = activeCard.url
-    anchor.download = `vision6371-postcard-${activeCard.code}.png`
+    anchor.download = `windpost-postcard-${activeCard.code}.png`
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
@@ -197,7 +197,7 @@ export function PostcardPreviewModal({
 
   const handleShare = async () => {
     if (!activeCard || sharing || !canSystemShare) return
-    const file = new File([activeCard.blob], `vision6371-postcard-${activeCard.code}.png`, {
+    const file = new File([activeCard.blob], `windpost-postcard-${activeCard.code}.png`, {
       type: 'image/png',
     })
     try {
@@ -208,7 +208,7 @@ export function PostcardPreviewModal({
       setSharing(true)
       await navigator.share({
         files: [file],
-        title: `${packet.title} · 视界 6371`,
+        title: `${packet.title} · 风信 Windpost`,
         text: `来自 ${packet.city} 的明信片 · 带上她的眼睛，替她再看一次世界`,
       })
     } catch (error) {

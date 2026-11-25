@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.7.2'
+export const APP_VERSION = '3.8.1'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,34 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.8.1',
+    date: '2026-11-25',
+    title: '品牌焕新：正式更名为「风信 · Windpost」',
+    items: [
+      '全站品牌名正式更新为「风信 · Windpost」，同时将 `NO.6371` 保留为地心深处的频率邮戳编号；封面主标题、顶部导航、网页元信息、设置与站长后台同步焕新。',
+      '同步升级明信片 4 套冲印模板（`windpost-postcard-*.png`）、立体纪念册高清导出（`windpost-album-*.png`）与序章胶片（`windpost-memory-roll.png`）署名落款；所有本机存储键名保持兼容，既有纪念册、印记与来信数据零丢失。',
+    ],
+  },
+  {
+    version: '3.8.0',
+    date: '2026-11-25',
+    title: '轻量站长管理后台（#/admin）与服务端鉴权审核接口',
+    items: [
+      '在云函数 `functions/routes.mjs` 与 `functions/index.ts` 新增凭环境变量 `ADMIN_TOKEN` 鉴权的站长管理接口（未配置时默认 503 安全关闭），支持全站统计、含私密视野的全局检索、公开/私密下架切换、级联永久删帖与单条回声留言清理。',
+      '新增按需懒加载的站长后台面板 `AdminConsole.tsx`（路由 `#/admin`，亦可在「设置 → 关于」低调进入），完全不增加普通访客首屏体积；并兼容本地无云端环境下的「本机数据管理模式」。',
+    ],
+  },
+  {
+    version: '3.7.3',
+    date: '2026-11-25',
+    title: '纪念册广角视野拓宽、移动端竖屏全岛适配与 16:9 宽屏无裁剪拍照',
+    items: [
+      '拓宽微缩奇境默认视场角（34° → 40°~48°）与三档机位距离（标准 14.2m / 广角 18.2m），并加入手机竖屏纵横比自适应拉远，打开即见整座城景，不再在手机上只拍到局部特写。',
+      '升级纪念册快门 `captureFrame()`：拍照瞬间自动以 `1280×720` 真 16:9 宽画幅重新构图抓拍并即时还原屏幕视角，彻底解决手机竖屏截图进 16:9 框后上下被大幅裁切导致「视野太小」的问题。',
+      '为微缩纪念册补充手机双指捏合缩放手势，同时修复留影弹窗中「重拍」按钮换行与「含「……印记」印记」重复文字。',
+    ],
+  },
   {
     version: '3.7.2',
     date: '2026-11-25',

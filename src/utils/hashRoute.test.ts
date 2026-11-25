@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatModuleHash, parseModuleFromHash } from './hashRoute'
+import { formatModuleHash, isAdminHash, parseModuleFromHash } from './hashRoute'
 
 describe('hashRoute', () => {
   it('parses valid module hashes case-insensitively', () => {
@@ -22,5 +22,13 @@ describe('hashRoute', () => {
     expect(formatModuleHash('radio')).toBe('#/radio')
     expect(formatModuleHash('post')).toBe('#/mailbox')
     expect(formatModuleHash('diorama')).toBe('#/diorama')
+  })
+
+  it('recognizes #/admin hash routes exclusively', () => {
+    expect(isAdminHash('#/admin')).toBe(true)
+    expect(isAdminHash('#admin')).toBe(true)
+    expect(isAdminHash('#/ADMIN')).toBe(true)
+    expect(isAdminHash('#/radio')).toBe(false)
+    expect(isAdminHash('')).toBe(false)
   })
 })

@@ -785,7 +785,7 @@ export function PrologueExperience({
     })
     setMeadowSaved(true)
     sound.playChime([523.25, 659.25, 783.99], 0.045, 2.0)
-    showToast('已收入「第 04 章 · 视界纪念册」', 2600)
+    showToast('已收入「第 04 章 · 风信纪念册」', 2600)
   }, [epilogueNote, meadowNote, meadowShot, showToast, sound])
 
   const advanceIntroBeat = useCallback(() => {

@@ -600,7 +600,7 @@ function drawTwilightPostcard(
   // 页眉
   ctx.fillStyle = 'rgba(242,194,139,0.78)'
   ctx.font = `400 22px ${MONO}`
-  trackedText(ctx, 'VISION 6371 · POST HER EYES', 150, 148, 5)
+  trackedText(ctx, 'WINDPOST · POST HER EYES', 150, 148, 5)
 
   ctx.fillStyle = 'rgba(255,244,226,0.45)'
   ctx.font = `400 19px ${MONO}`
@@ -831,7 +831,7 @@ function drawTwilightPostcard(
   ctx.fillStyle = 'rgba(242,194,139,0.38)'
   trackedText(ctx, `OTA / ${code} · ${visionCoordinates(packet.city)}`, 150, 2172, 2.2)
   ctx.fillStyle = 'rgba(232,224,210,0.34)'
-  const brandLabel = '视界 6371 · TAKE HER EYES'
+  const brandLabel = '风信 · WINDPOST'
   trackedText(ctx, brandLabel, 1650 - trackedWidth(ctx, brandLabel, 2), 2172, 2)
 
   if (options.showStamp) {
@@ -882,7 +882,7 @@ function drawPolaroidPostcard(
   // 顶部编号条
   ctx.fillStyle = 'rgba(48, 38, 28, 0.5)'
   ctx.font = `500 17px ${MONO}`
-  trackedText(ctx, 'INSTANT ARCHIVE // VISION 6371', 124, 118, 3.6)
+  trackedText(ctx, 'INSTANT ARCHIVE // WINDPOST', 124, 118, 3.6)
   const rightTop = `No. ${code}`
   trackedText(ctx, rightTop, 1676 - trackedWidth(ctx, rightTop, 3.2), 118, 3.2)
 
@@ -996,7 +996,7 @@ function drawPolaroidPostcard(
   ctx.textAlign = 'right'
   ctx.font = `400 15px ${MONO}`
   ctx.fillStyle = 'rgba(31, 35, 44, 0.42)'
-  ctx.fillText('视界 6371 · TAKE HER EYES', 1672, 2184)
+  ctx.fillText('风信 · WINDPOST', 1672, 2184)
   ctx.textAlign = 'left'
 
   if (options.showStamp) {
@@ -1049,7 +1049,7 @@ function drawFilmPostcard(
   // 胶片边码
   ctx.fillStyle = 'rgba(242, 194, 139, 0.72)'
   ctx.font = `500 18px ${MONO}`
-  trackedText(ctx, 'VISION 6371 · SAFETY FILM 5219', 150, 114, 3.6)
+  trackedText(ctx, 'WINDPOST · SAFETY FILM 5219', 150, 114, 3.6)
   const rightCode = `FRAME ${code} · 35MM`
   trackedText(ctx, rightCode, 1650 - trackedWidth(ctx, rightCode, 3.2), 114, 3.2)
 
@@ -1159,7 +1159,7 @@ function drawFilmPostcard(
   ctx.fillStyle = 'rgba(242, 194, 139, 0.55)'
   ctx.font = `400 15px ${MONO}`
   trackedText(ctx, `REEL ${code} · 6,371.4 KM`, 150, 2180, 2.8)
-  const brand = '视界 6371 · TAKE HER EYES'
+  const brand = '风信 · WINDPOST'
   trackedText(ctx, brand, 1650 - trackedWidth(ctx, brand, 2.2), 2180, 2.2)
 
   if (options.showStamp) {
@@ -1424,7 +1424,7 @@ function drawLetterPostcard(
   ctx.fillStyle = 'rgba(242, 194, 139, 0.45)'
   trackedText(ctx, `NEUTRINO POSTAL SERVICE · ${code}`, 140, 2166, 2.2)
   ctx.fillStyle = 'rgba(232, 224, 210, 0.4)'
-  const brand = '视界 6371 · TAKE HER EYES'
+  const brand = '风信 · WINDPOST'
   trackedText(ctx, brand, 1660 - trackedWidth(ctx, brand, 2), 2166, 2)
 }
 
@@ -1476,7 +1476,7 @@ export async function exportVisionPostcard(
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `vision6371-postcard-${code}.png`
+  anchor.download = `windpost-postcard-${code}.png`
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()

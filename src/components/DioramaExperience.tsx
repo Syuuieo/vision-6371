@@ -713,13 +713,13 @@ export function DioramaExperience({
           aria-label="写下纪念册留言"
         >
           <div className="cinema-surface animate-fade-up no-scrollbar max-h-[90dvh] w-full max-w-[540px] overflow-y-auto rounded-[26px] p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="hud-label text-signal/85">CAPTURED FRAME · {activeMeta.city}</span>
                   {stampUnlockedHere && (
-                    <span className="rounded-full bg-signal/20 px-2 py-0.5 font-serif text-[10px] text-signal">
-                      含「{activeMeta.stampTitle}」印记
+                    <span className="shrink-0 whitespace-nowrap rounded-full bg-signal/20 px-2 py-0.5 font-serif text-[10px] text-signal">
+                      含「{activeMeta.stampTitle}」
                     </span>
                   )}
                 </div>
@@ -730,7 +730,7 @@ export function DioramaExperience({
               <button
                 type="button"
                 onClick={() => setPendingShot(null)}
-                className="rounded-full border border-white/14 px-3 py-1 font-serif text-[11.5px] text-white/70 transition hover:border-signal/50 hover:text-signal"
+                className="shrink-0 whitespace-nowrap rounded-full border border-white/14 px-3 py-1 font-serif text-[11.5px] text-white/70 transition hover:border-signal/50 hover:text-signal"
               >
                 重拍
               </button>
@@ -790,7 +790,7 @@ export function DioramaExperience({
           className="fixed inset-0 z-[60] flex items-center justify-center bg-[#030712]/74 px-4 py-6 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
-          aria-label="视界纪念册"
+          aria-label="风信纪念册"
           onClick={() => setAlbumOpen(false)}
         >
           <div
@@ -801,7 +801,7 @@ export function DioramaExperience({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
-                  <span className="hud-label text-signal/85">KEEPSAKE ALBUM · 视界纪念册</span>
+                  <span className="hud-label text-signal/85">KEEPSAKE ALBUM · 风信纪念册</span>
                 </div>
                 <h2 className="mt-1.5 font-serif text-[22px] font-normal tracking-[0.08em] text-[#fff8ee]">
                   奇境印记与立体留影 ({album.length})

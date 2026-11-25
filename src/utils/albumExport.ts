@@ -141,10 +141,10 @@ export async function exportAlbumCardPng(entry: AlbumEntry): Promise<void> {
   ctx.font = '18px "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif'
   const footerLeft = entry.promiseQuote
     ? `草原约定：${entry.promiseQuote}`
-    : '视界 6371 · 立体漫游纪念册 · 留给人间与记忆'
+    : '风信 · 立体漫游纪念册 · 留给人间与记忆'
   ctx.fillText(footerLeft, px, height - 72)
 
-  const footerRight = 'TAKE HER EYES · ARCHIVE'
+  const footerRight = 'WINDPOST · NO.6371 ARCHIVE'
   ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
   ctx.font = '16px ui-monospace, SFMono-Regular, monospace'
   const frW = ctx.measureText(footerRight).width
@@ -152,7 +152,7 @@ export async function exportAlbumCardPng(entry: AlbumEntry): Promise<void> {
 
   const link = document.createElement('a')
   link.href = canvas.toDataURL('image/png')
-  link.download = `vision6371-album-${entry.sceneId}-${entry.createdAt}.png`
+  link.download = `windpost-album-${entry.sceneId}-${entry.createdAt}.png`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)

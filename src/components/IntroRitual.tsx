@@ -89,11 +89,17 @@ export function IntroRitual({
           </div>
 
           <h1
-            className="animate-fade-up hud-ink mt-4 select-none font-serif text-[clamp(50px,10vw,98px)] font-light leading-[1] tracking-[0.07em] text-[#fff8ee]"
+            className="animate-fade-up hud-ink mt-4 select-none font-serif text-[clamp(56px,11vw,108px)] font-light leading-[1.04] tracking-[0.22em] text-[#fff8ee]"
             style={{ animationDelay: '0.32s' }}
           >
-            视界 <span className="text-glow text-signal">6371</span>
+            风<span className="text-glow text-signal">信</span>
           </h1>
+          <div
+            className="animate-fade-up mt-3 font-mono text-[11px] tracking-[0.34em] text-signal/82 sm:text-[12px]"
+            style={{ animationDelay: '0.42s' }}
+          >
+            WINDPOST · NO.6371
+          </div>
 
           <p
             className="animate-fade-up hud-ink-soft mt-5 max-w-[33rem] font-serif text-[15px] font-normal leading-[1.95] tracking-[0.06em] text-white/88 sm:text-[17px]"

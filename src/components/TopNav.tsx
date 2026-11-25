@@ -73,15 +73,18 @@ export function TopNav({
             type="button"
             onClick={() => (onGoHome ? onGoHome() : onModuleChange('prologue'))}
             className={`${canGoBack && onBack ? 'hidden sm:flex' : 'flex'} hud-ink shrink-0 items-center gap-2.5 whitespace-nowrap px-1 py-1 text-left transition hover:opacity-90`}
-            aria-label="回到首页 · 视界 6371"
+            aria-label="回到首页 · 风信"
             title="回到封面首页"
           >
             <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
               <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_12px_rgba(242,194,139,0.92)]" />
               <span className="cinema-gem absolute inset-0 border border-signal/35 animate-[pulseRing_4.2s_ease-out_infinite]" />
             </span>
-            <span className="hidden font-serif text-[14px] tracking-[0.14em] text-[#fff6ea] sm:inline">
-              视界 <span className="text-signal/95">6371</span>
+            <span className="hidden items-baseline gap-1.5 font-serif text-[15px] tracking-[0.16em] text-[#fff6ea] sm:inline-flex">
+              <span>风信</span>
+              <span className="hidden font-mono text-[10px] tracking-[0.2em] text-signal/82 md:inline">
+                WINDPOST
+              </span>
             </span>
           </button>
         </div>

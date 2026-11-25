@@ -12,6 +12,22 @@ const PUBLIC_BURST_WINDOW_MS = 10 * 60 * 1000
 const PUBLIC_BURST_LIMIT = 40
 const HEARTBEAT_ECHO_WINDOW_MS = 60 * 1000
 const HEARTBEAT_ECHO_BURST_LIMIT = 12
+const ADMIN_FETCH_LIMIT = 200
+const encoder = new TextEncoder()
+
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length === 0 || b.length === 0) {
+    return false
+  }
+  const left = encoder.encode(a)
+  const right = encoder.encode(b)
+  if (left.length !== right.length) return false
+  let diff = 0
+  for (let i = 0; i < left.length; i += 1) {
+    diff |= left[i] ^ right[i]
+  }
+  return diff === 0
+}
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 
@@ -128,11 +144,18 @@ function previewOf(row) {
   }
 }
 
-export function application({ db, BackendError }) {
+export function application({ db, BackendError, adminToken = '' }) {
   const fail = (code, status) => { throw new BackendError(code, status) }
   const rows = (result) => {
     if (result.error) fail(result.error.code, result.error.status)
     return result.data
+  }
+
+  function assertAdmin(request) {
+    const expected = typeof adminToken === 'string' ? adminToken.trim() : ''
+    if (expected.length < 8) fail('admin_unconfigured', 503)
+    const provided = (request.headers.get('x-admin-token') ?? '').trim()
+    if (!timingSafeEqual(provided, expected)) fail('unauthorized', 401)
   }
 
   async function input(request) {
@@ -250,6 +273,173 @@ export function application({ db, BackendError }) {
 
     if (path === '/api/health' && request.method === 'GET') {
       return json({ ok: true })
+    }
+
+    if (path === '/api/admin/overview' && request.method === 'GET') {
+      assertAdmin(request)
+      const url = new URL(request.url)
+      const visibilityParam = url.searchParams.get('visibility')
+      const visibilityFilter =
+        visibilityParam === 'public' || visibilityParam === 'private' ? visibilityParam : 'all'
+      const q = (url.searchParams.get('q') ?? '').trim().toLowerCase()
+
+      const visionRows = rows(await db.from('visions')
+        .select('id,code,title,sender,city,thumbnail,particles,ambience,has_voice,temp_c,wind_level,scent_tag,visibility,hearts,created_at,packet')
+        .order('created_at', { ascending: false })
+        .limit(ADMIN_FETCH_LIMIT)) ?? []
+
+      const echoRows = rows(await db.from('vision_echoes')
+        .select('id,vision_id,message,created_at')
+        .order('created_at', { ascending: false })
+        .limit(ADMIN_FETCH_LIMIT)) ?? []
+
+      const visionById = new Map()
+      const echoesByVision = new Map()
+      for (const row of visionRows) {
+        visionById.set(row.id, row)
+      }
+      for (const row of echoRows) {
+        const list = echoesByVision.get(row.vision_id) ?? []
+        list.push(echoOf(row))
+        echoesByVision.set(row.vision_id, list)
+      }
+
+      const cutoff24h = Date.now() - 24 * 60 * 60 * 1000
+      const cities = new Set()
+      let publicVisions = 0
+      let privateVisions = 0
+      let totalHearts = 0
+      let voiceVisions = 0
+      let recent24h = 0
+
+      const allVisions = visionRows.map((row) => {
+        const vis = row.visibility === 'private' ? 'private' : 'public'
+        if (vis === 'private') privateVisions += 1
+        else publicVisions += 1
+        totalHearts += Number(row.hearts) || 0
+        if (row.has_voice === true) voiceVisions += 1
+        if (row.city) cities.add(row.city)
+        const publishedAt = Date.parse(row.created_at)
+        if (Number.isFinite(publishedAt) && publishedAt >= cutoff24h) recent24h += 1
+
+        const pkt = isRecord(row.packet) ? row.packet : {}
+        return {
+          id: row.id,
+          code: row.code,
+          title: row.title,
+          sender: row.sender,
+          city: row.city,
+          thumbnail: row.thumbnail,
+          tempC: row.temp_c,
+          windLevel: row.wind_level,
+          scentTag: row.scent_tag ?? '',
+          particles: row.particles,
+          ambience: row.ambience,
+          hasVoice: row.has_voice === true,
+          hearts: Number(row.hearts) || 0,
+          visibility: vis,
+          publishedAt,
+          letter: typeof pkt.letter === 'string' ? pkt.letter : '',
+          weather: typeof pkt.weather === 'string' ? pkt.weather : '',
+          sticker: typeof pkt.sticker === 'string' ? pkt.sticker : '',
+          stampId: typeof pkt.stampId === 'string' ? pkt.stampId : '',
+          echoes: echoesByVision.get(row.id) ?? [],
+        }
+      })
+
+      const filteredVisions = allVisions.filter((item) => {
+        if (visibilityFilter !== 'all' && item.visibility !== visibilityFilter) return false
+        if (!q) return true
+        return (
+          item.code.toLowerCase().includes(q) ||
+          item.title.toLowerCase().includes(q) ||
+          item.sender.toLowerCase().includes(q) ||
+          item.city.toLowerCase().includes(q) ||
+          item.scentTag.toLowerCase().includes(q) ||
+          item.letter.toLowerCase().includes(q)
+        )
+      })
+
+      const recentEchoes = echoRows
+        .map((row) => {
+          const parent = visionById.get(row.vision_id)
+          return {
+            id: row.id,
+            visionId: row.vision_id,
+            visionCode: parent?.code ?? '',
+            visionTitle: parent?.title ?? '已移除的视野',
+            city: parent?.city ?? '',
+            message: row.message,
+            createdAt: Date.parse(row.created_at),
+          }
+        })
+        .filter((item) => {
+          if (!q) return true
+          return (
+            item.message.toLowerCase().includes(q) ||
+            item.visionCode.toLowerCase().includes(q) ||
+            item.visionTitle.toLowerCase().includes(q) ||
+            item.city.toLowerCase().includes(q)
+          )
+        })
+        .slice(0, 80)
+
+      return json({
+        stats: {
+          totalVisions: allVisions.length,
+          publicVisions,
+          privateVisions,
+          totalHearts,
+          totalEchoes: echoRows.length,
+          citiesCount: cities.size,
+          voiceVisions,
+          recent24h,
+        },
+        visions: filteredVisions,
+        recentEchoes,
+      })
+    }
+
+    const adminVision = path.match(/^\/api\/admin\/visions\/([A-Za-z0-9]{6})$/)
+    if (adminVision && /^[A-Z2-9]{6}$/.test(adminVision[1].toUpperCase())) {
+      const code = adminVision[1].toUpperCase()
+      if (request.method === 'PATCH') {
+        assertAdmin(request)
+        const body = await input(request)
+        if (!isRecord(body) || (body.visibility !== 'public' && body.visibility !== 'private')) {
+          fail('invalid_input', 400)
+        }
+        const vision = await findVision(code)
+        if (!vision) fail('not_found', 404)
+        rows(await db.from('visions')
+          .update({ visibility: body.visibility })
+          .eq('id', vision.id)
+          .select('code,visibility'))
+        return json({ code, visibility: body.visibility })
+      }
+      if (request.method === 'DELETE') {
+        assertAdmin(request)
+        const vision = await findVision(code)
+        if (!vision) return json({ deleted: true, code })
+        rows(await db.from('vision_echoes').delete().eq('vision_id', vision.id).select('id'))
+        const removed = rows(await db.from('visions').delete().eq('id', vision.id).select('id'))
+        if (!removed?.length) fail('write_conflict', 409)
+        return json({ deleted: true, code })
+      }
+    }
+
+    const adminEcho = path.match(/^\/api\/admin\/echoes\/([^/]+)$/)
+    if (adminEcho && request.method === 'DELETE') {
+      assertAdmin(request)
+      let id = ''
+      try {
+        id = decodeURIComponent(adminEcho[1]).trim()
+      } catch {
+        fail('invalid_input', 400)
+      }
+      if (!id || id.length > 64 || id.includes('\0')) fail('invalid_input', 400)
+      rows(await db.from('vision_echoes').delete().eq('id', id).select('id'))
+      return json({ deleted: true, id })
     }
 
     if (path === '/api/visions' && request.method === 'GET') {

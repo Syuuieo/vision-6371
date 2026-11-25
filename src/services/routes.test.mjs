@@ -109,9 +109,9 @@ function visionRow(overrides = {}) {
   }
 }
 
-function setup(tables) {
+function setup(tables, adminToken = 'secret-admin-key-2026') {
   const db = new FakeDb(tables)
-  const app = application({ db, BackendError })
+  const app = application({ db, BackendError, adminToken })
   return { app, db }
 }
 
@@ -269,5 +269,136 @@ describe('POST + GET ownership handling', () => {
         body: JSON.stringify({ message: '晚风很轻' }),
       }),
     ).rejects.toMatchObject({ code: 'rate_limited', status: 429 })
+  })
+})
+
+describe('Admin API', () => {
+  const ADMIN = 'secret-admin-key-2026'
+
+  it('fails closed when ADMIN_TOKEN is missing or too short', async () => {
+    const { app } = setup({ visions: [visionRow()] }, 'short')
+    await expect(
+      call(app, '/api/admin/overview', {
+        method: 'GET',
+        headers: { 'x-admin-token': 'short' },
+      }),
+    ).rejects.toMatchObject({ code: 'admin_unconfigured', status: 503 })
+  })
+
+  it('rejects requests without a matching x-admin-token', async () => {
+    const { app } = setup({ visions: [visionRow()] }, ADMIN)
+    await expect(call(app, '/api/admin/overview', { method: 'GET' })).rejects.toMatchObject({
+      code: 'unauthorized',
+      status: 401,
+    })
+    await expect(
+      call(app, '/api/admin/overview', {
+        method: 'GET',
+        headers: { 'x-admin-token': 'wrong-admin-key' },
+      }),
+    ).rejects.toMatchObject({ code: 'unauthorized', status: 401 })
+  })
+
+  it('returns stats, hides owner_token, and filters visions & echoes', async () => {
+    const { app } = setup(
+      {
+        visions: [
+          visionRow({
+            id: 'v1',
+            code: 'PUB123',
+            title: '南京梧桐夜雨',
+            sender: '林微',
+            city: '南京',
+            thumbnail: IMAGE,
+            temp_c: 14,
+            wind_level: 1,
+            particles: 'rain',
+            ambience: 'rain',
+            has_voice: true,
+            hearts: 5,
+            visibility: 'public',
+            packet: { title: '南京梧桐夜雨', sender: '林微', city: '南京', letter: '晚风吹过树梢' },
+          }),
+          visionRow({
+            id: 'v2',
+            code: 'PRV456',
+            title: '雪夜私密信',
+            sender: '阿远',
+            city: '哈尔滨',
+            thumbnail: IMAGE,
+            temp_c: -12,
+            wind_level: 2,
+            particles: 'snow',
+            ambience: 'snow',
+            has_voice: false,
+            hearts: 2,
+            visibility: 'private',
+            packet: { title: '雪夜私密信', sender: '阿远', city: '哈尔滨' },
+          }),
+        ],
+        vision_echoes: [
+          { id: 'e1', vision_id: 'v1', message: '听见雨声了', created_at: new Date().toISOString() },
+          { id: 'e2', vision_id: 'v2', message: '真冷啊', created_at: new Date().toISOString() },
+        ],
+      },
+      ADMIN,
+    )
+
+    const res = await call(app, '/api/admin/overview?visibility=private&q=%E5%93%88%E5%B0%94%E6%BB%A8', {
+      method: 'GET',
+      headers: { 'x-admin-token': ADMIN },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(JSON.stringify(body)).not.toContain('owner')
+    expect(body.stats).toMatchObject({
+      totalVisions: 2,
+      publicVisions: 1,
+      privateVisions: 1,
+      totalHearts: 7,
+      totalEchoes: 2,
+      citiesCount: 2,
+      voiceVisions: 1,
+    })
+    expect(body.visions).toHaveLength(1)
+    expect(body.visions[0].code).toBe('PRV456')
+    expect(body.recentEchoes).toHaveLength(1)
+    expect(body.recentEchoes[0].id).toBe('e2')
+  })
+
+  it('toggles visibility, removes single echoes, and deletes visions as admin', async () => {
+    const { app, db } = setup(
+      {
+        visions: [visionRow({ id: 'v1', code: 'MOD234', visibility: 'public' })],
+        vision_echoes: [
+          { id: 'e1', vision_id: 'v1', message: '保留这句', created_at: new Date().toISOString() },
+          { id: 'e2', vision_id: 'v1', message: '违规留言', created_at: new Date().toISOString() },
+        ],
+      },
+      ADMIN,
+    )
+
+    const patchRes = await call(app, '/api/admin/visions/MOD234', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN },
+      body: JSON.stringify({ visibility: 'private' }),
+    })
+    expect(patchRes.status).toBe(200)
+    expect(db.tables.visions[0].visibility).toBe('private')
+
+    const delEchoRes = await call(app, '/api/admin/echoes/e2', {
+      method: 'DELETE',
+      headers: { 'x-admin-token': ADMIN },
+    })
+    expect(delEchoRes.status).toBe(200)
+    expect(db.tables.vision_echoes.map((e) => e.id)).toEqual(['e1'])
+
+    const delVisionRes = await call(app, '/api/admin/visions/MOD234', {
+      method: 'DELETE',
+      headers: { 'x-admin-token': ADMIN },
+    })
+    expect(delVisionRes.status).toBe(200)
+    expect(db.tables.visions).toHaveLength(0)
+    expect(db.tables.vision_echoes).toHaveLength(0)
   })
 })

@@ -19,6 +19,14 @@ import {
   type SkyDomeHandle,
 } from './diorama/materials'
 import {
+  DIORAMA_DEFAULT_DISTANCE,
+  DIORAMA_MAX_DISTANCE,
+  DIORAMA_MIN_DISTANCE,
+  clamp,
+  computeCaptureDistance,
+  computeDioramaFraming,
+} from './diorama/framing'
+import {
   DIORAMA_SCENES,
   type DioramaBuilderCtx,
   type DioramaFilter,
@@ -50,10 +58,6 @@ interface InteractiveNode {
   goalId?: string
   focusPoint?: THREE.Vector3
   onClick: (point?: THREE.Vector3) => { label: string; sfx: DioramaSfx }
-}
-
-function clamp(v: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, v))
 }
 
 function disposeTree(root: THREE.Object3D) {
@@ -147,9 +151,17 @@ export class DioramaWorld {
   private targetAzimuth = 0.52
   private polar = 0.72
   private targetPolar = 0.72
-  private distance = 12.6
-  private targetDistance = 12.6
+  private distance = DIORAMA_DEFAULT_DISTANCE
+  private targetDistance = DIORAMA_DEFAULT_DISTANCE
+  private distanceScale = 1
   private pointer = { down: false, id: -1, lastX: 0, lastY: 0, moved: 0 }
+  private readonly activePointers = new Map<number, { x: number; y: number }>()
+  private pinch = {
+    active: false,
+    startDist: 0,
+    baseDistance: DIORAMA_DEFAULT_DISTANCE,
+    hadPinch: false,
+  }
 
   private readonly raycaster = new THREE.Raycaster()
   private readonly pointerNdc = new THREE.Vector2()
@@ -192,7 +204,7 @@ export class DioramaWorld {
     dom.style.cursor = 'grab'
     host.appendChild(dom)
 
-    this.camera = new THREE.PerspectiveCamera(34, 1, 0.5, 110)
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.5, 140)
     this.textures = createDioramaTextures()
 
     this.skyDome = createDioramaSkyDome()
@@ -245,7 +257,11 @@ export class DioramaWorld {
     if (this.disposed) return
     const w = Math.max(2, this.host.clientWidth)
     const h = Math.max(2, this.host.clientHeight)
-    this.camera.aspect = w / h
+    const aspect = w / h
+    const framing = computeDioramaFraming(aspect, this.distance)
+    this.distanceScale = framing.distanceScale
+    this.camera.fov = framing.fov
+    this.camera.aspect = aspect
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(w, h, false)
   }
@@ -260,13 +276,14 @@ export class DioramaWorld {
   }
 
   setZoomPreset(preset: DioramaZoomPreset) {
-    this.targetDistance = preset === 'wide' ? 15.2 : preset === 'macro' ? 9.4 : 12.6
+    this.targetDistance =
+      preset === 'wide' ? 18.2 : preset === 'macro' ? 10.5 : DIORAMA_DEFAULT_DISTANCE
   }
 
   resetView() {
     this.targetAzimuth = 0.52
     this.targetPolar = 0.72
-    this.targetDistance = 12.6
+    this.targetDistance = DIORAMA_DEFAULT_DISTANCE
   }
 
   replayFinale() {
@@ -296,8 +313,31 @@ export class DioramaWorld {
 
   captureFrame(filter: DioramaFilter = 'none'): string | null {
     if (this.disposed) return null
+    const captureW = 1280
+    const captureH = 720
+    const prevPixelRatio = this.renderer.getPixelRatio()
+    const prevAspect = this.camera.aspect
+    const prevFov = this.camera.fov
+    const prevPos = this.camera.position.clone()
+
     try {
+      this.renderer.setPixelRatio(1)
+      this.renderer.setSize(captureW, captureH, false)
+      this.camera.aspect = captureW / captureH
+      this.camera.fov = 42
+      this.camera.updateProjectionMatrix()
+
+      const cosP = Math.cos(this.polar)
+      const sinP = Math.sin(this.polar)
+      const captureDist = computeCaptureDistance(this.distance)
+      this.camera.position.set(
+        Math.sin(this.azimuth) * cosP * captureDist,
+        sinP * captureDist + 0.9,
+        Math.cos(this.azimuth) * cosP * captureDist,
+      )
+      this.camera.lookAt(0, 1.05, -0.35)
       this.renderer.render(this.scene, this.camera)
+
       const canvas = this.renderer.domElement
       if (filter === 'none') return canvas.toDataURL('image/jpeg', 0.94)
 
@@ -321,6 +361,15 @@ export class DioramaWorld {
       return out.toDataURL('image/jpeg', 0.94)
     } catch {
       return null
+    } finally {
+      this.renderer.setPixelRatio(prevPixelRatio)
+      this.camera.fov = prevFov
+      this.camera.aspect = prevAspect
+      this.camera.position.copy(prevPos)
+      this.camera.lookAt(0, 1.05, -0.35)
+      this.camera.updateProjectionMatrix()
+      this.resize()
+      this.renderer.render(this.scene, this.camera)
     }
   }
 
@@ -783,17 +832,50 @@ export class DioramaWorld {
     return null
   }
 
+  private twoFingerDistance(): number {
+    const pts = Array.from(this.activePointers.values())
+    if (pts.length < 2) return 0
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+  }
+
   private onPointerDown = (event: PointerEvent) => {
-    this.pointer.down = true
-    this.pointer.id = event.pointerId
-    this.pointer.lastX = event.clientX
-    this.pointer.lastY = event.clientY
-    this.pointer.moved = 0
+    this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     this.renderer.domElement.setPointerCapture?.(event.pointerId)
-    this.renderer.domElement.style.cursor = 'grabbing'
+    if (this.activePointers.size === 2) {
+      const dist = this.twoFingerDistance()
+      this.pinch = {
+        active: true,
+        startDist: Math.max(dist, 20),
+        baseDistance: this.targetDistance,
+        hadPinch: true,
+      }
+      this.pointer.down = false
+      return
+    }
+    if (this.activePointers.size === 1) {
+      this.pointer.down = true
+      this.pointer.id = event.pointerId
+      this.pointer.lastX = event.clientX
+      this.pointer.lastY = event.clientY
+      this.pointer.moved = 0
+      this.pinch.hadPinch = false
+      this.renderer.domElement.style.cursor = 'grabbing'
+    }
   }
 
   private onPointerMove = (event: PointerEvent) => {
+    if (this.activePointers.has(event.pointerId)) {
+      this.activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    }
+    if (this.pinch.active && this.activePointers.size >= 2) {
+      const dist = this.twoFingerDistance()
+      this.targetDistance = clamp(
+        this.pinch.baseDistance * (this.pinch.startDist / Math.max(dist, 20)),
+        DIORAMA_MIN_DISTANCE,
+        DIORAMA_MAX_DISTANCE,
+      )
+      return
+    }
     if (!this.pointer.down || event.pointerId !== this.pointer.id) {
       const hit = this.pickInteractive(event.clientX, event.clientY)
       this.renderer.domElement.style.cursor = hit ? 'pointer' : 'grab'
@@ -809,11 +891,25 @@ export class DioramaWorld {
   }
 
   private onPointerUp = (event: PointerEvent) => {
-    if (!this.pointer.down || event.pointerId !== this.pointer.id) return
-    this.pointer.down = false
+    this.activePointers.delete(event.pointerId)
     this.renderer.domElement.releasePointerCapture?.(event.pointerId)
-    this.renderer.domElement.style.cursor = 'grab'
-    if (this.pointer.moved < 8) {
+    if (this.activePointers.size < 2) {
+      this.pinch.active = false
+    }
+    const isSingleTapCandidate =
+      !this.pinch.hadPinch &&
+      this.pointer.down &&
+      event.pointerId === this.pointer.id &&
+      this.pointer.moved < 8
+    if (event.pointerId === this.pointer.id) {
+      this.pointer.down = false
+    }
+    if (this.activePointers.size === 0) {
+      this.pointer.down = false
+      this.pinch.hadPinch = false
+      this.renderer.domElement.style.cursor = 'grab'
+    }
+    if (isSingleTapCandidate && event.type === 'pointerup') {
       const hit = this.pickInteractive(event.clientX, event.clientY)
       if (hit) {
         const wasAwakened = this.unlockedAwakened
@@ -833,7 +929,11 @@ export class DioramaWorld {
 
   private onWheel = (event: WheelEvent) => {
     event.preventDefault()
-    this.targetDistance = clamp(this.targetDistance + event.deltaY * 0.007, 8.2, 16.5)
+    this.targetDistance = clamp(
+      this.targetDistance + event.deltaY * 0.008,
+      DIORAMA_MIN_DISTANCE,
+      DIORAMA_MAX_DISTANCE,
+    )
   }
 
   private pickInteractive(
@@ -883,10 +983,11 @@ export class DioramaWorld {
 
     const cosP = Math.cos(this.polar)
     const sinP = Math.sin(this.polar)
+    const effectiveDist = clamp(this.distance * this.distanceScale, DIORAMA_MIN_DISTANCE, 36)
     this.camera.position.set(
-      Math.sin(this.azimuth) * cosP * this.distance,
-      sinP * this.distance + 0.9,
-      Math.cos(this.azimuth) * cosP * this.distance,
+      Math.sin(this.azimuth) * cosP * effectiveDist,
+      sinP * effectiveDist + 0.9,
+      Math.cos(this.azimuth) * cosP * effectiveDist,
     )
     this.camera.lookAt(0, 1.05, -0.35)
 

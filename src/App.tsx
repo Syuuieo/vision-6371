@@ -11,7 +11,7 @@ import {
   useSettings,
 } from './services/settings'
 import type { ModuleId, Phase } from './types/sensor'
-import { parseModuleFromHash, syncModuleHash } from './utils/hashRoute'
+import { parseModuleFromHash, syncModuleHash, isAdminHash } from './utils/hashRoute'
 import {
   getCityWhisper,
   loadStoryRelay,
@@ -36,6 +36,9 @@ const DioramaExperience = lazy(() =>
 )
 const SettingsDrawer = lazy(() =>
   import('./components/SettingsDrawer').then((m) => ({ default: m.SettingsDrawer })),
+)
+const AdminConsole = lazy(() =>
+  import('./components/AdminConsole').then((m) => ({ default: m.AdminConsole })),
 )
 
 function ChannelLoading() {
@@ -89,6 +92,9 @@ export default function App() {
   const [relay, setRelay] = useState<StoryRelayState>(() => loadStoryRelay())
   const [pendingPostEntry, setPendingPostEntry] = useState<AlbumEntry | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [adminMode, setAdminMode] = useState(
+    () => typeof window !== 'undefined' && isAdminHash(window.location.hash),
+  )
   const [systemReducedMotion, setSystemReducedMotion] = useState(prefersReducedMotion)
 
   const updateRelay = useCallback((patch: Partial<StoryRelayState>) => {
@@ -163,15 +169,20 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (signalCode) return
+    if (signalCode || adminMode) return
     if (!parseModuleFromHash(window.location.hash)) {
       syncModuleHash(module, true)
     }
-  }, [signalCode, module])
+  }, [signalCode, module, adminMode])
 
   useEffect(() => {
     if (signalCode) return
     const onHashOrPop = () => {
+      if (isAdminHash(window.location.hash)) {
+        setAdminMode(true)
+        return
+      }
+      if (adminMode) setAdminMode(false)
       const parsed = parseModuleFromHash(window.location.hash)
       if (parsed && parsed !== module) {
         setRadioFocusCode(null)
@@ -186,7 +197,7 @@ export default function App() {
       window.removeEventListener('hashchange', onHashOrPop)
       window.removeEventListener('popstate', onHashOrPop)
     }
-  }, [module, signalCode])
+  }, [module, signalCode, adminMode])
 
   const calmMotion = settings.reducedMotion || systemReducedMotion
 
@@ -275,6 +286,37 @@ export default function App() {
     sound.setMuted(next)
     voicePlayer.setMuted(next)
     setMuted(next)
+  }
+
+  const openAdmin = () => {
+    clearSignal()
+    setSettingsOpen(false)
+    setAdminMode(true)
+    try {
+      window.history.pushState({}, '', `${window.location.pathname}${window.location.search}#/admin`)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const exitAdmin = () => {
+    setAdminMode(false)
+    syncModuleHash(module, false)
+  }
+
+  if (adminMode) {
+    return (
+      <div
+        className="relative h-dvh w-full overflow-hidden bg-[#070b14] text-[#eef1f8]"
+        data-motion={calmMotion ? 'calm' : 'full'}
+        data-flash-safe={settings.flashSafe || calmMotion ? 'on' : 'off'}
+      >
+        <Suspense fallback={<ChannelLoading />}>
+          <AdminConsole onExit={exitAdmin} />
+        </Suspense>
+        <div className="grain-overlay" aria-hidden="true" />
+      </div>
+    )
   }
 
   return (
@@ -370,6 +412,7 @@ export default function App() {
             onChange={updateSettings}
             onReset={resetSettings}
             onClose={() => setSettingsOpen(false)}
+            onOpenAdmin={openAdmin}
           />
         </Suspense>
       )}
