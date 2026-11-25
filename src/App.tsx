@@ -3,6 +3,7 @@ import { Soundscape } from './audio/soundscape'
 import { voicePlayer } from './audio/voicePlayer'
 import { SettingsDrawer } from './components/SettingsDrawer'
 import { TopNav } from './components/TopNav'
+import type { AlbumEntry } from './services/albumStorage'
 import { markVisitDay } from './services/journey'
 import {
   prefersReducedMotion,
@@ -77,6 +78,7 @@ export default function App() {
   const [radioFocusCode, setRadioFocusCode] = useState<string | null>(null)
   const [radioAutoOpen, setRadioAutoOpen] = useState(false)
   const [relay, setRelay] = useState<StoryRelayState>(() => loadStoryRelay())
+  const [pendingPostEntry, setPendingPostEntry] = useState<AlbumEntry | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [systemReducedMotion, setSystemReducedMotion] = useState(prefersReducedMotion)
 
@@ -283,6 +285,8 @@ export default function App() {
               <PostVisionStudio
                 muted={muted}
                 relay={relay}
+                initialAlbumEntry={pendingPostEntry}
+                onConsumeInitialEntry={() => setPendingPostEntry(null)}
                 onRelayCity={recordCityRelay}
                 onBack={goBack}
                 onOpenRadio={(code) => enterRadio(code, false)}
@@ -296,12 +300,7 @@ export default function App() {
                 onRecordCity={recordCityRelay}
                 onGoPrologue={() => navigate('prologue')}
                 onSendToPost={(entry) => {
-                  updateRelay({
-                    memories: [
-                      ...relay.memories.filter((m) => m.title !== entry.sceneTitle),
-                      { act: '纪念册', title: entry.sceneTitle, dataUrl: entry.image },
-                    ].slice(-6),
-                  })
+                  setPendingPostEntry(entry)
                   navigate('post')
                 }}
               />

@@ -20,6 +20,15 @@ import type {
 } from '../types/vision'
 import { WIND_DESCRIPTIONS } from '../types/vision'
 import { citySignature } from '../data/citySignature'
+import {
+  CARD_FRAMES,
+  CARD_STICKERS,
+  DRIFT_INBOX_LETTERS,
+  LOCAL_STAMPS,
+  findStampForCity,
+  type CardFrameMeta,
+} from '../data/mailboxData'
+import { loadAlbum, saveAlbumEntry, type AlbumEntry } from '../services/albumStorage'
 import { countVisionSent } from '../services/journey'
 import { buildShareLink, deleteMyVision, listMyVisions, publishRadioSignal, type MyVision } from '../services/visionApi'
 import { compressImage, dataUrlBytes, formatBytes } from '../utils/imageCompress'
@@ -34,12 +43,14 @@ interface PostVisionStudioProps {
   onOpenRadio: (code: string) => void
   relay?: StoryRelayState
   onRelayCity?: (city: string) => void
+  initialAlbumEntry?: AlbumEntry | null
+  onConsumeInitialEntry?: () => void
 }
 
 const STUDIO_TABS: { id: 1 | 2 | 3; label: string }[] = [
-  { id: 1, label: '1. 画面' },
-  { id: 2, label: '2. 声音与天气' },
-  { id: 3, label: '3. 留言与寄出' },
+  { id: 1, label: '1. 风景卡片' },
+  { id: 2, label: '2. 邮票与装饰' },
+  { id: 3, label: '3. 写信寄出' },
 ]
 
 function clamp(value: number, min: number, max: number) {
@@ -63,6 +74,8 @@ export function PostVisionStudio({
   onOpenRadio,
   relay,
   onRelayCity,
+  initialAlbumEntry,
+  onConsumeInitialEntry,
 }: PostVisionStudioProps) {
   const firstPreset = VISION_PRESETS[0]
   const [mixer] = useState(() => new AmbientMixer())
@@ -72,17 +85,77 @@ export function PostVisionStudio({
     Object.fromEntries(VISION_PRESETS.map((preset) => [preset.id, getPresetThumb(preset.id)])),
   )
 
-  const [presetId, setPresetId] = useState<string | null>(firstPreset.id)
-  const [image, setImage] = useState(() => getPresetImage(firstPreset.id))
-  const [title, setTitle] = useState(firstPreset.title)
-  const [sender, setSender] = useState(firstPreset.sender)
-  const [city, setCity] = useState(firstPreset.city)
-  const [particles, setParticles] = useState<ParticleKind>(firstPreset.particles)
-  const [ambience, setAmbience] = useState<AmbientKind>(firstPreset.ambience)
-  const [tempC, setTempC] = useState(firstPreset.tempC)
+  const [albumEntries, setAlbumEntries] = useState<AlbumEntry[]>(() => loadAlbum())
+  const [mailboxTab, setMailboxTab] = useState<'compose' | 'inbox'>('compose')
+  const [cardView, setCardView] = useState<'viewport' | 'letter'>(() =>
+    initialAlbumEntry ? 'letter' : 'viewport',
+  )
+  const [selectedStampId, setSelectedStampId] = useState<string>(() =>
+    initialAlbumEntry ? findStampForCity(initialAlbumEntry.city) : findStampForCity(firstPreset.city),
+  )
+  const [selectedFrameId, setSelectedFrameId] = useState<CardFrameMeta['id']>('navy-gold')
+  const [selectedSticker, setSelectedSticker] = useState<string>(CARD_STICKERS[0])
+  const [letterWeather, setLetterWeather] = useState<string>(() =>
+    initialAlbumEntry?.mood === 'night'
+      ? '星夜晴朗'
+      : initialAlbumEntry?.mood === 'dawn'
+        ? '晨光微风'
+        : '黄昏微风',
+  )
+  const [letterBody, setLetterBody] = useState<string>(
+    () =>
+      initialAlbumEntry?.note ||
+      '把今天看到的这一刻风景和心情折进明信片，贴好当地邮票寄给远方的你。',
+  )
+  const [inboxIdx, setInboxIdx] = useState(0)
+  const [inboxLiked, setInboxLiked] = useState<string[]>([])
+  const [inboxSaved, setInboxSaved] = useState<string[]>([])
+
+  const [presetId, setPresetId] = useState<string | null>(() =>
+    initialAlbumEntry ? null : firstPreset.id,
+  )
+  const [image, setImage] = useState(() =>
+    initialAlbumEntry ? initialAlbumEntry.image : getPresetImage(firstPreset.id),
+  )
+  const [title, setTitle] = useState(() =>
+    initialAlbumEntry ? initialAlbumEntry.sceneTitle : firstPreset.title,
+  )
+  const [sender, setSender] = useState('扫码旅人')
+  const [city, setCity] = useState(() =>
+    initialAlbumEntry ? initialAlbumEntry.city : firstPreset.city,
+  )
+  const [particles, setParticles] = useState<ParticleKind>(() =>
+    initialAlbumEntry?.mood === 'night' ? 'firefly' : firstPreset.particles,
+  )
+  const [ambience, setAmbience] = useState<AmbientKind>(() => {
+    if (!initialAlbumEntry) return firstPreset.ambience
+    if (initialAlbumEntry.city.includes('悉尼') || initialAlbumEntry.city.includes('夏威夷')) return 'ocean'
+    if (initialAlbumEntry.city.includes('哈尔滨')) return 'snow'
+    if (initialAlbumEntry.city.includes('南京')) return 'library'
+    if (initialAlbumEntry.city.includes('上海')) return 'city'
+    return 'wind'
+  })
+  const [tempC, setTempC] = useState(() => {
+    if (!initialAlbumEntry) return firstPreset.tempC
+    if (initialAlbumEntry.city.includes('哈尔滨')) return -7
+    if (initialAlbumEntry.city.includes('悉尼')) return 28
+    if (initialAlbumEntry.city.includes('夏威夷')) return 27
+    return 18
+  })
   const [windLevel, setWindLevel] = useState(firstPreset.windLevel)
   const [scent, setScent] = useState(firstPreset.scentTag)
-  const [focus, setFocus] = useState<FocusPoint[]>(firstPreset.focus)
+  const [focus, setFocus] = useState<FocusPoint[]>(() =>
+    initialAlbumEntry
+      ? [
+          {
+            id: 'album-focus-1',
+            x: 0.5,
+            y: 0.55,
+            note: initialAlbumEntry.note,
+          },
+        ]
+      : firstPreset.focus,
+  )
 
   const [voice, setVoice] = useState<string | null>(null)
   const [voiceSeconds, setVoiceSeconds] = useState(0)
@@ -98,7 +171,11 @@ export function PostVisionStudio({
   const [volume, setVolume] = useState(0.62)
   const [soundOn, setSoundOn] = useState(false)
   const [mode, setMode] = useState<StudioMode>('edit')
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(() => (initialAlbumEntry ? 2 : 1))
+
+  useEffect(() => {
+    if (initialAlbumEntry) onConsumeInitialEntry?.()
+  }, [initialAlbumEntry, onConsumeInitialEntry])
 
   const [uploading, setUploading] = useState(false)
   const [uploadNote, setUploadNote] = useState<string | null>(null)
@@ -181,7 +258,43 @@ export function PostVisionStudio({
     [packetId, title, sender, city, image, particles, ambience, voice, tempC, windLevel, scent, focus, createdAt],
   )
 
-  const buildPacket = (): VisionPacket => ({ ...livePacket, createdAt: Date.now() })
+  const activeStamp = LOCAL_STAMPS.find((s) => s.id === selectedStampId) ?? LOCAL_STAMPS[0]
+  const activeFrame = CARD_FRAMES.find((f) => f.id === selectedFrameId) ?? CARD_FRAMES[0]
+  const activeInboxLetter = DRIFT_INBOX_LETTERS[inboxIdx % DRIFT_INBOX_LETTERS.length]
+  const activeInboxStamp =
+    LOCAL_STAMPS.find((s) => s.id === activeInboxLetter.stampId) ?? LOCAL_STAMPS[0]
+
+  const buildPacket = (): VisionPacket => {
+    const cleanLetter = letterBody.trim()
+    const nextFocus =
+      focus.length > 0
+        ? focus
+        : cleanLetter
+          ? [{ id: 'letter-focus-1', x: 0.5, y: 0.54, note: cleanLetter.slice(0, 88) }]
+          : []
+    return {
+      ...livePacket,
+      scentTag: [selectedSticker, letterWeather, scent.trim()].filter(Boolean).join(' · ').slice(0, 28),
+      focus: nextFocus,
+      createdAt: Date.now(),
+    }
+  }
+
+  const applyAlbumCard = (entry: AlbumEntry) => {
+    setPresetId(null)
+    setCreatedAt(Date.now())
+    setImage(entry.image)
+    setTitle(entry.sceneTitle)
+    setCity(entry.city)
+    setSelectedStampId(findStampForCity(entry.city))
+    setLetterWeather(entry.mood === 'night' ? '星夜晴朗' : entry.mood === 'dawn' ? '晨光微风' : '黄昏晴朗')
+    setLetterBody(entry.note || '在纪念册里挑了这张风景，写信寄给你。')
+    setFocus([{ id: 'alb-' + entry.id, x: 0.5, y: 0.54, note: entry.note.slice(0, 88) }])
+    setUploadNote('纪念册精选卡片 · ' + entry.city)
+    setCardView('letter')
+    setStep(2)
+    showToast('已装载纪念册卡片 · 请挑一枚当地邮票')
+  }
 
   const applyPreset = (preset: VisionPreset) => {
     setPresetId(preset.id)
@@ -196,6 +309,7 @@ export function PostVisionStudio({
     setWindLevel(preset.windLevel)
     setScent(preset.scentTag)
     setFocus(preset.focus)
+    setSelectedStampId(findStampForCity(preset.city))
     setUploadNote(null)
     setMode('edit')
     setSoundOn(true)
@@ -497,7 +611,183 @@ export function PostVisionStudio({
         }}
       />
 
-      <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-6 pt-[66px] sm:px-5 sm:pt-[78px] lg:h-full lg:min-h-0 lg:grid lg:grid-cols-[minmax(360px,0.38fr)_minmax(0,0.62fr)] lg:gap-4 lg:pb-5">
+      <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-6 pt-[64px] sm:px-5 sm:pt-[76px] lg:h-full lg:min-h-0">
+        {/* 视野信箱双模式切换条：写信寄视野 vs 漂流收件箱 */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="返回上一级"
+              className="flex shrink-0 items-center gap-1 rounded-full border border-white/14 bg-white/[0.04] px-3 py-1.5 font-serif text-[12px] text-white/80 transition hover:border-signal/55 hover:text-signal"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              返回
+            </button>
+            <div className="flex rounded-full border border-white/14 bg-[#081228]/72 p-0.5 backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => setMailboxTab('compose')}
+                className={
+                  'rounded-full px-3.5 py-1.5 font-serif text-[12px] tracking-[0.04em] transition ' +
+                  (mailboxTab === 'compose'
+                    ? 'bg-signal font-medium text-[#170f07] shadow-[0_4px_14px_-4px_rgba(242,194,139,0.75)]'
+                    : 'text-white/75 hover:text-white')
+                }
+              >
+                ✉ 写信寄视野
+              </button>
+              <button
+                type="button"
+                onClick={() => setMailboxTab('inbox')}
+                className={
+                  'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-serif text-[12px] tracking-[0.04em] transition ' +
+                  (mailboxTab === 'inbox'
+                    ? 'bg-signal font-medium text-[#170f07] shadow-[0_4px_14px_-4px_rgba(242,194,139,0.75)]'
+                    : 'text-white/75 hover:text-white')
+                }
+              >
+                <span>📮 漂流收件箱</span>
+                <span className="rounded-full bg-white/15 px-1.5 py-0.2 font-mono text-[10px]">
+                  {DRIFT_INBOX_LETTERS.length}
+                </span>
+              </button>
+            </div>
+          </div>
+          <div className="hidden font-serif text-[11.5px] tracking-[0.04em] text-white/55 sm:block">
+            从纪念册挑风景 · 贴上当地邮票写信随机漂流 · 也能拆开来自远方的明信片祝福
+          </div>
+        </div>
+
+        {mailboxTab === 'inbox' ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center py-2">
+            <div className="cinema-surface animate-fade-up relative w-full max-w-[780px] overflow-hidden rounded-[28px] border-signal/35 p-5 sm:p-8">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
+                    <span className="font-mono text-[10.5px] tracking-[0.18em] text-signal/85">
+                      DRIFT POST · 来自「{activeInboxLetter.fromTitle}」的视野
+                    </span>
+                  </div>
+                  <h2 className="mt-1.5 font-serif text-[20px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[24px]">
+                    {activeInboxLetter.city} · {activeInboxLetter.tempC}°C · {activeInboxLetter.weather}
+                  </h2>
+                </div>
+
+                {/* 锯齿邮票装饰 */}
+                <div
+                  className="relative flex shrink-0 flex-col items-center rounded-xl border-2 border-dashed px-3 py-2 text-center shadow-lg"
+                  style={{
+                    borderColor: activeInboxStamp.accent,
+                    backgroundColor: 'rgba(12, 22, 46, 0.85)',
+                  }}
+                >
+                  <span className="text-[16px] leading-none">{activeInboxStamp.motif}</span>
+                  <span className="mt-1 font-serif text-[11px] text-[#fff8ee]">
+                    {activeInboxStamp.title}
+                  </span>
+                  <span className="font-mono text-[9.5px] text-signal/85">
+                    {activeInboxStamp.denom}
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/15 bg-black/40">
+                <img
+                  src={getPresetImage(activeInboxLetter.presetId)}
+                  alt={activeInboxLetter.city}
+                  className="aspect-[16/9] max-h-[300px] w-full object-cover"
+                  draggable={false}
+                />
+                <span className="absolute left-3 top-3 rounded-full border border-white/18 bg-[#070e1f]/75 px-3 py-1 font-serif text-[11px] text-signal backdrop-blur-md">
+                  {activeInboxLetter.sticker}
+                </span>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/12 bg-white/[0.03] p-4 sm:p-5">
+                <p className="font-serif text-[14.5px] leading-[1.9] tracking-[0.04em] text-[#fff8ee]/92">
+                  “{activeInboxLetter.letter}”
+                </p>
+                <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2.5 font-serif text-[12px] text-white/62">
+                  <span>邮戳号 · #{activeInboxLetter.id.toUpperCase()}</span>
+                  <span className="text-signal">署名：{activeInboxLetter.sender}</span>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInboxLiked((cur) =>
+                        cur.includes(activeInboxLetter.id)
+                          ? cur
+                          : [...cur, activeInboxLetter.id],
+                      )
+                      if (soundOn && !muted) {
+                        void mixer.ensure()
+                        mixer.playInteractionSfx('star')
+                      }
+                      showToast('已向「' + activeInboxLetter.sender + '」回赠一颗同频祝福 ❤️')
+                    }}
+                    className={
+                      'rounded-full border px-3.5 py-2 font-serif text-[12px] transition ' +
+                      (inboxLiked.includes(activeInboxLetter.id)
+                        ? 'border-signal/60 bg-signal/18 text-signal'
+                        : 'border-white/16 bg-white/[0.04] text-white/82 hover:border-signal/50 hover:text-signal')
+                    }
+                  >
+                    {inboxLiked.includes(activeInboxLetter.id) ? '已送出祝福 ♥' : '回赠祝福 ♡'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const saved = saveAlbumEntry({
+                        id: 'drift-' + activeInboxLetter.id + '-' + Date.now(),
+                        sceneId: 'shanghai',
+                        sceneTitle: activeInboxLetter.fromTitle + ' · ' + activeInboxLetter.city,
+                        city: activeInboxLetter.city,
+                        mood: activeInboxLetter.tempC < 0 ? 'night' : 'dusk',
+                        image: getPresetImage(activeInboxLetter.presetId),
+                        note: activeInboxLetter.letter + ' —— ' + activeInboxLetter.sender,
+                        interactions: 1,
+                        createdAt: Date.now(),
+                        awakened: true,
+                        stampTitle: activeInboxStamp.title,
+                      })
+                      setAlbumEntries(saved)
+                      setInboxSaved((cur) =>
+                        cur.includes(activeInboxLetter.id) ? cur : [...cur, activeInboxLetter.id],
+                      )
+                      showToast('已把这封远方明信片收进我的纪念册')
+                    }}
+                    className="rounded-full border border-white/16 bg-white/[0.04] px-3.5 py-2 font-serif text-[12px] text-white/82 transition hover:border-signal/50 hover:text-signal"
+                  >
+                    {inboxSaved.includes(activeInboxLetter.id) ? '✓ 已收进纪念册' : '收进我的纪念册'}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInboxIdx((prev) => (prev + 1) % DRIFT_INBOX_LETTERS.length)
+                    if (soundOn && !muted) {
+                      void mixer.ensure()
+                      mixer.playInteractionSfx('lamp')
+                    }
+                  }}
+                  className="btn-primary"
+                >
+                  拆开下一封随机视野 ✉
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+        <div className="relative flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:grid-cols-[minmax(360px,0.39fr)_minmax(0,0.61fr)] lg:gap-4">
         <section className="cinema-surface-soft order-1 flex h-[44dvh] min-h-[300px] flex-col overflow-hidden rounded-[28px] lg:order-2 lg:h-full lg:min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -519,20 +809,42 @@ export function PostVisionStudio({
             <div className="flex shrink-0 rounded-full border border-white/12 bg-white/[0.04] p-0.5">
               <button
                 type="button"
-                onClick={() => switchMode('edit')}
-                aria-pressed={mode === 'edit'}
-                className={`rounded-full px-3 py-1 font-serif text-[12px] tracking-[0.04em] transition ${
-                  mode === 'edit' ? 'bg-signal text-[#170f07] font-medium' : 'text-white/70 hover:text-white'
+                onClick={() => {
+                  setCardView('viewport')
+                  switchMode('edit')
+                }}
+                aria-pressed={cardView === 'viewport' && mode === 'edit'}
+                className={`rounded-full px-2.5 py-1 font-serif text-[11.5px] tracking-[0.04em] transition ${
+                  cardView === 'viewport' && mode === 'edit'
+                    ? 'bg-signal text-[#170f07] font-medium'
+                    : 'text-white/70 hover:text-white'
                 }`}
               >
                 贴留言
               </button>
               <button
                 type="button"
-                onClick={() => switchMode('preview')}
-                aria-pressed={mode === 'preview'}
-                className={`rounded-full px-3 py-1 font-serif text-[12px] tracking-[0.04em] transition ${
-                  mode === 'preview' ? 'bg-signal text-[#170f07] font-medium' : 'text-white/70 hover:text-white'
+                onClick={() => setCardView('letter')}
+                aria-pressed={cardView === 'letter'}
+                className={`rounded-full px-2.5 py-1 font-serif text-[11.5px] tracking-[0.04em] transition ${
+                  cardView === 'letter'
+                    ? 'bg-signal text-[#170f07] font-medium'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                信笺实景
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCardView('viewport')
+                  switchMode('preview')
+                }}
+                aria-pressed={cardView === 'viewport' && mode === 'preview'}
+                className={`rounded-full px-2.5 py-1 font-serif text-[11.5px] tracking-[0.04em] transition ${
+                  cardView === 'viewport' && mode === 'preview'
+                    ? 'bg-signal text-[#170f07] font-medium'
+                    : 'text-white/70 hover:text-white'
                 }`}
               >
                 沉浸预览
@@ -570,6 +882,58 @@ export function PostVisionStudio({
               }}
               photoFilterCss={activeToneMeta.cssFilter}
             />
+            {cardView === 'letter' && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-[#060c1a]/78 p-4 backdrop-blur-md">
+                <div
+                  className={
+                    'relative w-full max-w-[490px] rounded-[24px] border-2 p-4 shadow-2xl sm:p-5 ' +
+                    activeFrame.borderClass +
+                    ' ' +
+                    activeFrame.bgClass +
+                    ' ' +
+                    activeFrame.textClass
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-mono text-[10px] tracking-[0.18em] text-signal/85">
+                        POSTCARD · {city || '某座城'}
+                      </div>
+                      <div className="mt-0.5 font-serif text-[15px] tracking-[0.04em]">
+                        {city} {tempC}°C · {letterWeather}
+                      </div>
+                    </div>
+                    <div
+                      className="flex flex-col items-center rounded-xl border-2 border-dashed px-2.5 py-1.5 text-center"
+                      style={{ borderColor: activeStamp.accent }}
+                    >
+                      <span className="text-[14px] leading-none">{activeStamp.motif}</span>
+                      <span className="mt-1 font-serif text-[10px]">{activeStamp.title}</span>
+                      <span className="font-mono text-[9px] text-signal/85">{activeStamp.denom}</span>
+                    </div>
+                  </div>
+                  <div className="relative mt-3 overflow-hidden rounded-xl border border-white/15">
+                    <img
+                      src={image}
+                      alt={title}
+                      className="aspect-video w-full object-cover"
+                      style={{ filter: activeToneMeta.cssFilter }}
+                      draggable={false}
+                    />
+                    <span className="absolute bottom-2 left-2 rounded-full bg-[#070e1f]/75 px-2.5 py-0.5 font-serif text-[10.5px] text-signal backdrop-blur-sm">
+                      {selectedSticker}
+                    </span>
+                  </div>
+                  <p className="mt-3 font-serif text-[13px] leading-[1.8]">
+                    “{letterBody || '把这一刻的天色与风声折进信封寄给你。'}”
+                  </p>
+                  <div className="mt-2.5 flex items-center justify-between border-t border-white/10 pt-2 font-serif text-[11.5px] text-white/65">
+                    <span>{title}</span>
+                    <span className="text-signal">署名：{sender || '我'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {dragging && (
               <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-[#091226]/75 backdrop-blur-sm">
                 <div className="rounded-2xl border border-dashed border-signal/65 bg-[#0e1a36]/90 px-6 py-4 text-center">
@@ -606,26 +970,32 @@ export function PostVisionStudio({
           <div className="studio-scroll min-h-0 flex-1 overflow-y-auto p-4">
             {step === 1 && (
               <div className="space-y-5">
-                {relay && relay.memories.length > 0 && (
-                  <div>
-                    <SectionLabel>从序章记忆胶片导入 ({relay.memories.length} 帧)</SectionLabel>
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <SectionLabel>
+                      从纪念册选取风景卡片 ({albumEntries.length})
+                    </SectionLabel>
+                    <button
+                      type="button"
+                      onClick={() => setAlbumEntries(loadAlbum())}
+                      className="font-serif text-[11px] text-signal/85 hover:underline"
+                    >
+                      刷新
+                    </button>
+                  </div>
+                  {albumEntries.length === 0 ? (
+                    <div className="mt-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-3.5 py-3 font-serif text-[11.5px] leading-[1.7] text-white/58">
+                      纪念册暂无照片：可在「04 纪念册」或「01 序章按 P」拍下风景卡片后直接来此贴邮票寄出，也可先用下方预设风景。
+                    </div>
+                  ) : (
                     <div className="mt-2 grid grid-cols-3 gap-2">
-                      {relay.memories.map((frame) => {
-                        const active = image === frame.dataUrl
+                      {albumEntries.slice(0, 6).map((entry) => {
+                        const active = image === entry.image
                         return (
                           <button
-                            key={frame.act}
+                            key={entry.id}
                             type="button"
-                            onClick={() => {
-                              setPresetId(null)
-                              setCreatedAt(Date.now())
-                              setImage(frame.dataUrl)
-                              setTitle(frame.title)
-                              setFocus([])
-                              setUploadNote(`已导入序章 ${frame.act} · ${frame.title}`)
-                              setMode('edit')
-                              showToast(`已导入草原实拍 · ${frame.title}`)
-                            }}
+                            onClick={() => applyAlbumCard(entry)}
                             className={`group relative overflow-hidden rounded-2xl border text-left transition ${
                               active
                                 ? 'border-signal shadow-[0_0_20px_-6px_rgba(242,194,139,0.65)]'
@@ -633,21 +1003,21 @@ export function PostVisionStudio({
                             }`}
                           >
                             <img
-                              src={frame.dataUrl}
-                              alt={frame.title}
-                              className="h-[54px] w-full object-cover opacity-85 transition group-hover:opacity-100"
+                              src={entry.image}
+                              alt={entry.sceneTitle}
+                              className="h-[58px] w-full object-cover opacity-88 transition group-hover:opacity-100"
                               draggable={false}
                             />
-                            <span className="absolute inset-0 bg-gradient-to-t from-[#081022]/90 via-transparent to-transparent" />
+                            <span className="absolute inset-0 bg-gradient-to-t from-[#081022]/92 via-transparent to-transparent" />
                             <span className="absolute bottom-1 left-1.5 right-1.5 block truncate font-serif text-[10.5px] text-[#fff8ee]">
-                              {frame.title}
+                              {entry.city} · {entry.sceneTitle.split(' · ')[0]}
                             </span>
                           </button>
                         )
                       })}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <div>
                   <SectionLabel>选一张风景预设</SectionLabel>
@@ -826,6 +1196,83 @@ export function PostVisionStudio({
 
             {step === 2 && (
               <div className="space-y-5">
+                <div>
+                  <SectionLabel>贴上当地邮票</SectionLabel>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    {LOCAL_STAMPS.map((st) => {
+                      const active = selectedStampId === st.id
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedStampId(st.id)
+                            setCardView('letter')
+                          }}
+                          className={
+                            'flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition ' +
+                            (active
+                              ? 'border-signal/70 bg-signal/15 text-[#fff8ee]'
+                              : 'border-white/12 bg-white/[0.03] text-white/70 hover:border-white/28')
+                          }
+                        >
+                          <span className="text-[15px] leading-none">{st.motif}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-serif text-[11.5px]">{st.title}</span>
+                            <span className="block font-mono text-[9.5px] text-white/45">
+                              {st.city} · {st.denom}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <SectionLabel>信笺边框与贴纸装饰</SectionLabel>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    {CARD_FRAMES.map((frame) => (
+                      <button
+                        key={frame.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedFrameId(frame.id)
+                          setCardView('letter')
+                        }}
+                        className={
+                          'rounded-xl border px-2 py-2 font-serif text-[11px] transition ' +
+                          (selectedFrameId === frame.id
+                            ? 'border-signal/70 bg-signal/15 text-signal'
+                            : 'border-white/12 bg-white/[0.03] text-white/65 hover:text-white')
+                        }
+                      >
+                        {frame.name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {CARD_STICKERS.map((sticker) => (
+                      <button
+                        key={sticker}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSticker(sticker)
+                          setCardView('letter')
+                        }}
+                        className={
+                          'rounded-full border px-2.5 py-1 font-serif text-[11px] transition ' +
+                          (selectedSticker === sticker
+                            ? 'border-signal/65 bg-signal/15 text-signal'
+                            : 'border-white/12 bg-white/[0.03] text-white/65 hover:text-white')
+                        }
+                      >
+                        {sticker}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div>
                   <SectionLabel>挑选一段环境底噪</SectionLabel>
                   <div className="mt-2 grid grid-cols-3 gap-2">
@@ -1014,6 +1461,38 @@ export function PostVisionStudio({
               <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
+                    <SectionLabel>当地天气</SectionLabel>
+                    <input
+                      value={letterWeather}
+                      maxLength={12}
+                      onChange={(e) => setLetterWeather(e.target.value)}
+                      className={inputClass}
+                      placeholder="天气晴朗"
+                    />
+                  </label>
+                  <div className="block">
+                    <SectionLabel>邮票预览</SectionLabel>
+                    <div className="mt-1.5 flex items-center gap-2 rounded-xl border border-signal/35 bg-signal/10 px-3 py-2 font-serif text-[12px] text-signal">
+                      <span>{activeStamp.motif}</span>
+                      <span className="truncate">{activeStamp.title}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <label className="block">
+                  <SectionLabel>写给收信人的短笺与祝福</SectionLabel>
+                  <textarea
+                    value={letterBody}
+                    maxLength={140}
+                    rows={3}
+                    onChange={(e) => setLetterBody(e.target.value)}
+                    placeholder="替不能去远方的人写一段今天看见的风景与祝福…"
+                    className={inputClass + ' resize-none leading-[1.7]'}
+                  />
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
                     <SectionLabel>风景标题</SectionLabel>
                     <input
                       value={title}
@@ -1168,14 +1647,16 @@ export function PostVisionStudio({
                 className="flex flex-1 items-center justify-center gap-2 rounded-full bg-signal px-4 py-2.5 font-serif text-[13px] font-medium text-[#170f07] shadow-[0_10px_28px_-8px_rgba(242,194,139,0.65)] transition hover:brightness-105 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
               >
                 {publishing
-                  ? '正在穿过地壳…'
+                  ? '正在投递漂流信箱…'
                   : visibility === 'public'
-                    ? '寄出这片风景'
-                    : '生成私密分享链接'}
+                    ? '贴好邮票 · 随机漂流寄出'
+                    : '生成私密分享信函'}
               </button>
             </div>
           </div>
         </aside>
+        </div>
+        )}
       </div>
 
       {toast && (

@@ -2,6 +2,9 @@ import * as THREE from 'three'
 import {
   buildSculptedPlinth,
   createMat,
+  createMiniCar,
+  createMiniFish,
+  createMiniPerson,
   enableShadows,
   makeGlowSprite,
 } from './materials'
@@ -422,6 +425,56 @@ export function buildShanghai(ctx: DioramaBuilderCtx) {
     pearlLight.intensity = mood === 'dawn' ? 0.65 : mood === 'night' ? 2.1 : 1.4
   })
 
+  // 外滩沿江漫步游客（点击弹出城市生活短笺）
+  const walkers: { grp: THREE.Group; baseZ: number; dir: number; speed: number; range: number; originX: number }[] = []
+  const walkerSpecs: [number, number, string, string, string][] = [
+    [-1.4, -0.42, '#486a98', '#ffd89e', '外滩游人：江风吹过石栏杆，黄浦江边的夜晚比白昼更温柔。'],
+    [0.6, -0.58, '#c96f63', '#fff0d6', '外滩游人：刚刚敲响的海关钟声里，游人正仰头等着对岸灯火全亮。'],
+    [1.1, -0.36, '#4f8c7a', '#ffcf8a', '外滩游人：有人举着手机拍下东方明珠，也替不能来的人看了一遍江景。'],
+    [-2.4, -0.68, '#7a5c88', '#ffd6a4', '外滩游人：街头艺人拉起大提琴，脚步声和浪声叠在一起。'],
+  ]
+  walkerSpecs.forEach(([wx, wz, coat, scarf, note], idx) => {
+    const p = createMiniPerson(coat, scarf)
+    p.position.set(wx, 0.23, wz)
+    g.add(p)
+    walkers.push({ grp: p, baseZ: wz, dir: idx % 2 === 0 ? 1 : -1, speed: 0.24 + idx * 0.04, range: 1.05, originX: wx })
+    ctx.registerInteractive(p, {
+      focusPoint: new THREE.Vector3(wx, 0.5, wz),
+      onClick: () => ({ label: note, sfx: 'star' }),
+    })
+  })
+
+  // 跃出黄浦江水面的银鱼
+  const riverFish = [createMiniFish('#9be2ff'), createMiniFish('#ffd59a')]
+  riverFish.forEach((f, idx) => {
+    f.visible = false
+    g.add(f)
+    ctx.registerInteractive(f, {
+      onClick: () => ({ label: '江鱼跃出水面荡起碎金波光！', sfx: 'ripple' }),
+    })
+    ctx.addTick((t) => {
+      const cycle = (t * 0.42 + idx * 0.5) % 2.6
+      const show = cycle < 0.9
+      f.visible = show
+      if (show) {
+        const u = cycle / 0.9
+        const fx = -1.6 + idx * 2.5 + u * 0.7
+        const fy = -0.14 + Math.sin(u * Math.PI) * 0.52
+        f.position.set(fx, fy, 1.35 + idx * 0.85)
+        f.rotation.z = (0.5 - u) * 1.45
+      }
+    })
+  })
+
+  ctx.addTick((t) => {
+    walkers.forEach((w, idx) => {
+      const x = w.originX + Math.sin(t * w.speed + idx * 1.4) * w.range
+      const vx = Math.cos(t * w.speed + idx * 1.4)
+      w.grp.position.set(x, 0.23 + Math.abs(Math.sin(t * 5.2 + idx)) * 0.025, w.baseZ)
+      w.grp.rotation.y = vx >= 0 ? Math.PI / 2 : -Math.PI / 2
+    })
+  })
+
   enableShadows(g, true, true)
   fwPoints.castShadow = false
 }
@@ -733,6 +786,29 @@ export function buildLibrary(ctx: DioramaBuilderCtx) {
     }
   })
 
+  // 庭院看书人与打伞归客
+  const reader = createMiniPerson('#5a7a9e', '#ffe0a8', { book: true })
+  reader.position.set(-0.92, 0.14, 2.28)
+  reader.rotation.y = 0.65
+  g.add(reader)
+  ctx.registerInteractive(reader, {
+    focusPoint: new THREE.Vector3(-0.92, 0.45, 2.28),
+    onClick: () => ({ label: '馆前读者：雨夜自习室的灯刚亮起来，树下刚好能读完一章。', sfx: 'star' }),
+  })
+
+  const umbrellaWalker = createMiniPerson('#c46e68', '#fff2d8', { umbrella: '#e8b658' })
+  umbrellaWalker.position.set(1.1, 0.14, 2.45)
+  g.add(umbrellaWalker)
+  ctx.registerInteractive(umbrellaWalker, {
+    focusPoint: new THREE.Vector3(1.1, 0.45, 2.45),
+    onClick: () => ({ label: '打伞归客：伞檐敲着金陵微雨，落叶踩上去沙沙作响。', sfx: 'lamp' }),
+  })
+  ctx.addTick((t) => {
+    const wx = Math.sin(t * 0.34) * 1.65
+    umbrellaWalker.position.set(wx, 0.14 + Math.abs(Math.sin(t * 4.6)) * 0.022, 2.55)
+    umbrellaWalker.rotation.y = Math.cos(t * 0.34) >= 0 ? Math.PI / 2 : -Math.PI / 2
+  })
+
   enableShadows(g, true, true)
   rainPts.castShadow = false
 }
@@ -894,6 +970,35 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
     bridgeBulbs.push(bulb)
   }
 
+  // 悉尼海港大桥双向行驶车辆（点击弹出城市车流短笺 + 鸣笛声）
+  const bridgeCars: { mesh: THREE.Group; laneZ: number; dir: number; offset: number; speed: number }[] = []
+  for (const [idx, col, laneZ, dir, spd] of [
+    [0, '#f4a862', -0.09, 1, 0.32],
+    [1, '#78c6e8', 0.09, -1, 0.28],
+    [2, '#f0786c', -0.09, 1, 0.36],
+  ] as const) {
+    const car = createMiniCar(col)
+    car.position.set(0, 0.77, laneZ)
+    if (dir < 0) car.rotation.y = Math.PI
+    bridgeGroup.add(car)
+    bridgeCars.push({ mesh: car, laneZ, dir, offset: idx * 1.15, speed: spd })
+    ctx.registerInteractive(car, {
+      focusPoint: new THREE.Vector3(1.65, 1.0, -0.55),
+      onClick: () => ({
+        label: '悉尼海港大桥：桥面上熙熙攘攘的车流正穿过南半球 28°C 的海风。',
+        sfx: 'horn',
+      }),
+    })
+  }
+  ctx.addTick((t) => {
+    bridgeCars.forEach((c) => {
+      const span = 3.5
+      const raw = ((t * c.speed + c.offset) % 1)
+      const x = c.dir > 0 ? -span * 0.5 + raw * span : span * 0.5 - raw * span
+      c.mesh.position.set(x, 0.77, c.laneZ)
+    })
+  })
+
   let bridgeLit = false
   ctx.registerInteractive(archMesh, {
     goalId: 'bridge',
@@ -1021,6 +1126,39 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
         })
       }
     }
+  })
+
+  // 滨海游人 & 海湾飞鱼
+  const sydneyWalkers = [
+    createMiniPerson('#ff9a76', '#ffffff', { hatHex: '#f5d484' }),
+    createMiniPerson('#4ca6c8', '#ffe4b4'),
+  ]
+  sydneyWalkers.forEach((sw, idx) => {
+    sw.position.set(-1.35 + idx * 1.45, 0.42, -0.45)
+    g.add(sw)
+    ctx.registerInteractive(sw, {
+      focusPoint: new THREE.Vector3(-1.35 + idx * 1.45, 0.75, -0.45),
+      onClick: () => ({
+        label: idx === 0 ? '港湾旅人：太阳伞和海盐味的风一起泡在悉尼盛夏里。' : '歌剧院游人：听完午后音乐会的人正站在阶梯上看白帆船。',
+        sfx: 'ripple',
+      }),
+    })
+  })
+
+  const bayFish = [createMiniFish('#7de8ff'), createMiniFish('#ffd87a')]
+  bayFish.forEach((f, idx) => {
+    f.visible = false
+    g.add(f)
+    ctx.addTick((t) => {
+      const cy = (t * 0.48 + idx * 1.1) % 2.8
+      const show = cy < 0.85
+      f.visible = show
+      if (show) {
+        const u = cy / 0.85
+        f.position.set(-1.9 + idx * 2.8 + u * 0.65, -0.12 + Math.sin(u * Math.PI) * 0.56, 1.3 + idx * 0.7)
+        f.rotation.z = (0.5 - u) * 1.5
+      }
+    })
   })
 
   enableShadows(g, true, true)

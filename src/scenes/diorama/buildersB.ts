@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import {
   buildSculptedPlinth,
   createMat,
+  createMiniFish,
+  createMiniPerson,
   enableShadows,
   makeGlowSprite,
 } from './materials'
@@ -128,51 +130,92 @@ export function buildHawaii(ctx: DioramaBuilderCtx) {
     })
   }
 
-  // 4 株弯曲弧形羽叶椰子树
-  const palmHooks: ((t: number) => void)[] = []
+  // 4 株特征鲜明的弯曲羽叶椰子树（8 片双段下垂羽叶 + 突出椰果簇 + 点击掉落椰子交互）
+  const palmHooks: ((t: number, dt: number) => void)[] = []
   for (const [px, pz, leanX, leanZ] of [
-    [-2.45, -0.25, 0.42, 0.25],
-    [2.52, -0.45, -0.38, 0.22],
-    [2.32, -2.25, -0.3, -0.15],
-    [-0.45, -2.3, 0.16, 0.14],
+    [-2.45, -0.25, 0.45, 0.25],
+    [2.52, -0.45, -0.42, 0.24],
+    [2.28, -2.2, -0.32, -0.15],
+    [-0.45, -2.3, 0.18, 0.16],
   ] as const) {
     const palm = new THREE.Group()
     palm.position.set(px, 0.12, pz)
     const trunkCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(leanX * 0.6, 1.05, leanZ * 0.5),
-      new THREE.Vector3(leanX * 1.15, 2.05, leanZ),
+      new THREE.Vector3(leanX * 0.55, 1.08, leanZ * 0.5),
+      new THREE.Vector3(leanX * 1.18, 2.25, leanZ),
     ])
     palm.add(
       new THREE.Mesh(
-        new THREE.TubeGeometry(trunkCurve, 12, 0.085, 8, false),
+        new THREE.TubeGeometry(trunkCurve, 14, 0.1, 8, false),
         createMat('#8c6147', { roughness: 0.88 }),
       ),
     )
 
     const crown = new THREE.Group()
-    crown.position.set(leanX * 1.15, 2.05, leanZ)
-    const frondMat = createMat('#499864', { roughness: 0.72, side: THREE.DoubleSide })
-    for (let f = 0; f < 6; f += 1) {
-      const ang = (f / 6) * Math.PI * 2
+    crown.position.set(leanX * 1.18, 2.25, leanZ)
+    const frondMat = createMat('#46a462', { roughness: 0.68, side: THREE.DoubleSide })
+    for (let f = 0; f < 8; f += 1) {
+      const ang = (f / 8) * Math.PI * 2 + (px * 0.2)
       const fGrp = new THREE.Group()
       fGrp.rotation.y = ang
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 0.92), frondMat)
-      blade.position.set(0, -0.08, 0.48)
-      blade.rotation.x = 0.42
-      fGrp.add(blade)
+      const innerBlade = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.025, 0.68), frondMat)
+      innerBlade.position.set(0, 0.05, 0.34)
+      innerBlade.rotation.x = -0.22
+      const tipBlade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 0.62), frondMat)
+      tipBlade.position.set(0, -0.16, 0.88)
+      tipBlade.rotation.x = 0.55
+      fGrp.add(innerBlade, tipBlade)
       crown.add(fGrp)
     }
+    const nutMat = createMat('#663e22', { roughness: 0.72 })
     for (let c = 0; c < 3; c += 1) {
-      const nut = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 8), createMat('#664228'))
-      nut.position.set(Math.cos(c * 2.1) * 0.1, -0.06, Math.sin(c * 2.1) * 0.1)
+      const nut = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 8), nutMat)
+      nut.position.set(Math.cos(c * 2.1) * 0.13, -0.09, Math.sin(c * 2.1) * 0.13)
       crown.add(nut)
     }
     palm.add(crown)
     g.add(palm)
-    palmHooks.push((t) => {
-      crown.rotation.z = Math.sin(t * 1.4 + px) * 0.075
-      crown.rotation.x = Math.cos(t * 1.15 + pz) * 0.055
+
+    // 可掉落的物理椰子
+    const fallingNut = new THREE.Mesh(new THREE.SphereGeometry(0.105, 10, 8), nutMat)
+    fallingNut.visible = false
+    g.add(fallingNut)
+    let dropAge = -1
+    let shakeBoost = 0
+
+    ctx.registerInteractive(crown, {
+      focusPoint: new THREE.Vector3(px + leanX, 2.25, pz + leanZ),
+      onClick: () => {
+        dropAge = 0
+        shakeBoost = 1.6
+        fallingNut.visible = true
+        return {
+          label: '夏威夷椰林：啪嗒落下一颗清甜椰子，满满热带海岛风情！',
+          sfx: 'ripple',
+        }
+      },
+    })
+
+    palmHooks.push((t, dt) => {
+      shakeBoost = Math.max(0, shakeBoost - dt * 1.2)
+      crown.rotation.z = Math.sin(t * 1.45 + px) * (0.075 + shakeBoost * 0.14)
+      crown.rotation.x = Math.cos(t * 1.2 + pz) * (0.055 + shakeBoost * 0.1)
+      if (dropAge >= 0) {
+        dropAge += dt
+        if (dropAge > 2.2) {
+          dropAge = -1
+          fallingNut.visible = false
+        } else {
+          const fallT = Math.min(1, dropAge / 0.55)
+          const bounce = dropAge > 0.55 ? Math.abs(Math.sin((dropAge - 0.55) * 9)) * Math.exp(-(dropAge - 0.55) * 3) * 0.25 : 0
+          fallingNut.position.set(
+            px + leanX * 1.18 + Math.min(0.45, dropAge * 0.25),
+            Math.max(0.2, 2.25 - fallT * fallT * 2.05 + bounce),
+            pz + leanZ + Math.min(0.3, dropAge * 0.18),
+          )
+        }
+      }
     })
   }
 
@@ -265,7 +308,7 @@ export function buildHawaii(ctx: DioramaBuilderCtx) {
     const targetSunY = sunLowered ? 1.85 : 2.65
     sun.position.y += (targetSunY - sun.position.y) * Math.min(1, dt * 4)
 
-    for (const h of palmHooks) h(t)
+    for (const h of palmHooks) h(t, dt)
     torchFlames.forEach((f) => {
       if (torchLit.has(f.idx)) {
         const s = 0.92 + Math.sin(t * 8 + f.idx * 2) * 0.15
@@ -290,6 +333,41 @@ export function buildHawaii(ctx: DioramaBuilderCtx) {
         })
       }
     }
+  })
+
+  // 夏威夷海湾度假旅人 & 珊瑚跃鱼群
+  const hawaiiGuests: [number, number, number, string, string, string][] = [
+    [0.52, 0.28, 1.55, '#ff8f70', '#fff4d4', '度假旅人：踩在木栈桥上吹海风，远处瀑布的水雾扑在脸上。'],
+    [-0.58, 0.15, -0.65, '#46b8c4', '#ffd894', '沙滩游人：这里既有鸡蛋花香，又有喝不完的现剖冰椰汁。'],
+    [1.45, 0.8, -0.35, '#e8b65a', '#ffffff', '木屋住客：落日把海面染成橘粉色时，栈桥上的火把会一支支亮起。'],
+  ]
+  hawaiiGuests.forEach(([gx, gy, gz, c1, c2, note]) => {
+    const p = createMiniPerson(c1, c2)
+    p.position.set(gx, gy, gz)
+    g.add(p)
+    ctx.registerInteractive(p, {
+      focusPoint: new THREE.Vector3(gx, gy + 0.35, gz),
+      onClick: () => ({ label: note, sfx: 'lamp' }),
+    })
+  })
+
+  const reefFish = [createMiniFish('#ff9a62'), createMiniFish('#6ee2ef'), createMiniFish('#ffd568')]
+  reefFish.forEach((f, idx) => {
+    f.visible = false
+    g.add(f)
+    ctx.registerInteractive(f, {
+      onClick: () => ({ label: '热带珊瑚鱼跃出蓝绿海湾！', sfx: 'ripple' }),
+    })
+    ctx.addTick((t) => {
+      const cy = (t * 0.56 + idx * 0.72) % 2.4
+      const show = cy < 0.78
+      f.visible = show
+      if (show) {
+        const u = cy / 0.78
+        f.position.set(-2.2 + idx * 1.85 + u * 0.65, -0.06 + Math.sin(u * Math.PI) * 0.58, 1.45 + (idx % 2) * 0.75)
+        f.rotation.z = (0.5 - u) * 1.4
+      }
+    })
   })
 
   enableShadows(g, true, true)
@@ -593,6 +671,27 @@ export function buildHarbin(ctx: DioramaBuilderCtx) {
     }
   })
 
+  // 哈尔滨广场冬装旅人
+  const harbinWalkers: [number, number, string, string, string][] = [
+    [-0.95, 1.85, '#c85a5a', '#f6efe4', '雪夜旅人：零下七度的哈气变成暖白雾气，正好映着洋葱顶的金十字。'],
+    [0.95, 1.95, '#466a98', '#ffd89e', '雪夜旅人：冰雕灯柱旁总有人在拍照，雪片落得很慢很轻。'],
+    [-2.05, 0.75, '#78628c', '#ffe4b4', '雪夜旅人：整点钟声响过之后，圣索菲亚广场的白鸽就会扑棱着飞起。'],
+  ]
+  harbinWalkers.forEach(([wx, wz, coat, scarf, note], idx) => {
+    const p = createMiniPerson(coat, scarf, { hatHex: coat })
+    p.position.set(wx, 0.16, wz)
+    g.add(p)
+    ctx.registerInteractive(p, {
+      focusPoint: new THREE.Vector3(wx, 0.45, wz),
+      onClick: () => ({ label: note, sfx: 'snow' }),
+    })
+    ctx.addTick((t) => {
+      const dx = Math.sin(t * 0.28 + idx * 1.7) * 0.55
+      p.position.set(wx + dx, 0.16 + Math.abs(Math.sin(t * 4.2 + idx)) * 0.02, wz)
+      p.rotation.y = Math.cos(t * 0.28 + idx * 1.7) >= 0 ? Math.PI / 2 : -Math.PI / 2
+    })
+  })
+
   enableShadows(g, true, true)
   snowPts.castShadow = false
   aurora.castShadow = false
@@ -824,6 +923,20 @@ export function buildObservatory(ctx: DioramaBuilderCtx) {
       }
     }
   })
+
+  // 高原露台观星者
+  for (const [ax, ay, az, note] of [
+    [1.35, 0.62, 1.35, '高原观星者：调整三环浑仪时，感觉整片高原的银河都在耳边流转。'],
+    [-1.45, 0.62, 1.15, '高原观星者：就算发不出中微子信号，这里的星空也一直照着人间。'],
+  ] as const) {
+    const p = createMiniPerson('#3c527a', '#9cf2d4', { hatHex: '#4f6d9e' })
+    p.position.set(ax, ay, az)
+    g.add(p)
+    ctx.registerInteractive(p, {
+      focusPoint: new THREE.Vector3(ax, ay + 0.35, az),
+      onClick: () => ({ label: note, sfx: 'star' }),
+    })
+  }
 
   enableShadows(g, true, true)
   scopeBeam.castShadow = false

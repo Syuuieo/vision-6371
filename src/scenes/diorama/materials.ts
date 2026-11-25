@@ -520,3 +520,101 @@ export function buildSculptedPlinth(
   ctx.group.add(base)
   return { water: null }
 }
+
+/** 立体微缩小人偶（带斗篷、围巾/伞或书卷装饰） */
+export function createMiniPerson(
+  coatHex: string,
+  accentHex = '#ffd6a4',
+  opts: { umbrella?: string; book?: boolean; hatHex?: string } = {},
+) {
+  const grp = new THREE.Group()
+  const coatMat = createMat(coatHex, { roughness: 0.72 })
+  const skinMat = createMat('#f4d2b8', { roughness: 0.65 })
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.11, 0.28, 10), coatMat)
+  body.position.y = 0.15
+  grp.add(body)
+
+  const scarf = new THREE.Mesh(
+    new THREE.TorusGeometry(0.062, 0.022, 6, 12),
+    createMat(accentHex, { roughness: 0.7 }),
+  )
+  scarf.rotation.x = Math.PI / 2
+  scarf.position.y = 0.285
+  grp.add(scarf)
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.068, 10, 10), skinMat)
+  head.position.y = 0.35
+  grp.add(head)
+
+  if (opts.hatHex) {
+    const hat = new THREE.Mesh(new THREE.ConeGeometry(0.072, 0.09, 8), createMat(opts.hatHex))
+    hat.position.y = 0.42
+    grp.add(hat)
+  }
+
+  if (opts.book) {
+    const book = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.025, 0.08),
+      createMat('#fff0d2', { emissive: '#ffbe64', emissiveIntensity: 0.55 }),
+    )
+    book.position.set(0, 0.22, 0.11)
+    book.rotation.x = 0.35
+    grp.add(book)
+  }
+
+  if (opts.umbrella) {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.32, 6), createMat('#d8dce6'))
+    shaft.position.set(0.07, 0.36, 0.04)
+    const canopy = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.11, 8),
+      createMat(opts.umbrella, { roughness: 0.55, side: THREE.DoubleSide }),
+    )
+    canopy.position.set(0.07, 0.52, 0.04)
+    grp.add(shaft, canopy)
+  }
+
+  return grp
+}
+
+/** 微缩汽车（带暖光前大灯与红尾灯，用于悉尼海港大桥车流） */
+export function createMiniCar(bodyHex: string) {
+  const car = new THREE.Group()
+  const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.14), createMat(bodyHex, { roughness: 0.4 }))
+  chassis.position.y = 0.06
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.065, 0.12), createMat('#dbe8f6', { roughness: 0.25 }))
+  cabin.position.set(-0.01, 0.125, 0)
+  car.add(chassis, cabin)
+
+  const wheelMat = createMat('#202630')
+  for (const [wx, wz] of [[-0.08, -0.07], [0.08, -0.07], [-0.08, 0.07], [0.08, 0.07]] as const) {
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.025, 8), wheelMat)
+    w.rotation.x = Math.PI / 2
+    w.position.set(wx, 0.028, wz)
+    car.add(w)
+  }
+
+  const headMat = createMat('#fff3c4', { emissive: '#ffcf6e', emissiveIntensity: 1.4 })
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.1), headMat)
+  head.position.set(0.142, 0.06, 0)
+  const tailMat = createMat('#ff7a6b', { emissive: '#ff483b', emissiveIntensity: 1.2 })
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.1), tailMat)
+  tail.position.set(-0.142, 0.06, 0)
+  car.add(head, tail)
+
+  return car
+}
+
+/** 跃水小鱼 */
+export function createMiniFish(colorHex: string) {
+  const fish = new THREE.Group()
+  const mat = createMat(colorHex, { emissive: colorHex, emissiveIntensity: 0.28, roughness: 0.25 })
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.065, 8, 8), mat)
+  body.scale.set(1.65, 0.85, 0.72)
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.09, 4), mat)
+  tail.rotation.z = -Math.PI / 2
+  tail.position.x = -0.12
+  fish.add(body, tail)
+  return fish
+}
+

@@ -41,6 +41,39 @@ function mergeEchoes(base: VisionEcho[], incoming: VisionEcho[]) {
   })
 }
 
+function liveStoryForInteract(city: string, kind: 'lamp' | 'star' | 'ripple' | 'snow'): string {
+  const c = city.trim()
+  if (c.includes('悉尼')) {
+    return kind === 'ripple'
+      ? '悉尼港实况：海湾正有渡轮与帆船穿过，28°C 的海风推开一层层白浪。'
+      : '悉尼海港大桥实况：桥上车流与霓虹依次亮起，熙熙攘攘穿过盛夏傍晚。'
+  }
+  if (c.includes('夏威夷')) {
+    return kind === 'ripple'
+      ? '夏威夷椰林实况：珊瑚鱼跃出蓝绿浅海，岸边椰树摇下一阵清甜海风。'
+      : '夏威夷栈桥实况：晚霞把火山崖染成橘红，沙滩上的椰林灯一盏盏亮起。'
+  }
+  if (c.includes('哈尔滨')) {
+    return '哈尔滨街头实况：零下七度的初雪飘过红砖穹顶，行人呵出的白雾映着暖黄路灯。'
+  }
+  if (c.includes('南京') || c.includes('图书馆')) {
+    return '南京自习室实况：窗边正有人轻轻翻动书页，玻璃外滴着细密温柔的晚雨。'
+  }
+  if (c.includes('上海')) {
+    return '上海外滩实况：江岸人群熙攘走过石栏杆，对岸灯光秀随海关大钟一起亮起。'
+  }
+  if (c.includes('拉萨') || c.includes('西藏')) {
+    return '西藏高原实况：零下几度的晴朗夜空干净透明，头顶银河正一颗接一颗点亮。'
+  }
+  const defaults: Record<typeof kind, string> = {
+    lamp: `${c || '城市'}实况：几扇窗前刚亮起暖灯，有人正端着热茶看向街灯。`,
+    star: `${c || '夜空'}实况：天边划过微弱星辉，远处依然有旅人抬头望向同一个方向。`,
+    ripple: `${c || '海岸'}实况：风推着浪花拍岸，能听见海鸥与船只汽笛混在空气里。`,
+    snow: `${c || '街头'}实况：细雪与落叶安静穿过路灯暖晕，整条街道都慢了下来。`,
+  }
+  return defaults[kind]
+}
+
 export function SignalViewer({
   signal,
   muted,
@@ -242,12 +275,12 @@ export function SignalViewer({
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex flex-col bg-[#091122] text-[#fff8ee]"
+      className="fixed inset-0 z-[80] flex flex-col bg-[#091122] pt-[58px] text-[#fff8ee] sm:pt-[68px]"
       role="dialog"
       aria-modal="true"
       aria-label={`接收来自${packet.city}的视野`}
     >
-      <header className="flex shrink-0 items-center gap-1.5 border-b border-white/10 bg-[#070e1f]/86 px-2.5 py-2.5 backdrop-blur-xl sm:gap-3 sm:px-5">
+      <header className="flex shrink-0 items-center gap-1.5 border-y border-white/10 bg-[#070e1f]/86 px-2.5 py-2 backdrop-blur-xl sm:gap-3 sm:px-5 sm:py-2.5">
         <button
           type="button"
           onClick={onClose}
@@ -260,7 +293,11 @@ export function SignalViewer({
           <span className="hidden sm:inline">返回电台</span>
         </button>
 
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="hidden shrink-0 items-center gap-1 rounded-full border border-emerald-400/35 bg-emerald-400/12 px-2 py-0.5 font-mono text-[9.5px] tracking-[0.12em] text-emerald-200 sm:inline-flex">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 animate-[blinkDot_1.6s_ease-in-out_infinite]" />
+            LIVE 实况
+          </span>
           <div className="truncate font-serif text-[14px] tracking-[0.04em] text-[#fff8ee] sm:text-[16px]">
             {packet.title}
           </div>
@@ -395,6 +432,7 @@ export function SignalViewer({
                 void mixer.ensure()
                 mixer.playInteractionSfx(kind)
               }
+              showToast(liveStoryForInteract(packet.city, kind))
             }}
           />
           {moment && (

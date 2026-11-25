@@ -3,7 +3,7 @@ import type { ModuleId } from '../types/sensor'
 const MODULES: { id: ModuleId; short: string; label: string }[] = [
   { id: 'prologue', short: '序章', label: '序章 · 地球的一天' },
   { id: 'radio', short: '电台', label: '地球表面电台' },
-  { id: 'post', short: '寄视野', label: '寄出我的视野' },
+  { id: 'post', short: '视野信箱', label: '视野信箱 · 漂流邮局' },
   { id: 'diorama', short: '纪念册', label: '立体漫游 · 纪念册' },
 ]
 

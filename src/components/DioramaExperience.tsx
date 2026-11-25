@@ -94,9 +94,13 @@ export function DioramaExperience({
   const [progress, setProgress] = useState<DioramaProgressSnapshot>(() =>
     buildGoalSnapshot('shanghai', new Set()),
   )
+  const [guideOpen, setGuideOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 640 : true,
+  )
   const [stamps, setStamps] = useState<DioramaSceneId[]>(() => loadDioramaStamps())
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null)
+  const guideAutoHideRef = useRef<number | null>(null)
 
   const [album, setAlbum] = useState<AlbumEntry[]>(() => loadAlbum())
   const [albumOpen, setAlbumOpen] = useState(false)
@@ -169,6 +173,8 @@ export function DioramaExperience({
         if (snap.awakened) {
           const nextStamps = markDioramaStamp(snap.sceneId)
           setStamps(nextStamps)
+          if (guideAutoHideRef.current !== null) window.clearTimeout(guideAutoHideRef.current)
+          guideAutoHideRef.current = window.setTimeout(() => setGuideOpen(false), 1800)
         }
       },
     )
@@ -177,6 +183,7 @@ export function DioramaExperience({
       world.dispose()
       worldRef.current = null
       if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+      if (guideAutoHideRef.current !== null) window.clearTimeout(guideAutoHideRef.current)
     }
   }, [mixer])
 
@@ -213,6 +220,10 @@ export function DioramaExperience({
   }, [zoomPreset])
 
   const switchScene = (nextId: DioramaSceneId) => {
+    if (guideAutoHideRef.current !== null) {
+      window.clearTimeout(guideAutoHideRef.current)
+      guideAutoHideRef.current = null
+    }
     setSceneId(nextId)
     setInteractCount(0)
     setProgress(buildGoalSnapshot(nextId, new Set()))
@@ -256,7 +267,7 @@ export function DioramaExperience({
     setViewfinder(false)
   }
 
-  const confirmSaveShot = () => {
+  const saveShotAndMaybeSend = (goToPost: boolean) => {
     if (!pendingShot) return
     const isAwakened = progress.awakened || stamps.includes(activeMeta.id)
     const entry: AlbumEntry = {
@@ -277,6 +288,10 @@ export function DioramaExperience({
     setAlbum(next)
     setPendingShot(null)
     setDraftNote('')
+    if (goToPost && onSendToPost) {
+      onSendToPost(entry)
+      return
+    }
     showToast(`已收录进纪念册（共 ${next.length} 帧）`)
   }
 
@@ -355,97 +370,135 @@ export function DioramaExperience({
         </div>
       )}
 
-      {/* 左上角无框编辑部浮层 + 奇境唤醒目标面板 */}
-      <aside className="pointer-events-none fixed left-4 top-[68px] z-20 max-w-[330px] sm:left-6 sm:top-[78px]">
-        <div className="hud-ink flex flex-col gap-1">
+      {/* 左上角无框编辑部浮层 + 可收起奇境唤醒面板 */}
+      <aside className="pointer-events-none fixed left-4 top-[112px] z-20 max-w-[320px] sm:left-6 sm:top-[78px] sm:max-w-[335px]">
+        <div className="hud-ink flex flex-col gap-0.5 sm:gap-1">
           <div className="flex items-center gap-2">
             <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_12px_rgba(242,194,139,0.9)]" />
-            <span className="font-mono text-[10.5px] tracking-[0.2em] text-signal/90">
+            <span className="font-mono text-[10px] tracking-[0.2em] text-signal/90 sm:text-[10.5px]">
               DIORAMA · {activeMeta.region}
             </span>
           </div>
-          <h1 className="font-serif text-[20px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[23px]">
+          <h1 className="font-serif text-[18px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[23px]">
             {activeMeta.title}
           </h1>
-          <p className="font-serif text-[11.5px] leading-[1.65] text-white/75">
+          <p className="hidden font-serif text-[11.5px] leading-[1.6] text-white/75 sm:block">
             {activeMeta.tempDusk} · {activeMeta.interactHint}
           </p>
         </div>
 
-        {/* 三步奇境唤醒玩法清单 */}
-        <div className="cinema-surface-soft pointer-events-auto mt-2.5 rounded-2xl px-3.5 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="font-serif text-[11.5px] tracking-[0.06em] text-signal">
-                奇境唤醒 · {progress.completed}/{progress.total}
+        {/* 折叠状态：单行小胶囊不遮挡场景；展开状态：完整 3 步指引与收起按钮 */}
+        {!guideOpen ? (
+          <div className="pointer-events-auto mt-2 flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setGuideOpen(true)}
+              className="cinema-surface-soft flex items-center gap-1.5 rounded-full px-3 py-1 font-serif text-[11px] text-signal transition hover:border-signal/60"
+            >
+              <span className="cinema-gem h-1.5 w-1.5 bg-signal" />
+              <span>
+                {stampUnlockedHere
+                  ? `${activeMeta.stampTitle} · 3/3`
+                  : `奇境指引 · ${progress.completed}/${progress.total}`}
               </span>
-              {stampUnlockedHere && (
-                <span className="rounded-full bg-signal/20 px-2 py-0.5 font-serif text-[10px] text-signal">
-                  {activeMeta.stampTitle}
-                </span>
-              )}
-            </div>
-            {progress.awakened ? (
+              <span className="text-white/50">▾</span>
+            </button>
+            {progress.awakened && (
               <button
                 type="button"
                 onClick={handleReplayFinale}
-                className="rounded-full border border-signal/55 bg-signal/16 px-2.5 py-0.5 font-serif text-[10.5px] text-signal transition hover:bg-signal/26"
+                className="cinema-surface-soft rounded-full border-signal/45 px-2.5 py-1 font-serif text-[11px] text-[#fff8ee] transition hover:border-signal hover:text-signal"
               >
                 再现奇观
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleGuideNextGoal}
-                className="rounded-full border border-white/16 bg-white/[0.04] px-2.5 py-0.5 font-serif text-[10.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
-              >
-                寻光指引
-              </button>
             )}
           </div>
-
-          <ul className="mt-2 space-y-1.5">
-            {progress.goals.map((goal) => (
-              <li key={goal.id} className="flex items-center gap-2 text-[11.5px]">
-                <span
-                  className={`cinema-gem h-1.5 w-1.5 shrink-0 transition ${
-                    goal.done
-                      ? 'bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]'
-                      : 'border border-white/35 bg-transparent'
-                  }`}
-                />
-                <span
-                  className={`font-serif transition ${
-                    goal.done ? 'text-white/48 line-through' : 'text-white/84'
-                  }`}
-                >
-                  {goal.title}
+        ) : (
+          <div className="cinema-surface-soft pointer-events-auto mt-2.5 rounded-2xl px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="font-serif text-[11.5px] tracking-[0.06em] text-signal">
+                  奇境唤醒 · {progress.completed}/{progress.total}
                 </span>
-              </li>
-            ))}
-          </ul>
+                {stampUnlockedHere && (
+                  <span className="rounded-full bg-signal/20 px-2 py-0.5 font-serif text-[10px] text-signal">
+                    {activeMeta.stampTitle}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {progress.awakened ? (
+                  <button
+                    type="button"
+                    onClick={handleReplayFinale}
+                    className="rounded-full border border-signal/55 bg-signal/16 px-2.5 py-0.5 font-serif text-[10.5px] text-signal transition hover:bg-signal/26"
+                  >
+                    再现奇观
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleGuideNextGoal}
+                    className="rounded-full border border-white/16 bg-white/[0.04] px-2.5 py-0.5 font-serif text-[10.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
+                  >
+                    寻光指引
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setGuideOpen(false)}
+                  aria-label="收起指引"
+                  title="收起指引"
+                  className="flex h-5 w-5 items-center justify-center rounded-full border border-white/14 bg-white/[0.04] text-[11px] text-white/65 transition hover:border-signal/50 hover:text-signal"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
 
-          <div className="mt-2 border-t border-white/10 pt-2">
-            <p className="font-serif text-[11px] leading-[1.6] text-white/62">
-              {relay.promise
-                ? `带着草原约定「${relay.promise}」，在六座城市收集印记与烟火。`
-                : '点亮三处奇境机关可解锁专属城市印记与 3D 奇观。'}
-            </p>
-            {!relay.completedPrologue && onGoPrologue && (
-              <button
-                type="button"
-                onClick={onGoPrologue}
-                className="mt-1 font-serif text-[10.5px] text-signal/90 underline decoration-signal/40 underline-offset-4 transition hover:text-signal"
-              >
-                返回序章 · 地球的一天 →
-              </button>
-            )}
+            <ul className="mt-2 space-y-1.5">
+              {progress.goals.map((goal) => (
+                <li key={goal.id} className="flex items-center gap-2 text-[11.5px]">
+                  <span
+                    className={`cinema-gem h-1.5 w-1.5 shrink-0 transition ${
+                      goal.done
+                        ? 'bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]'
+                        : 'border border-white/35 bg-transparent'
+                    }`}
+                  />
+                  <span
+                    className={`font-serif transition ${
+                      goal.done ? 'text-white/48 line-through' : 'text-white/84'
+                    }`}
+                  >
+                    {goal.title}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-2 border-t border-white/10 pt-2">
+              <p className="font-serif text-[11px] leading-[1.6] text-white/62">
+                {relay.promise
+                  ? `带着草原约定「${relay.promise}」，在六座城市收集印记与烟火。`
+                  : '点亮三处奇境机关可解锁专属城市印记与 3D 奇观；随时可点右上角 × 收起此框。'}
+              </p>
+              {!relay.completedPrologue && onGoPrologue && (
+                <button
+                  type="button"
+                  onClick={onGoPrologue}
+                  className="mt-1 font-serif text-[10.5px] text-signal/90 underline decoration-signal/40 underline-offset-4 transition hover:text-signal"
+                >
+                  返回序章 · 地球的一天 →
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </aside>
 
       {/* 右上角控制栏：三态天光 / 自动缓转 / 视角复位 / 声乐 / 纪念册 */}
-      <div className="pointer-events-auto fixed right-4 top-[68px] z-20 flex flex-wrap items-center justify-end gap-1.5 sm:right-6 sm:top-[78px]">
+      <div className="pointer-events-auto fixed right-3 top-[60px] z-20 flex flex-wrap items-center justify-end gap-1.5 sm:right-6 sm:top-[78px]">
         <div className="cinema-surface-soft flex items-center rounded-full p-0.5">
           {MOOD_OPTIONS.map((opt) => (
             <button
@@ -692,13 +745,18 @@ export function DioramaExperience({
               ))}
             </div>
 
-            <div className="mt-5 flex items-center justify-end gap-2.5">
+            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
               <button type="button" onClick={() => setPendingShot(null)} className="btn-ghost">
                 取消
               </button>
-              <button type="button" onClick={confirmSaveShot} className="btn-primary">
-                收进纪念册
+              <button type="button" onClick={() => saveShotAndMaybeSend(false)} className="btn-ghost border-signal/45 text-signal">
+                仅存纪念册
               </button>
+              {onSendToPost && (
+                <button type="button" onClick={() => saveShotAndMaybeSend(true)} className="btn-primary">
+                  存入并去寄视野 ✉
+                </button>
+              )}
             </div>
           </div>
         </div>
