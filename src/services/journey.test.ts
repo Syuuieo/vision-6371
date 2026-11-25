@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { seedSignalCodes } from '../data/seedRadioVisions'
+import { WORLD_DISCOVERIES, sunArc } from '../data/prologueWorldMeta'
+import {
+  SEED_RADIO_BRIEFS,
+  isSeedCode as lightIsSeedCode,
+  seedBrief as lightSeedBrief,
+  seedSignalCodes as lightSeedSignalCodes,
+} from '../data/seedRadioBriefs'
+import {
+  isSeedCode as fullIsSeedCode,
+  seedBrief as fullSeedBrief,
+  seedSignalCodes,
+} from '../data/seedRadioVisions'
 import { dailyEcho, milestones, todayKey, type JourneyState } from './journey'
 import type { StoryRelayState } from '../utils/storyRelay'
 
@@ -89,5 +100,25 @@ describe('milestones', () => {
     const badges = milestones(journey, EMPTY_RELAY)
     expect(badges.find((badge) => badge.id === 'eight-acts')?.progress).toBe('3 / 8 幕')
     expect(badges.find((badge) => badge.id === 'first-light')?.done).toBe(true)
+  })
+})
+
+describe('seedRadioBriefs parity', () => {
+  it('stays in exact sync with seedRadioVisions metadata', () => {
+    expect(lightSeedSignalCodes()).toEqual(seedSignalCodes())
+    expect(SEED_RADIO_BRIEFS.length).toBe(18)
+    for (const brief of SEED_RADIO_BRIEFS) {
+      expect(lightSeedBrief(brief.code)).toEqual(fullSeedBrief(brief.code))
+      expect(lightIsSeedCode(brief.code)).toBe(fullIsSeedCode(brief.code))
+    }
+  })
+})
+
+describe('prologueWorldMeta', () => {
+  it('computes pure-math sunArc and preserves five world landmarks', () => {
+    expect(WORLD_DISCOVERIES).toHaveLength(5)
+    expect(sunArc(12.25).daylight).toBe(true)
+    expect(sunArc(12.25).altitude).toBeGreaterThan(0.9)
+    expect(sunArc(23).daylight).toBe(false)
   })
 })

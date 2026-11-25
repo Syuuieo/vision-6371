@@ -4,6 +4,8 @@ import {
   listSeedPreviews,
   seedSignalCodes,
 } from '../data/seedRadioVisions'
+import { LOCAL_PACKETS_STORAGE_KEY } from './localVisionStats'
+import { deleteMedia, getMedia, putMedia } from './mediaDb'
 import type {
   HeartbeatResult,
   PublishResult,
@@ -17,7 +19,7 @@ import type {
 } from '../types/vision'
 
 const API_BASE = '/functions/v1/app/api/visions'
-const STORAGE_KEY = 'vision6371:packets:v1'
+const STORAGE_KEY = LOCAL_PACKETS_STORAGE_KEY
 const LOCAL_HEARTS_KEY = 'vision6371:radio:hearts:v1'
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const MAX_LOCAL_SIGNALS = 24
@@ -25,6 +27,8 @@ const LOCAL_BUDGET_CHARS = 3_600_000
 const PLACEHOLDER_IMAGE =
   'data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 4 3%22%3E%3Crect width=%224%22 height=%223%22 fill=%22%230b152c%22/%3E%3C/svg%3E'
 const MAX_THUMBNAIL_CHARS = 360_000
+const VOICE_IDB_PREFIX = 'idb:voice:'
+const MAX_INLINE_VOICE_CHARS = 120_000
 const TIMEOUT_LIST = 3500
 const TIMEOUT_SIGNAL = 4500
 const TIMEOUT_PUBLISH = 20000
@@ -185,8 +189,18 @@ function storedToPreview(item: StoredVision): RadioSignalPreview {
 function rememberLocal(signal: RadioSignal, ownerToken?: string, storedImage?: string) {
   const list = readStored()
   const image = storedImage ?? signal.packet.image
+  const codeKey = signal.code.toUpperCase()
+  let voice = signal.packet.voice
+  if (voice && !voice.startsWith(VOICE_IDB_PREFIX) && voice.length > MAX_INLINE_VOICE_CHARS) {
+    void putMedia(`vision-voice:${codeKey}`, voice)
+    voice = `${VOICE_IDB_PREFIX}${codeKey}`
+  }
+  const nextPacket =
+    image === signal.packet.image && voice === signal.packet.voice
+      ? signal.packet
+      : { ...signal.packet, image, voice }
   const entry: StoredVision = {
-    packet: image === signal.packet.image ? signal.packet : { ...signal.packet, image },
+    packet: nextPacket,
     code: signal.code,
     savedAt: signal.publishedAt,
     visibility: signal.visibility,
@@ -353,13 +367,23 @@ export async function listRadioSignals(sort: 'new' | 'hot' = 'new'): Promise<Rad
   }
 }
 
+async function hydrateStoredSignal(item: StoredVision): Promise<RadioSignal> {
+  const signal = storedToSignal(item)
+  if (signal.packet.voice && signal.packet.voice.startsWith(VOICE_IDB_PREFIX)) {
+    const key = signal.packet.voice.slice(VOICE_IDB_PREFIX.length)
+    const voiceData = await getMedia(`vision-voice:${key}`)
+    return { ...signal, packet: { ...signal.packet, voice: voiceData } }
+  }
+  return signal
+}
+
 export async function getRadioSignal(code: string): Promise<RadioSignal | null> {
   const normalized = code.trim().toUpperCase()
   if (!normalized) return null
   const localStored = readStored().find((item) => item.code.toUpperCase() === normalized)
   if (isSeedCode(normalized)) return getSeedSignal(normalized)
   if (localStored && (typeof navigator === 'undefined' || navigator.onLine === false)) {
-    return storedToSignal(localStored)
+    return hydrateStoredSignal(localStored)
   }
   try {
     const data = await requestJson<unknown>(`${API_BASE}/${encodeURIComponent(normalized)}`, undefined, TIMEOUT_SIGNAL)
@@ -368,7 +392,7 @@ export async function getRadioSignal(code: string): Promise<RadioSignal | null> 
   } catch {
     /* 云端不可用时读取本机封存的视野 */
   }
-  if (localStored) return storedToSignal(localStored)
+  if (localStored) return hydrateStoredSignal(localStored)
   return getSeedSignal(normalized)
 }
 
@@ -538,6 +562,7 @@ export async function deleteMyVision(code: string): Promise<'cloud' | 'local'> {
     }
   }
   writeStored(readStored().filter((item) => item.code.toUpperCase() !== key))
+  void deleteMedia(`vision-voice:${key}`)
   clearLocalBoost(key)
   return source
 }

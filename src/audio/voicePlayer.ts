@@ -46,10 +46,30 @@ function voiceUrl(id: string): string {
   return `${prefix}voice/${encodeURIComponent(id)}.mp3`
 }
 
+function isSpeechSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.speechSynthesis !== 'undefined' &&
+    typeof SpeechSynthesisUtterance !== 'undefined'
+  )
+}
+
+function pickChineseVoice(): SpeechSynthesisVoice | null {
+  if (!isSpeechSupported()) return null
+  const voices = window.speechSynthesis.getVoices()
+  if (!voices.length) return null
+  const preferred = voices.find((v) =>
+    /Xiaoxiao|Xiaoyi|Yaoyao|Tingting|Mei-Jia|Google 普通话|Microsoft.*Chinese/i.test(v.name),
+  )
+  if (preferred) return preferred
+  return voices.find((v) => v.lang.toLowerCase().startsWith('zh')) ?? null
+}
+
 class VoicePlayer {
   private ctx: AudioContext | null = null
   private gainNode: GainNode | null = null
   private activeSource: AudioBufferSourceNode | null = null
+  private activeUtterance: SpeechSynthesisUtterance | null = null
   private rawCache = new Map<string, Promise<ArrayBuffer | null>>()
   private bufferCache = new Map<string, AudioBuffer>()
   private listeners = new Set<() => void>()
@@ -138,6 +158,15 @@ class VoicePlayer {
   setMuted(muted: boolean) {
     this.muted = muted
     this.applyGain(0.08)
+    if (muted && this.activeUtterance && isSpeechSupported()) {
+      this.activeUtterance = null
+      try {
+        window.speechSynthesis.cancel()
+      } catch {
+        /* ignore */
+      }
+      this.setSnapshot(null, null)
+    }
   }
 
   preload(id: string): Promise<ArrayBuffer | null> {
@@ -171,7 +200,43 @@ class VoicePlayer {
     }
   }
 
+  private playHeadsetChime() {
+    if (this.muted) return
+    const ctx = this.ensureContext()
+    if (!ctx || !this.gainNode) return
+    if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => undefined)
+    }
+    try {
+      const now = ctx.currentTime
+      const osc = ctx.createOscillator()
+      const env = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(660, now)
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.16)
+      env.gain.setValueAtTime(0.0001, now)
+      env.gain.exponentialRampToValueAtTime(0.08, now + 0.03)
+      env.gain.exponentialRampToValueAtTime(0.0001, now + 0.22)
+      osc.connect(env)
+      env.connect(this.gainNode)
+      osc.start(now)
+      osc.stop(now + 0.24)
+    } catch {
+      /* ignore */
+    }
+  }
+
   private stopSourceOnly() {
+    if (this.activeUtterance) {
+      this.activeUtterance = null
+      if (isSpeechSupported()) {
+        try {
+          window.speechSynthesis.cancel()
+        } catch {
+          /* ignore */
+        }
+      }
+    }
     if (this.activeSource) {
       const src = this.activeSource
       this.activeSource = null
@@ -290,12 +355,71 @@ class VoicePlayer {
     }
   }
 
+  async speakWhisper(id: string, text: string): Promise<boolean> {
+    const cleanText = text.replace(/^[“"]|[”"]$/g, '').trim()
+    if (!id || !cleanText) return false
+    const seq = ++this.playSeq
+    this.stopSourceOnly()
+    this.playHeadsetChime()
+
+    if (!isSpeechSupported()) {
+      if (seq === this.playSeq) this.setSnapshot(null, null)
+      return false
+    }
+
+    try {
+      const utterance = new SpeechSynthesisUtterance(cleanText)
+      utterance.lang = 'zh-CN'
+      utterance.rate = 0.92
+      utterance.pitch = 1.06
+      utterance.volume = this.muted ? 0 : clamp(this.masterVolume * this.voiceVolume * 0.9, 0, 1)
+      const zhVoice = pickChineseVoice()
+      if (zhVoice) utterance.voice = zhVoice
+      utterance.onend = () => {
+        if (seq === this.playSeq) {
+          this.activeUtterance = null
+          this.setSnapshot(null, null)
+        }
+      }
+      utterance.onerror = () => {
+        if (seq === this.playSeq) {
+          this.activeUtterance = null
+          this.setSnapshot(null, null)
+        }
+      }
+      this.activeUtterance = utterance
+      this.setSnapshot(id, null)
+      window.speechSynthesis.speak(utterance)
+      return true
+    } catch {
+      if (seq === this.playSeq) {
+        this.activeUtterance = null
+        this.setSnapshot(null, null)
+      }
+      return false
+    }
+  }
+
   async toggle(id: string, mode: VoiceMode = 'headset'): Promise<boolean> {
     if (this.snapshot.playingId === id || this.snapshot.loadingId === id) {
       this.stop()
       return false
     }
     return this.play(id, mode)
+  }
+
+  async toggleWhisper(
+    id: string,
+    text: string,
+    mp3Id?: string | null,
+    mode: VoiceMode = 'headset',
+  ): Promise<boolean> {
+    if (mp3Id) return this.toggle(mp3Id, mode)
+    if (this.snapshot.playingId === id) {
+      this.stop()
+      return false
+    }
+    return this.speakWhisper(id, text)
   }
 }
 

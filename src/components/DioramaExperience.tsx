@@ -13,9 +13,11 @@ import {
 import {
   deleteAlbumEntry,
   loadAlbum,
+  loadAlbumAsync,
   loadDioramaStamps,
   markDioramaStamp,
   saveAlbumEntry,
+  subscribeAlbum,
   updateAlbumNote,
   type AlbumEntry,
   type DioramaSceneId,
@@ -90,6 +92,7 @@ export function DioramaExperience({
   const [zoomPreset, setZoomPreset] = useState<DioramaZoomPreset>('standard')
   const [filmFilter, setFilmFilter] = useState<DioramaFilter>('none')
   const [shutterFlash, setShutterFlash] = useState(false)
+  const [contextLost, setContextLost] = useState(false)
   const [interactCount, setInteractCount] = useState(0)
   const [progress, setProgress] = useState<DioramaProgressSnapshot>(() =>
     buildGoalSnapshot('shanghai', new Set()),
@@ -104,7 +107,7 @@ export function DioramaExperience({
 
   const [album, setAlbum] = useState<AlbumEntry[]>(() => loadAlbum())
   const [albumOpen, setAlbumOpen] = useState(false)
-  const [albumCategory, setAlbumCategory] = useState<'all' | 'diorama' | 'meadow'>('all')
+  const [albumCategory, setAlbumCategory] = useState<'all' | 'diorama' | 'meadow' | 'postcard'>('all')
   const [pendingShot, setPendingShot] = useState<string | null>(null)
   const [draftNote, setDraftNote] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -177,6 +180,7 @@ export function DioramaExperience({
           guideAutoHideRef.current = window.setTimeout(() => setGuideOpen(false), 1800)
         }
       },
+      (lost) => setContextLost(lost),
     )
     worldRef.current = world
     return () => {
@@ -191,6 +195,21 @@ export function DioramaExperience({
     mixer.revive()
     return () => mixer.dispose()
   }, [mixer])
+
+  useEffect(() => {
+    let alive = true
+    const sync = () => {
+      void loadAlbumAsync().then((loaded) => {
+        if (alive) setAlbum(loaded)
+      })
+    }
+    sync()
+    const unsub = subscribeAlbum(sync)
+    return () => {
+      alive = false
+      unsub()
+    }
+  }, [])
 
   // 切换立体场景时同步环境声与城市八音盒旋律
   useEffect(() => {
@@ -324,7 +343,10 @@ export function DioramaExperience({
 
   const filteredAlbum = useMemo(() => {
     if (albumCategory === 'meadow') return album.filter((e) => e.sceneId === 'meadow')
-    if (albumCategory === 'diorama') return album.filter((e) => e.sceneId !== 'meadow')
+    if (albumCategory === 'postcard') return album.filter((e) => e.sceneId === 'postcard')
+    if (albumCategory === 'diorama') {
+      return album.filter((e) => e.sceneId !== 'meadow' && e.sceneId !== 'postcard')
+    }
     return album
   }, [album, albumCategory])
 
@@ -379,7 +401,7 @@ export function DioramaExperience({
               DIORAMA · {activeMeta.region}
             </span>
           </div>
-          <h1 className="font-serif text-[18px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[23px]">
+          <h1 className="font-serif text-[18px] font-normal tracking-[0.06em] text-[#fff8ee] sm:text-[23px]">
             {activeMeta.title}
           </h1>
           <p className="hidden font-serif text-[11.5px] leading-[1.6] text-white/75 sm:block">
@@ -701,7 +723,7 @@ export function DioramaExperience({
                     </span>
                   )}
                 </div>
-                <h2 className="mt-1 font-serif text-[19px] font-light tracking-[0.06em] text-[#fff8ee]">
+                <h2 className="mt-1 font-serif text-[19px] font-normal tracking-[0.06em] text-[#fff8ee]">
                   {activeMeta.title}
                 </h2>
               </div>
@@ -781,7 +803,7 @@ export function DioramaExperience({
                   <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
                   <span className="hud-label text-signal/85">KEEPSAKE ALBUM · 视界纪念册</span>
                 </div>
-                <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.08em] text-[#fff8ee]">
+                <h2 className="mt-1.5 font-serif text-[22px] font-normal tracking-[0.08em] text-[#fff8ee]">
                   奇境印记与立体留影 ({album.length})
                 </h2>
                 <p className="mt-1 font-serif text-[12px] text-white/58">
@@ -840,11 +862,15 @@ export function DioramaExperience({
                   { id: 'all', label: `全部 (${album.length})` },
                   {
                     id: 'diorama',
-                    label: `微缩奇境 (${album.filter((e) => e.sceneId !== 'meadow').length})`,
+                    label: `微缩奇境 (${album.filter((e) => e.sceneId !== 'meadow' && e.sceneId !== 'postcard').length})`,
                   },
                   {
                     id: 'meadow',
                     label: `序章草原 (${album.filter((e) => e.sceneId === 'meadow').length})`,
+                  },
+                  {
+                    id: 'postcard',
+                    label: `漂流明信片 (${album.filter((e) => e.sceneId === 'postcard').length})`,
                   },
                 ].map((tab) => (
                   <button
@@ -1013,6 +1039,26 @@ export function DioramaExperience({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {contextLost && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-[#060c1a]/82 px-5 backdrop-blur-md">
+          <div className="cinema-surface max-w-[360px] rounded-[24px] p-6 text-center">
+            <div className="font-mono text-[10px] tracking-[0.2em] text-signal/80">WEBGL CONTEXT</div>
+            <h2 className="mt-2 font-serif text-[17px] font-normal text-[#fff8ee]">
+              图形渲染已暂停（设备内存释放）
+            </h2>
+            <p className="mt-2 font-serif text-[12px] leading-[1.75] text-white/62">
+              设备临时回收了三维画布上下文，你的纪念册照片已安全保存在本机。
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="btn-primary mt-4"
+            >
+              重新加载画面
+            </button>
           </div>
         </div>
       )}

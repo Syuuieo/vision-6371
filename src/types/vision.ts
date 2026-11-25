@@ -31,6 +31,12 @@ export interface VisionPacket {
   scentTag: string
   focus: FocusPoint[]
   createdAt: number
+  /** 可选：邮票 ID、信笺边框、气象贴纸、天气与短笺正文 */
+  stampId?: string
+  frameId?: 'navy-gold' | 'warm-paper' | 'aurora-air'
+  sticker?: string
+  weather?: string
+  letter?: string
 }
 
 export interface VisionPreset extends Omit<VisionPacket, 'image' | 'voice' | 'createdAt'> {

@@ -258,11 +258,12 @@ export function buildHawaii(ctx: DioramaBuilderCtx) {
   g.add(canoe)
 
   let canoePush = 0
+  let canoePhase = 0
   ctx.registerInteractive(canoeHull, {
     goalId: 'canoe',
     focusPoint: new THREE.Vector3(-1.35, 0.25, 1.85),
     onClick: (pt) => {
-      canoePush = 1.8
+      canoePush = Math.min(1.1, canoePush + 0.85)
       ctx.triggerRipple(pt?.x ?? canoe.position.x, pt?.z ?? 1.85)
       ctx.setWaterBio(Math.max(0.55, ctx.isGoalDone('canoe') ? 1 : 0.65))
       ctx.completeGoal('canoe')
@@ -302,7 +303,8 @@ export function buildHawaii(ctx: DioramaBuilderCtx) {
 
   ctx.addTick((t, dt) => {
     canoePush = Math.max(0, canoePush - dt * 0.6)
-    canoe.position.x = -1.25 + Math.sin(t * (0.45 + canoePush * 0.5)) * 1.45
+    canoePhase += dt * (0.42 + canoePush * 0.28)
+    canoe.position.x = -1.25 + Math.sin(canoePhase) * 1.45
     canoe.position.y = 0.02 + Math.sin(t * 2.2) * 0.025
 
     const targetSunY = sunLowered ? 1.85 : 2.65
@@ -812,7 +814,7 @@ export function buildObservatory(ctx: DioramaBuilderCtx) {
     goalId: 'astrolabe',
     focusPoint: new THREE.Vector3(2.15, 1.05, 1.25),
     onClick: () => {
-      astroBoost = 2.4
+      astroBoost = Math.min(1.6, astroBoost + 1.2)
       ctx.completeGoal('astrolabe')
       return { label: '拨动高原青铜三环浑天仪对齐星轨', sfx: 'star' }
     },
@@ -896,11 +898,11 @@ export function buildObservatory(ctx: DioramaBuilderCtx) {
     meteorGroup.visible = true
   })
 
-  ctx.addTick((t, dt) => {
+  ctx.addTick((_t, dt) => {
     astroBoost = Math.max(0, astroBoost - dt * 0.9)
-    ring1.rotation.y = t * (0.4 + astroBoost * 1.6)
-    ring2.rotation.x = t * (0.55 + astroBoost * 1.9)
-    ring3.rotation.z = t * (0.72 + astroBoost * 2.1)
+    ring1.rotation.y += dt * (0.4 + astroBoost * 1.1)
+    ring2.rotation.x += dt * (0.55 + astroBoost * 1.3)
+    ring3.rotation.z += dt * (0.72 + astroBoost * 1.45)
 
     domePivot.rotation.y += (domeTargetY - domePivot.rotation.y) * Math.min(1, dt * 3.8)
     const split = domeOpen ? 0.24 : 0

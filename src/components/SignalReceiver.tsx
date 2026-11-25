@@ -4,6 +4,7 @@ import { getRadioSignal } from '../services/visionApi'
 import type { RadioSignal, VisionEcho } from '../types/vision'
 import { WIND_LABELS } from '../types/vision'
 import { citySignature } from '../data/citySignature'
+import { LOCAL_STAMPS } from '../data/mailboxData'
 import { SignalViewer } from './SignalViewer'
 
 interface SignalReceiverProps {
@@ -68,7 +69,8 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
 
   const packet = signal?.packet
   const wind = packet ? WIND_LABELS[Math.min(3, Math.max(0, Math.round(packet.windLevel)))] : '微风'
-  const weather = (packet && citySignature(packet.city)?.weather) || wind
+  const weather = packet?.weather?.trim() || (packet && citySignature(packet.city)?.weather) || wind
+  const stamp = packet?.stampId ? LOCAL_STAMPS.find((s) => s.id === packet.stampId) ?? null : null
 
   return (
     <main
@@ -103,7 +105,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-ember/35 bg-ember/10">
               <span className="h-2.5 w-2.5 rounded-full bg-ember" />
             </div>
-            <h1 className="mt-5 font-serif text-[clamp(24px,4vw,34px)] font-light leading-tight tracking-[0.06em] text-[#fff8ee]">
+            <h1 className="mt-5 font-serif text-[clamp(24px,4vw,34px)] font-normal leading-tight tracking-[0.06em] text-[#fff8ee]">
               这封视野在半路散开了
             </h1>
             <p className="mt-3 font-serif text-[13.5px] leading-[1.9] text-white/70">
@@ -144,6 +146,11 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
               <div className="absolute left-5 top-5 rounded-full border border-white/15 bg-[#0b152c]/65 px-3.5 py-1.5 font-serif text-[12px] text-[#fff8ee] backdrop-blur-md">
                 {packet.city} · {packet.tempC}°C · {weather}
               </div>
+              {packet.sticker?.trim() && (
+                <div className="absolute right-5 top-5 rounded-full border border-signal/35 bg-[#0b152c]/72 px-3 py-1 font-serif text-[11.5px] text-signal backdrop-blur-md">
+                  {packet.sticker.trim()}
+                </div>
+              )}
 
               <div className="absolute inset-x-5 bottom-5">
                 <div className="flex flex-wrap items-center gap-2">
@@ -154,24 +161,43 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
                     {packet.voice ? '含现场原声' : '安静的风景'}
                   </span>
                 </div>
-                <h2 className="mt-2.5 font-serif text-[clamp(20px,2.5vw,28px)] font-light leading-tight tracking-[0.05em] text-[#fff8ee]">
+                <h2 className="mt-2.5 font-serif text-[clamp(20px,2.5vw,28px)] font-normal leading-tight tracking-[0.05em] text-[#fff8ee]">
                   {packet.title}
                 </h2>
               </div>
             </div>
 
             <div className="cinema-surface flex flex-col justify-center rounded-[28px] px-6 py-7 sm:px-8 sm:py-9">
-              <div className="font-serif text-[12.5px] tracking-[0.12em] text-signal/90">
-                来自 {packet.city} 的明信片
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-serif text-[12.5px] tracking-[0.12em] text-signal/90">
+                  来自 {packet.city} 的明信片
+                </div>
+                {stamp && (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-dashed px-2.5 py-1 font-serif text-[11px] text-[#fff8ee]"
+                    style={{ borderColor: stamp.accent }}
+                  >
+                    <span>{stamp.motif}</span>
+                    <span>{stamp.title}</span>
+                  </span>
+                )}
               </div>
-              <h1 className="mt-3 font-serif text-[clamp(28px,4.4vw,44px)] font-light leading-[1.18] tracking-[0.06em] text-[#fff8ee]">
+              <h1 className="mt-3 font-serif text-[clamp(28px,4.4vw,44px)] font-normal leading-[1.18] tracking-[0.06em] text-[#fff8ee]">
                 你收到一双眼睛
               </h1>
-              <p className="mt-4 font-serif text-[14.5px] font-light leading-[1.95] tracking-[0.04em] text-white/78 sm:text-[15.5px]">
+              <p className="mt-4 font-serif text-[14.5px] font-normal leading-[1.95] tracking-[0.04em] text-white/78 sm:text-[15.5px]">
                 来自 <span className="text-signal">{packet.city}</span> 的{' '}
                 <span className="text-[#fff8ee]">{packet.sender}</span>，把 {weather}、{packet.tempC}°C
                 {packet.scentTag ? `、${packet.scentTag}` : ''} 与 {packet.focus.length} 处想指给你看的目光，放进了这封视窗。
               </p>
+              {packet.letter?.trim() && (
+                <div className="mt-4 rounded-2xl border border-signal/25 bg-signal/[0.06] px-4 py-3">
+                  <div className="font-serif text-[11px] tracking-[0.06em] text-signal/85">寄信人的短笺</div>
+                  <p className="mt-1 font-serif text-[13.5px] leading-[1.8] text-[#fff8ee]/92">
+                    “{packet.letter.trim()}”
+                  </p>
+                </div>
+              )}
 
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">

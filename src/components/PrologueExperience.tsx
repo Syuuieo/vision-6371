@@ -10,19 +10,24 @@ import { type VoiceMode, useVoiceState, voicePlayer } from '../audio/voicePlayer
 import {
   DESCENT_CAPTIONS,
   EASTER_EGGS,
-  FINAL_CAPTION,
-  FINAL_LINES,
   INTRO_CALL_BEATS,
   QUOTES,
   STEPS,
-  TRUTH,
 } from '../data/narrative'
-import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../engine/core/ctx'
-import {
+import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../data/prologueWorldMeta'
+import type {
+  HoverTargetInfo,
+  PlayerTelemetry,
   PrologueScene,
-  type HoverTargetInfo,
-  type PlayerTelemetry,
 } from '../scenes/PrologueScene'
+
+let prologueScenePromise: Promise<typeof import('../scenes/PrologueScene')> | null = null
+function loadPrologueSceneModule() {
+  if (!prologueScenePromise) {
+    prologueScenePromise = import('../scenes/PrologueScene')
+  }
+  return prologueScenePromise
+}
 import { saveAlbumEntry } from '../services/albumStorage'
 import { LandscapeHint, TouchControls } from './TouchControls'
 import { getSettings, isCoarsePointer, prefersReducedMotion, subscribeSettings, updateSettings, type QualityTier } from '../services/settings'
@@ -52,10 +57,12 @@ import type {
 } from '../types/sensor'
 import { exportMemoryFilmstrip, type MemoryFrame } from '../utils/memoryStripExport'
 import type { StoryRelayState } from '../utils/storyRelay'
-import { CalibrationDial } from './CalibrationDial'
 import { CompassBar } from './CompassBar'
 import { FieldJournalModal } from './FieldJournalModal'
 import { IntroRitual } from './IntroRitual'
+import { ActInteractivePanels } from './prologue/ActInteractivePanels'
+import { EndingSequenceOverlay } from './prologue/EndingSequenceOverlay'
+import { NarrativeModals } from './prologue/NarrativeModals'
 import { SensorHud } from './SensorHud'
 
 interface PrologueExperienceProps {
@@ -215,6 +222,13 @@ export function PrologueExperience({
   const [place, setPlace] = useState('晨雾草甸')
 
   const [phase, setPhase] = useState<Phase>('ritual')
+  const [sceneRequested, setSceneRequested] = useState(false)
+  const [sceneMounted, setSceneMounted] = useState(false)
+  const pendingResumeActRef = useRef<ActId | null>(null)
+  const jumpToActRef = useRef<(target: ActId) => void>(() => {})
+  const activeRef = useRef(active)
+  const stageRef = useRef<SkyStage>(0)
+  const [contextLost, setContextLost] = useState(false)
   const [opening, setOpening] = useState(false)
   const [introBeat, setIntroBeat] = useState(0)
   const [act, setAct] = useState<ActId>(1)
@@ -449,37 +463,67 @@ export function PrologueExperience({
   )
 
   useEffect(() => {
+    activeRef.current = active
+  }, [active])
+
+  useEffect(() => {
+    stageRef.current = stage
+  }, [stage])
+
+  useEffect(() => {
+    if (!sceneRequested) return
     const host = hostRef.current
     if (!host) return
-    const scene = new PrologueScene()
-    sceneRef.current = scene
-    scene.setQuality(getSettings().quality)
-    scene.setCalmMotion(getSettings().reducedMotion || prefersReducedMotion())
-    scene.mount(host, {
-      onPick: (id) => pickHandlerRef.current(id),
-      onDescentEvent: (event) => descentHandlerRef.current(event),
-      onLakeRipple: () => lakeHandlerRef.current(),
-      onHoverTarget: (info) => setHover(info),
-      onZoomChange: (nextZoom) => setZoom(nextZoom),
-      onSkimChange: (amount) => sound.setGrassSkim(amount),
-      onPlaceChange: (nextPlace) => setPlace(nextPlace),
-      onTelemetry: (nextTelemetry) => telemetryHandlerRef.current(nextTelemetry),
-      onBoundary: () => boundaryHandlerRef.current?.(),
+    let cancelled = false
+    let observer: ResizeObserver | null = null
+    let scene: PrologueScene | null = null
+
+    void loadPrologueSceneModule().then(({ PrologueScene: SceneCtor }) => {
+      if (cancelled) return
+      scene = new SceneCtor()
+      sceneRef.current = scene
+      scene.setQuality(getSettings().quality)
+      scene.setCalmMotion(getSettings().reducedMotion || prefersReducedMotion())
+      scene.setPaused(!activeRef.current)
+      scene.mount(host, {
+        onPick: (id) => pickHandlerRef.current(id),
+        onDescentEvent: (event) => descentHandlerRef.current(event),
+        onLakeRipple: () => lakeHandlerRef.current(),
+        onHoverTarget: (info) => setHover(info),
+        onZoomChange: (nextZoom) => setZoom(nextZoom),
+        onSkimChange: (amount) => sound.setGrassSkim(amount),
+        onPlaceChange: (nextPlace) => setPlace(nextPlace),
+        onTelemetry: (nextTelemetry) => telemetryHandlerRef.current(nextTelemetry),
+        onBoundary: () => boundaryHandlerRef.current?.(),
+        onContextLost: (lost) => setContextLost(lost),
+      })
+      scene.setDiscoveredIds(discoveriesRef.current)
+      scene.setActiveTask('flower')
+      scene.setRoamEnabled(false)
+      scene.setStage(stageRef.current)
+      if (pendingResumeActRef.current !== null) {
+        const targetAct = pendingResumeActRef.current
+        pendingResumeActRef.current = null
+        jumpToActRef.current(targetAct)
+      } else if (phaseRef.current === 'ritual' || phaseRef.current === 'intro_call') {
+        scene.focusTarget('home', 3.4)
+      }
+      setSceneMounted(true)
+      observer = new ResizeObserver(() => scene?.resize())
+      observer.observe(host)
     })
-    scene.setActiveTask('flower')
-    scene.setRoamEnabled(false)
-    const observer = new ResizeObserver(() => scene.resize())
-    observer.observe(host)
+
     return () => {
-      observer.disconnect()
-      scene.dispose()
+      cancelled = true
+      observer?.disconnect()
+      scene?.dispose()
       sceneRef.current = null
     }
-  }, [sound])
+  }, [sound, sceneRequested])
 
   useEffect(() => {
     sceneRef.current?.setPaused(!active)
-  }, [active])
+  }, [active, sceneRequested])
 
   useEffect(
     () =>
@@ -555,12 +599,12 @@ export function PrologueExperience({
 
   useEffect(() => {
     sceneRef.current?.setActiveTask(activeTask)
-  }, [activeTask])
+  }, [activeTask, sceneRequested])
 
   useEffect(() => {
     const enabled = active && phase === 'explore' && !lore && !finalizing && !meadowShot
     sceneRef.current?.setRoamEnabled(enabled)
-  }, [active, phase, lore, finalizing, meadowShot])
+  }, [active, phase, lore, finalizing, meadowShot, sceneRequested])
 
   const handleMoveAxis = useCallback((x: number, y: number) => {
     sceneRef.current?.setMoveAxis(x, y)
@@ -848,6 +892,7 @@ export function PrologueExperience({
   const begin = async () => {
     if (opening) return
     setOpening(true)
+    setSceneRequested(true)
     sceneRef.current?.setStage(0)
     sceneRef.current?.focusTarget('home', 3.4)
     void voicePlayer.preload('intro-0')
@@ -981,6 +1026,10 @@ export function PrologueExperience({
     setAct(1)
     actRef.current = 1
     setActiveTask('flower')
+    pendingResumeActRef.current = null
+    setContextLost(false)
+    setSceneMounted(false)
+    setSceneRequested(false)
     setStage(0)
     phaseRef.current = 'ritual'
     setPhase('ritual')
@@ -1737,6 +1786,10 @@ export function PrologueExperience({
       : `继续第 ${STEPS[resumeAct - 1].index} 幕 · ${STEPS[resumeAct - 1].title}`
     : null
 
+  useEffect(() => {
+    jumpToActRef.current = jumpToAct
+  })
+
   const resumeFromCover = async () => {
     if (opening || !resumeAct) return
     try {
@@ -1744,6 +1797,11 @@ export function PrologueExperience({
       await voicePlayer.unlock()
     } catch {
       /* visuals continue even if audio is blocked */
+    }
+    if (!sceneRef.current) {
+      pendingResumeActRef.current = resumeAct
+      setSceneRequested(true)
+      return
     }
     jumpToAct(resumeAct)
   }
@@ -1917,6 +1975,27 @@ export function PrologueExperience({
       />
       <div className="vignette-overlay" />
 
+      {contextLost && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-[#060c1a]/82 px-5 backdrop-blur-md">
+          <div className="cinema-surface max-w-[360px] rounded-[24px] p-6 text-center">
+            <div className="font-mono text-[10px] tracking-[0.2em] text-signal/80">WEBGL CONTEXT</div>
+            <h2 className="mt-2 font-serif text-[17px] font-normal text-[#fff8ee]">
+              图形渲染已暂停（设备内存释放）
+            </h2>
+            <p className="mt-2 font-serif text-[12px] leading-[1.75] text-white/62">
+              设备临时回收了草原 3D 画布，可点击下方按钮恢复画面。
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="btn-primary mt-4"
+            >
+              重新加载画面
+            </button>
+          </div>
+        </div>
+      )}
+
       {focusSnap && (
         <div
           className="pointer-events-none fixed inset-0 z-20"
@@ -2025,6 +2104,10 @@ export function PrologueExperience({
       {phase === 'ritual' && (
         <IntroRitual
           opening={opening}
+          sceneMounted={sceneMounted}
+          onPreloadScene={() => {
+            void loadPrologueSceneModule()
+          }}
           onEnter={begin}
           resumeLabel={resumeLabel}
           onResume={resumeAct ? resumeFromCover : undefined}
@@ -2037,189 +2120,6 @@ export function PrologueExperience({
             onListenEcho?.(code)
           }}
         />
-      )}
-
-      {/* Beat-by-beat cinema opening headset subtitles */}
-      {phase === 'intro_call' && (
-        <div
-          className="fixed inset-x-0 bottom-0 z-[42] flex cursor-pointer flex-col items-center px-4 pb-[max(1.4rem,env(safe-area-inset-bottom))] sm:pb-8"
-          onClick={advanceIntroBeat}
-        >
-          <div
-            key={introBeat}
-            className="cinema-caption cinema-surface w-full max-w-[660px] rounded-[26px] px-6 py-5 sm:px-8 sm:py-6"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 font-serif text-[12px] tracking-[0.08em] text-signal">
-                <span className="h-2 w-2 rounded-full bg-signal animate-[blinkDot_1.8s_ease-in-out_infinite]" />
-                <span>{currentIntroBeat.speaker}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void voicePlayer.unlock()
-                    void voicePlayer.toggle(`intro-${introBeat}`, introBeat === 0 ? 'clear' : 'headset')
-                  }}
-                  aria-label="播音或重听开场语音"
-                  className="flex items-center gap-1.5 rounded-full border border-signal/30 bg-signal/[0.08] px-2.5 py-0.5 font-serif text-[11px] text-signal transition hover:border-signal/60 hover:bg-signal/[0.15]"
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                      voiceState.playingId === `intro-${introBeat}` || voiceState.loadingId === `intro-${introBeat}`
-                        ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
-                        : 'opacity-55'
-                    }`}
-                  />
-                  <span>
-                    {voiceState.playingId === `intro-${introBeat}`
-                      ? '播音中 · 暂停'
-                      : voiceState.loadingId === `intro-${introBeat}`
-                        ? '载入中'
-                        : '重听语音'}
-                  </span>
-                </button>
-                <span className="font-mono text-[10.5px] text-white/45">
-                  {currentIntroBeat.timeLabel} · {introBeat + 1}/{INTRO_CALL_BEATS.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    skipIntroToExplore()
-                  }}
-                  className="rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-0.5 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-                >
-                  跳过 ›
-                </button>
-              </div>
-            </div>
-            <p className="mt-3 font-serif text-[16px] font-light leading-[1.85] tracking-[0.04em] text-[#fff8ee] sm:text-[18px]">
-              {currentIntroBeat.text}
-            </p>
-            {currentIntroBeat.sub && (
-              <p className="mt-2 font-serif text-[12.5px] leading-[1.7] text-white/58">
-                {currentIntroBeat.sub}
-              </p>
-            )}
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                {INTRO_CALL_BEATS.map((_, idx) => (
-                  <span
-                    key={idx}
-                    className={`h-1.5 rounded-full transition-all ${
-                      idx === introBeat ? 'w-5 bg-signal' : idx < introBeat ? 'w-1.5 bg-signal/50' : 'w-1.5 bg-white/20'
-                    }`}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    exitToRitual()
-                  }}
-                  className="font-serif text-[11.5px] text-white/50 transition hover:text-white/85"
-                >
-                  回到封面
-                </button>
-                <span className="font-serif text-[12px] tracking-[0.08em] text-signal/90">
-                  {introBeat < INTRO_CALL_BEATS.length - 1 ? '轻点继续 ›' : '戴好眼镜 · 看清这片晨雾 ›'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {meadowShot && (
-        <div
-          className="fixed inset-0 z-[58] flex items-center justify-center bg-[#030712]/72 px-4 py-6 backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="定格草原留影"
-          onClick={() => setMeadowShot(null)}
-        >
-          <div
-            className="cinema-surface animate-fade-up w-full max-w-[560px] rounded-[28px] p-5 sm:p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="hud-label text-signal/85">MEADOW KEEPSAKE · 草原留影</div>
-                <h3 className="mt-1 font-serif text-[19px] font-light tracking-[0.06em] text-[#fff8ee]">
-                  {meadowShot.placeName} · {formatClockHour(meadowShot.hour)}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMeadowShot(null)}
-                className="rounded-full border border-white/14 px-3 py-1 font-serif text-[11.5px] text-white/70 transition hover:border-signal/50 hover:text-signal"
-              >
-                收起 ×
-              </button>
-            </div>
-
-            <div className="mt-3.5 overflow-hidden rounded-2xl border border-white/14 bg-black/40">
-              <img
-                src={meadowShot.image}
-                alt={meadowShot.placeName}
-                className="aspect-video w-full object-cover"
-              />
-            </div>
-
-            <label className="mt-4 block">
-              <span className="font-serif text-[12.5px] tracking-[0.06em] text-signal/90">
-                写一句带进纪念册的风声附言
-              </span>
-              <textarea
-                value={meadowNote}
-                onChange={(e) => setMeadowNote(e.target.value)}
-                rows={2}
-                maxLength={140}
-                placeholder={`在${meadowShot.placeName}替你定格了一阵地面上的风。`}
-                className="mt-2 w-full resize-none rounded-2xl border border-white/14 bg-[#070e1f]/75 px-3.5 py-2 font-serif text-[13px] leading-[1.7] text-[#fff8ee] outline-none placeholder:text-white/35 focus:border-signal/60"
-              />
-            </label>
-
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {MEADOW_QUICK_NOTES.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setMeadowNote(preset)}
-                  className="rounded-full border border-white/12 bg-white/[0.03] px-2.5 py-1 font-serif text-[11px] text-white/68 transition hover:border-signal/45 hover:text-signal"
-                >
-                  {preset.slice(0, 14)}…
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-2.5">
-              <button type="button" onClick={() => setMeadowShot(null)} className="btn-ghost">
-                继续漫步
-              </button>
-              {meadowSaved ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMeadowShot(null)
-                    onNavigate('diorama')
-                  }}
-                  className="btn-primary"
-                >
-                  去纪念册查看 ›
-                </button>
-              ) : (
-                <button type="button" onClick={confirmSaveMeadowShot} className="btn-primary">
-                  收进纪念册
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
       )}
 
       <FieldJournalModal
@@ -2611,711 +2511,91 @@ export function PrologueExperience({
         </div>
       )}
 
-      {/* Act I Optical Focus Pull */}
-      {phase === 'explore' && panel === 'focus' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5">
-          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[540px] rounded-[26px] p-5 text-center sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 I 幕 · 06:40 · 晨雾对焦</div>
-            <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.08em] text-[#fff8ee]">
-              替她看清第一朵花
-            </h2>
-            <p className="mx-auto mt-2 max-w-[25rem] font-serif text-[13px] font-light leading-[1.85] text-white/70">
-              镜片上还蒙着草原清晨的露雾。拖动下方对焦滑轨，或长按光学环直到视野清晰。
-            </p>
-
-            <div className="mt-4 flex items-center gap-3 px-2">
-              <span className="font-mono text-[10px] tracking-[0.1em] text-white/50">FOG</span>
-              <div className="relative flex-1">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-white/12">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#a88762] to-[#fff0d4] transition-[width] duration-75"
-                    style={{ width: `${Math.round(focusProgress * 100)}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={0.05}
-                  max={1}
-                  step={0.01}
-                  value={focusProgress}
-                  onChange={(event) => updateFocus(Number(event.target.value))}
-                  aria-label="传感眼镜光学焦距"
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-              </div>
-              <span className="w-10 text-right font-mono text-[11px] text-signal">
-                {Math.round(focusProgress * 100)}%
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onPointerDown={startFocusHold}
-              onPointerUp={stopFocusHold}
-              onPointerLeave={stopFocusHold}
-              onPointerCancel={stopFocusHold}
-              className="btn-primary mt-5 select-none"
-            >
-              按住光学对焦环 · 散开晨雾
-            </button>
-          </div>
-        </div>
+      {phase === 'explore' && (
+        <ActInteractivePanels
+          panel={panel}
+          quoteOpen={Boolean(quote)}
+          focusProgress={focusProgress}
+          tuning={tuning}
+          inZone={inZone}
+          windHint={windHint}
+          blowCharge={blowCharge}
+          ruinPulses={ruinPulses}
+          rainCatches={rainCatches}
+          rainTarget={RAIN_TARGET_COUNT}
+          fireflyCount={fireflyCount}
+          fireflyTarget={FIREFLY_TARGET_COUNT}
+          constellationCount={constellationCount}
+          constellationHint={constellationHint}
+          onDismiss={dismissPanel}
+          onUpdateFocus={updateFocus}
+          onStartFocusHold={startFocusHold}
+          onStopFocusHold={stopFocusHold}
+          onChangeTuning={changeTuning}
+          onAutoAlign={autoAlign}
+          onStartBlowHold={startBlowHold}
+          onReleaseBlowHold={releaseBlowHold}
+          onTriggerRuinPulse={triggerRuinPulse}
+          onCatchRainDrop={catchRainDrop}
+          onWakeFirefly={wakeFirefly}
+          onAutoConnect={autoConnect}
+        />
       )}
 
-      {/* Act II Lake & Wind Resonance */}
-      {phase === 'explore' && panel === 'wind' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:pb-4">
-          <div className="cinema-surface pointer-events-auto animate-fade-up no-scrollbar relative max-h-[calc(100dvh-5rem)] w-full max-w-[720px] overflow-y-auto rounded-[26px] p-4 sm:max-h-none sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:gap-6">
-              <div className="-mb-10 -mt-4 scale-[0.78] rounded-full bg-[#091122]/75 p-1 sm:m-0 sm:scale-100">
-                <CalibrationDial value={tuning} inZone={inZone} onChange={changeTuning} />
-              </div>
-              <div className="flex-1 pb-2 text-center sm:pb-0 sm:text-left">
-                <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 II 幕 · 09:30 · 湖畔风声</div>
-                <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.08em] text-[#fff8ee]">湖畔的风声</h2>
-                <p className="mt-2 font-serif text-[13px] font-light leading-[1.9] tracking-[0.04em] text-white/70">
-                  水声先落了下来。现在转动刻度环，对准金色共振带，让草原的长风穿过耳机。
-                </p>
-                <div className="mt-3 flex items-center justify-center gap-2 font-serif text-[12px] sm:justify-start">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${inZone ? 'bg-signal animate-[blinkDot_1s_ease-in-out_infinite]' : 'bg-white/30'}`}
-                  />
-                  <span className={inZone ? 'text-signal' : 'text-white/55'}>
-                    {inZone ? '已进入共振区间 · 保持 0.7 秒' : '正在杂音中寻找风声…'}
-                  </span>
-                </div>
-                <div className="mt-4 flex items-center justify-center gap-3 sm:justify-start">
-                  <button type="button" className="btn-ghost" onClick={autoAlign}>
-                    自动对齐
-                  </button>
-                  {windHint && (
-                    <span className="font-serif text-[11.5px] text-signal/75 animate-[blinkSoft_2s_ease-in-out_infinite]">
-                      卡住了？点一下自动对齐
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Act III Lone Tree & Dandelion Swell */}
-      {phase === 'explore' && panel === 'dandelion' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 III 幕 · 13:15 · 孤树山坡</div>
-            <h2 className="mt-1.5 font-serif text-[23px] font-light tracking-[0.1em] text-[#fff8ee]">孤树下的蒲公英</h2>
-            <p className="mx-auto mt-2 max-w-[24rem] font-serif text-[13px] font-light leading-[1.9] tracking-[0.04em] text-white/70">
-              树梢木风铃还在轻轻作响。按住（或轻点）按钮汇聚午后暖风，把白色绒毛送向湖谷。
-            </p>
-            <div className="mx-auto mt-4 h-1.5 w-48 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#ffd9a3] to-[#fff5d6] transition-[width] duration-75"
-                style={{ width: `${blowCharge}%` }}
-              />
-            </div>
-            <button
-              type="button"
-              className="btn-primary mt-5 select-none"
-              onPointerDown={startBlowHold}
-              onPointerUp={releaseBlowHold}
-              onPointerLeave={releaseBlowHold}
-              onPointerCancel={releaseBlowHold}
-            >
-              长按聚风 · 吹散蒲公英
-            </button>
-            <p className="mt-3 font-serif text-[12px] text-white/55">
-              {blowCharge > 0 ? `正在凝聚午后暖风 ${Math.round(blowCharge)}%` : '松开即会顺风飘起'}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Act IV Stone Archway Breathing Resonance */}
-      {phase === 'explore' && panel === 'ruin' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 IV 幕 · 15:50 · 山腰石拱</div>
-            <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.1em] text-[#fff8ee]">唤醒古老石拱</h2>
-            <p className="mx-auto mt-2 max-w-[24rem] font-serif text-[13px] font-light leading-[1.85] text-white/70">
-              石拱正中央的刻石微弱发亮。轻点下方呼吸共鸣环三次（或按空格键），听山谷替她应答。
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-3">
-              {[0, 1, 2].map((index) => (
-                <span
-                  key={index}
-                  className={`h-2.5 w-2.5 rounded-full transition-all duration-500 ${
-                    index < ruinPulses
-                      ? 'bg-signal shadow-[0_0_12px_rgba(242,194,139,0.95)]'
-                      : 'border border-white/25 bg-white/[0.04]'
-                  }`}
-                />
-              ))}
-              <span className="ml-1 font-mono text-[11px] text-signal">{ruinPulses}/3</span>
-            </div>
-            <div className="mt-5 flex justify-center">
-              <button
-                type="button"
-                onClick={(event) => triggerRuinPulse(event.clientX, event.clientY)}
-                className="relative flex h-20 w-20 items-center justify-center rounded-full border border-signal/60 bg-signal/15 font-serif text-[13px] text-[#fff8ee] shadow-[0_0_28px_rgba(242,194,139,0.35)] transition hover:scale-105 active:scale-95"
-              >
-                <span className="breathe-ring pointer-events-none absolute -inset-3 rounded-full border border-signal/45" />
-                <span>呼唤</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Act V Interactive Raindrop Catch */}
-      {phase === 'explore' && panel === 'rain' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 V 幕 · 18:10 · 黄昏晚雨</div>
-            <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.1em] text-[#fff8ee]">点住空中飘落的雨滴</h2>
-            <p className="mx-auto mt-2 max-w-[24rem] font-serif text-[13px] font-light leading-[1.85] text-white/70">
-              点击画面上缓缓落下的光亮雨点，把四年后的第一场雨传进她的耳机里。
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2.5">
-              {Array.from({ length: RAIN_TARGET_COUNT }, (_, index) => (
-                <span
-                  key={index}
-                  className={`h-2.5 w-2.5 rounded-full transition-all duration-500 ${
-                    index < rainCatches
-                      ? 'bg-[#b9d2ff] shadow-[0_0_12px_rgba(185,210,255,0.9)]'
-                      : 'border border-white/20 bg-white/[0.03]'
-                  }`}
-                />
-              ))}
-              <span className="ml-2 font-mono text-[11px] tracking-[0.14em] text-white/65">
-                {rainCatches}/{RAIN_TARGET_COUNT}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn-ghost mt-4"
-              onClick={(event) => catchRainDrop(undefined, event.clientX, event.clientY)}
-            >
-              直接伸手接住一滴
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Act VI Interactive Fireflies around the Rowboat */}
-      {phase === 'explore' && panel === 'fireflies' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[520px] rounded-[26px] p-5 text-center sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 VI 幕 · 19:45 · 轻舟守夜</div>
-            <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.1em] text-[#fff8ee]">轻点暮色，唤来流萤</h2>
-            <p className="mx-auto mt-2 max-w-[24rem] font-serif text-[13px] font-light leading-[1.85] text-white/70">
-              轻点上方湖畔木船周围的任意角落，每一处触碰都会升起一簇流萤。
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              {Array.from({ length: FIREFLY_TARGET_COUNT }, (_, index) => (
-                <span
-                  key={index}
-                  className={`h-2.5 w-2.5 rounded-full transition-all duration-500 ${
-                    index < fireflyCount
-                      ? 'bg-signal shadow-[0_0_12px_rgba(242,194,139,0.9)]'
-                      : 'border border-white/20 bg-white/[0.03]'
-                  }`}
-                />
-              ))}
-              <span className="ml-2 font-mono text-[10.5px] tracking-[0.16em] text-white/60">
-                {fireflyCount}/{FIREFLY_TARGET_COUNT}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn-primary mt-4"
-              onClick={(event) => wakeFirefly(event.clientX, event.clientY - 120)}
-            >
-              在船畔唤醒一簇流萤 ({fireflyCount}/{FIREFLY_TARGET_COUNT})
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Act VII Star Constellation */}
-      {phase === 'explore' && panel === 'constellation' && !quote && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="cinema-surface pointer-events-auto animate-fade-up relative w-full max-w-[540px] rounded-[26px] p-5 text-center sm:p-6">
-            <button
-              type="button"
-              onClick={dismissPanel}
-              className="absolute right-4 top-4 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-signal"
-            >
-              收起 ×
-            </button>
-            <div className="font-serif text-[12px] tracking-[0.12em] text-signal/85">第 VII 幕 · 22:30 · 专属星河</div>
-            <h2 className="mt-1.5 font-serif text-[23px] font-light tracking-[0.1em] text-[#fff8ee]">亲手连起夜空三颗星</h2>
-            <p className="mx-auto mt-2 max-w-[25rem] font-serif text-[13px] font-light leading-[1.9] tracking-[0.04em] text-white/70">
-              夜空中亮着三颗最温柔的星。依次点亮它们，在信号熄灭前连起属于你们的星座。
-            </p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              {[0, 1, 2].map((index) => (
-                <span
-                  key={index}
-                  className={`flex h-6 w-6 items-center justify-center rounded-full border font-mono text-[10px] transition-all duration-500 ${
-                    index < constellationCount
-                      ? 'border-signal/60 bg-signal/20 text-signal shadow-[0_0_14px_rgba(242,194,139,0.45)]'
-                      : 'border-white/20 text-white/55'
-                  }`}
-                >
-                  {index + 1}
-                </span>
-              ))}
-              <span className="ml-1 font-mono text-[11px] tracking-[0.14em] text-white/60">{constellationCount}/3</span>
-            </div>
-            <div className="mt-4 flex items-center justify-center gap-3">
-              <button type="button" className="btn-ghost" onClick={autoConnect}>
-                帮我连上这三颗星
-              </button>
-              {constellationHint && (
-                <span className="font-serif text-[11.5px] text-signal/80 animate-[blinkSoft_2s_ease-in-out_infinite]">
-                  找不到星点？点左键交给它
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Literary Quote + Clues + Dialogue Choice Card */}
-      {quote && phase !== 'descending' && phase !== 'core_pulse' && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[36] flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-6">
-          <div
-            className={`cinema-surface pointer-events-auto animate-fade-up no-scrollbar relative w-full max-w-[660px] overflow-y-auto rounded-[26px] p-5 sm:p-7 ${
-              quoteCollapsed ? '' : 'max-h-[45dvh]'
-            }`}
-          >
-            <div
-              className="absolute inset-y-0 left-0 w-px"
-              style={{ background: 'linear-gradient(180deg, transparent, rgba(242,194,139,0.65), transparent)' }}
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-serif text-[12px] tracking-[0.1em] text-signal/85">{quote.data.eyebrow}</span>
-              <span className="flex items-center gap-2">
-                {activeQuoteVoiceId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void voicePlayer.unlock()
-                      void voicePlayer.toggle(activeQuoteVoiceId, activeQuoteVoiceMode)
-                    }}
-                    className="flex items-center gap-1.5 rounded-full border border-signal/30 bg-signal/[0.08] px-2.5 py-1 font-serif text-[11.5px] text-signal/95 transition hover:border-signal/60 hover:bg-signal/[0.16]"
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                        voiceState.playingId === activeQuoteVoiceId || voiceState.loadingId === activeQuoteVoiceId
-                          ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
-                          : 'opacity-60'
-                      }`}
-                    />
-                    <span>
-                      {voiceState.playingId === activeQuoteVoiceId
-                        ? '林微 · 播音中'
-                        : voiceState.loadingId === activeQuoteVoiceId
-                          ? '载入语音…'
-                          : '林微的声音 · 重听'}
-                    </span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setQuoteCollapsed((v) => !v)}
-                  aria-expanded={!quoteCollapsed}
-                  className="flex items-center gap-1 rounded-full border border-white/16 px-2.5 py-1 font-serif text-[11px] text-white/70 transition hover:border-signal/55 hover:text-[#fff8ee]"
-                >
-                  <span>{quoteCollapsed ? '展开对话' : '看风景'}</span>
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                    className={quoteCollapsed ? '' : 'rotate-180'}
-                  >
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              </span>
-            </div>
-
-            {!quoteCollapsed && (
-              <>
-
-            {quote.data.clue && (
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-ember/40 bg-ember/10 px-3 py-1 font-serif text-[11.5px] text-[#ffd4c4]">
-                <span className="cinema-gem h-1.5 w-1.5 bg-ember" />
-                {quote.data.clue.label}
-              </div>
-            )}
-
-            <div className="mt-3.5 space-y-1.5">
-              {quote.data.lines.map((line, index) => (
-                <p
-                  key={line}
-                  className="quote-line font-serif text-[15.5px] font-light leading-[1.9] tracking-[0.05em] text-[#fff8ee] sm:text-[17px]"
-                  style={{ animationDelay: `${0.1 + index * 0.14}s` }}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
-
-            {quote.data.choices && quote.data.choices.length > 0 && !selectedChoice && (
-              <div className="mt-5 border-t border-white/10 pt-4">
-                {quote.data.question && (
-                  <p className="mb-3 font-serif text-[13.5px] tracking-[0.05em] text-signal/90">
-                    {quote.data.question}
-                  </p>
-                )}
-                <div className="grid gap-2.5 sm:grid-cols-2">
-                  {quote.data.choices.map((choice) => (
-                    <button
-                      key={choice.id}
-                      type="button"
-                      onClick={() => pickDialogueChoice(choice)}
-                      className="rounded-2xl border border-signal/28 bg-signal/[0.06] px-4 py-3 text-left font-serif text-[13px] leading-[1.65] tracking-[0.04em] text-[#fff8ee]/92 transition hover:border-signal/65 hover:bg-signal/[0.14]"
-                    >
-                      {choice.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {selectedChoice && (
-              <div className="mt-4 border-l-2 border-signal/60 pl-4">
-                <div className="font-serif text-[12px] tracking-[0.06em] text-signal/85">
-                  你回应：{selectedChoice.label}
-                </div>
-                <div className="mt-2 space-y-1">
-                  {selectedChoice.reply.map((line, index) => (
-                    <p
-                      key={line}
-                      className="quote-line font-serif text-[15px] font-light leading-[1.85] tracking-[0.05em] text-[#fff2dc]"
-                      style={{ animationDelay: `${0.06 + index * 0.14}s` }}
-                    >
-                      {line}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(!quote.data.choices?.length || selectedChoice) && (
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                <span className="font-mono text-[10px] tracking-[0.14em] text-white/48">{quote.data.signature}</span>
-                <button type="button" className="btn-primary !px-5 !py-2.5 !text-[11px]" onClick={continueQuote}>
-                  {quote.data.nextLabel ?? '继续'}
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              </div>
-            )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Hidden Easter Eggs */}
-      {lore && (
-        <div className="fixed inset-0 z-[38] flex items-center justify-center bg-[#030712]/48 px-4 backdrop-blur-sm">
-          <div className="cinema-surface animate-fade-up relative w-full max-w-[520px] overflow-hidden rounded-[26px] p-6 text-center sm:p-8">
-            <div
-              className="mx-auto mb-4 flex h-10 w-10 rotate-45 items-center justify-center rounded-[8px] border"
-              style={{ borderColor: `${lore.accent}60`, background: `${lore.accent}14` }}
-            >
-              <span
-                className="h-2 w-2 rounded-[2px]"
-                style={{ backgroundColor: lore.accent, boxShadow: `0 0 14px ${lore.accent}` }}
-              />
-            </div>
-            <div className="hud-label !text-[9px]">{lore.kicker}</div>
-            <h3 className="mt-2 font-serif text-[22px] font-light tracking-[0.08em] text-white/92">{lore.title}</h3>
-            <div className="mt-4 space-y-1.5">
-              {lore.lines.map((line, index) => (
-                <p
-                  key={line}
-                  className="quote-line font-serif text-[14.5px] font-light leading-[1.95] tracking-[0.05em] text-white/70"
-                  style={{ animationDelay: `${index * 0.14}s` }}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
-            <div className="mt-4 font-mono text-[10px] tracking-[0.18em] text-white/38">{lore.signature}</div>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => {
-                  void voicePlayer.unlock()
-                  void voicePlayer.toggle(`egg-${lore.id}`, lore.id === 'tablet' ? 'clear' : 'headset')
-                }}
-              >
-                {voiceState.playingId === `egg-${lore.id}` ? '暂停语音' : '重听回声'}
-              </button>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => {
-                  voicePlayer.stop()
-                  setLore(null)
-                }}
-              >
-                收好这段回声
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Chromatic Depth Unsealed Overlay */}
-      {attenuating && (
-        <div className="pointer-events-none fixed inset-0 z-[45]">
-          <div className="attenuation-overlay" />
-          <div className="chromatic-stress relative flex h-full flex-col items-center justify-center px-6 text-center">
-            <div className="glitch-text font-mono text-[10px] tracking-[0.28em] text-[#ffb18a] sm:text-[11.5px]">
-              {TRUTH.tag} <span className="mx-2 text-white/25">//</span> DEPTH UNSEALED
-            </div>
-            <div className="hud-value mt-4 flex items-baseline gap-2 text-[#ffd0bd]">
-              <span className="text-[clamp(54px,10vw,104px)] font-light leading-none text-glow-ember">{TRUTH.depth}</span>
-              <span className="text-[11px] tracking-[0.24em] text-white/45">{TRUTH.unit}</span>
-            </div>
-            <div className="mt-1 font-mono text-[10px] tracking-[0.34em] text-[#ff8f70]">{TRUTH.subtitle}</div>
-            <div className="mt-6 space-y-1.5">
-              {TRUTH.lines.map((line, index) => (
-                <p
-                  key={line}
-                  className="quote-line font-serif text-[15px] font-light leading-[1.9] tracking-[0.08em] text-white/80"
-                  style={{ animationDelay: `${0.1 + index * 0.16}s` }}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
-            <div className="mt-6 flex flex-col items-center gap-2">
-              <span className="rounded-full border border-[#ff795a]/35 bg-[#ff5a3c]/[0.08] px-3 py-1 font-mono text-[9.5px] tracking-[0.16em] text-[#ffad96]">
-                {TRUTH.warning}
-              </span>
-              <span className="font-mono text-[9.5px] tracking-[0.2em] text-white/38">{TRUTH.vessel}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Act VIII Core Descent with Layered Narrative Captions */}
-      {phase === 'descending' && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex flex-col items-center px-4 pb-[max(1.4rem,env(safe-area-inset-bottom))]">
-          <div
-            key={currentDescentCaption.layer}
-            className="cinema-caption mb-4 max-w-[34rem] rounded-full border border-ember/25 bg-[#120b0d]/68 px-5 py-2 text-center backdrop-blur-md"
-          >
-            <div className="font-mono text-[9.5px] tracking-[0.24em] text-ember">{currentDescentCaption.layer}</div>
-            <p className="mt-0.5 font-serif text-[13px] tracking-[0.04em] text-[#ffe8d6]">
-              {currentDescentCaption.line}
-            </p>
-          </div>
-          <div className="hud-value flex items-baseline gap-2 text-[#ffd9b8] text-glow-ember">
-            <span className="text-[clamp(40px,7vw,64px)] font-light leading-none">
-              {depthKm.toLocaleString('en-US', { maximumFractionDigits: 1 })}
-            </span>
-            <span className="text-[11px] tracking-[0.24em] text-white/45">KM</span>
-          </div>
-          <div className="mt-2 h-[2px] w-48 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-ember/50 via-ember to-[#ffe4c2] transition-[width] duration-200"
-              style={{ width: `${Math.min(100, (depthKm / 6371.4) * 100)}%` }}
-            />
-          </div>
-          <div className="mt-2 font-mono text-[9.5px] tracking-[0.22em] text-[#ffad96]/80">
-            EARTH CORE · SIGNAL {(signal * 100).toFixed(0)}%
-          </div>
-        </div>
-      )}
+      <NarrativeModals
+        phase={phase}
+        quote={quote}
+        quoteCollapsed={quoteCollapsed}
+        selectedChoice={selectedChoice}
+        activeQuoteVoiceId={activeQuoteVoiceId}
+        activeQuoteVoiceMode={activeQuoteVoiceMode}
+        voiceState={voiceState}
+        lore={lore}
+        attenuating={attenuating}
+        meadowShot={meadowShot}
+        meadowNote={meadowNote}
+        meadowSaved={meadowSaved}
+        meadowQuickNotes={MEADOW_QUICK_NOTES}
+        formatClockHour={formatClockHour}
+        onToggleQuoteCollapse={() => setQuoteCollapsed((v) => !v)}
+        onPickChoice={pickDialogueChoice}
+        onContinueQuote={continueQuote}
+        onCloseLore={() => {
+          voicePlayer.stop()
+          setLore(null)
+        }}
+        onCloseMeadowShot={() => setMeadowShot(null)}
+        onMeadowNoteChange={setMeadowNote}
+        onConfirmSaveMeadowShot={confirmSaveMeadowShot}
+        onGoDiorama={() => {
+          setMeadowShot(null)
+          onNavigate('diorama')
+        }}
+      />
 
       {flash && <div className="breach-flash" />}
 
-      {/* Act VIII Core Beat: Facing PBR Sunset-06 Vessel */}
-      {phase === 'core_pulse' && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[44] flex flex-col items-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] text-center">
-          <div className="cinema-caption flex flex-col items-center">
-            <p className="max-w-[30rem] font-serif text-[14.5px] leading-[1.85] tracking-[0.05em] text-[#fff0dc]/90">
-              6,371.4 公里深处，落日六号的琥珀色信标仍在铁镍海里一下一下闪亮。
-            </p>
-            <button
-              type="button"
-              onClick={respondCoreHeartbeat}
-              className="btn-primary pointer-events-auto relative mt-5"
-            >
-              <span className="breathe-ring pointer-events-none absolute -inset-2 rounded-full border border-signal/55" />
-              <span className="h-2 w-2 rounded-full bg-[#170f07]" />
-              <span>回应她的心跳</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Epilogue & Cross-Chapter Relay Handoff */}
-      {phase === 'epilogue' && (
-        <div className="pointer-events-none fixed inset-0 z-[46] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-gradient-to-t from-[#091122] via-[#091122]/80 to-transparent" />
-          <div className="ending-rise no-scrollbar relative mx-auto max-h-dvh w-full max-w-[780px] overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-20 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                void voicePlayer.unlock()
-                void voicePlayer.toggle('epilogue-final', 'clear')
-              }}
-              className="pointer-events-auto mx-auto mb-4 flex w-max items-center gap-2 rounded-full border border-signal/35 bg-signal/10 px-3.5 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-signal transition hover:border-signal/65 hover:bg-signal/18"
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                  voiceState.playingId === 'epilogue-final'
-                    ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
-                    : 'animate-[blinkDot_2s_ease-in-out_infinite]'
-                }`}
-              />
-              <span>
-                {voiceState.playingId === 'epilogue-final'
-                  ? '地心深处 · 落日六号正在回应 · 暂停'
-                  : '地心深处 · 落日六号仍在回应 · 重听'}
-              </span>
-            </button>
-            <div className="hud-value text-[clamp(48px,8.5vw,92px)] font-light leading-none tracking-[0.04em] text-[#fff8ee]">
-              {TRUTH.depth}
-              <span className="ml-2 font-mono text-[12px] tracking-[0.22em] text-white/55">{TRUTH.unit}</span>
-            </div>
-            <div className="mt-1 font-mono text-[10.5px] tracking-[0.26em] text-ember">{TRUTH.subtitle}</div>
-            <div className="mt-4 space-y-1">
-              {FINAL_LINES.map((line) => (
-                <p key={line} className="font-serif text-[15px] font-light leading-[2] tracking-[0.08em] text-white/88 sm:text-[17px]">
-                  {line}
-                </p>
-              ))}
-            </div>
-            <p className="mt-3 font-serif text-[12px] tracking-[0.08em] text-white/60">{FINAL_CAPTION}</p>
-            {(epilogueNote || wishNote) && (
-              <div className="mx-auto mt-3 max-w-[32rem] space-y-1">
-                {epilogueNote && (
-                  <p className="font-serif text-[14px] italic tracking-[0.05em] text-signal">{epilogueNote}</p>
-                )}
-                {wishNote && (
-                  <p className="font-serif text-[12.5px] tracking-[0.04em] text-white/68">石拱心愿：{wishNote}</p>
-                )}
-              </div>
-            )}
-
-            {memories.length > 0 && (
-              <div className="cinema-surface-soft pointer-events-auto mx-auto mt-5 flex max-w-[540px] flex-col items-center gap-2.5 rounded-2xl p-3">
-                <div className="flex w-full items-center justify-between px-1 font-serif text-[12px] text-signal">
-                  <span>落日六号 · 草原一日胶片实拍</span>
-                  <span className="text-white/60">{memories.length} 帧可带往第 03 章</span>
-                </div>
-                <div className="grid w-full grid-cols-3 gap-2 sm:grid-cols-6">
-                  {memories.map((frame) => (
-                    <div
-                      key={frame.act}
-                      className="overflow-hidden rounded-lg border border-white/12 bg-black/40"
-                      title={`${frame.act} · ${frame.title}`}
-                    >
-                      <img
-                        src={frame.dataUrl}
-                        alt={frame.title}
-                        className="aspect-video w-full object-cover"
-                        draggable={false}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="pointer-events-auto mt-5 flex flex-wrap items-center justify-center gap-2.5">
-              <button type="button" className="btn-primary" onClick={() => onNavigate('post')}>
-                带着记忆胶片，去第 03 章寄回视野
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => onNavigate('radio')}>
-                前往 02 · 为她点亮城市电台
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-              {memories.length > 0 && (
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={handleExportRoll}
-                  disabled={exportingRoll}
-                >
-                  {exportingRoll ? '胶片冲洗中…' : `下载胶片 (${memories.length} 帧)`}
-                </button>
-              )}
-              <button type="button" className="btn-ghost" onClick={restart}>
-                重新开始今天
-              </button>
-              <button type="button" className="btn-ghost" onClick={exitToRitual}>
-                回到封面
-              </button>
-            </div>
-            <p className="mt-5 font-mono text-[10px] tracking-[0.16em] text-white/45">
-              灵感致敬 · 刘慈欣《带上她的眼睛》 · 故事台词均为原创
-            </p>
-          </div>
-        </div>
-      )}
+      <EndingSequenceOverlay
+        phase={phase}
+        introBeat={introBeat}
+        introBeatsTotal={INTRO_CALL_BEATS.length}
+        currentIntroBeat={currentIntroBeat}
+        currentDescentCaption={currentDescentCaption}
+        depthKm={depthKm}
+        signal={signal}
+        voiceState={voiceState}
+        epilogueNote={epilogueNote}
+        wishNote={wishNote}
+        memories={memories}
+        exportingRoll={exportingRoll}
+        onAdvanceIntro={advanceIntroBeat}
+        onSkipIntro={skipIntroToExplore}
+        onExitToRitual={exitToRitual}
+        onRespondCoreHeartbeat={respondCoreHeartbeat}
+        onNavigate={onNavigate}
+        onExportRoll={() => void handleExportRoll()}
+        onRestart={restart}
+      />
     </div>
   )
 }

@@ -1,11 +1,12 @@
+import { LOCAL_STAMPS, type LocalStampMeta } from '../data/mailboxData'
 import type { VisionPacket } from '../types/vision'
 
 const W = 1800
 const H = 2300
 
-const SERIF = '"Noto Serif SC","Songti SC","STSong",serif'
+const SERIF = '"PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif'
 const MONO = '"JetBrains Mono","SFMono-Regular",Consolas,monospace'
-const SANS = '"Space Grotesk","Noto Sans SC","PingFang SC",sans-serif'
+const SANS = '"PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC",sans-serif'
 
 export type PostcardTheme = 'twilight' | 'polaroid' | 'film' | 'letter'
 export type PostcardTone = 'natural' | 'sunset' | 'twilight_film' | 'mono'
@@ -53,6 +54,35 @@ const AMB_LABELS: Record<VisionPacket['ambience'], string> = {
 }
 
 const WIND_LABELS = ['无风', '微风', '清风', '长风']
+
+function resolveLocalStamp(packet: VisionPacket): LocalStampMeta | null {
+  if (!packet.stampId) return null
+  return LOCAL_STAMPS.find((s) => s.id === packet.stampId) ?? null
+}
+
+function drawStickerBadge(
+  ctx: CanvasRenderingContext2D,
+  sticker: string | undefined,
+  x: number,
+  y: number,
+) {
+  const clean = sticker?.trim()
+  if (!clean) return
+  ctx.save()
+  ctx.font = `500 22px ${SERIF}`
+  const tw = ctx.measureText(clean).width
+  const pw = tw + 36
+  const ph = 42
+  roundedPath(ctx, x, y, pw, ph, 21)
+  ctx.fillStyle = 'rgba(7, 14, 31, 0.78)'
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(242, 194, 139, 0.55)'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.fillStyle = '#f2c28b'
+  ctx.fillText(clean, x + 18, y + 29)
+  ctx.restore()
+}
 
 function hashOf(text: string) {
   let hash = 2166136261
@@ -666,15 +696,21 @@ function drawTwilightPostcard(
   ctx.fillStyle = 'rgba(242,194,139,0.58)'
   const linkText = `LINK ${signal.toFixed(2)}`
   trackedText(ctx, linkText, px + pw - 44 - trackedWidth(ctx, linkText, 2), py + ph - 52, 2)
+  drawStickerBadge(ctx, packet.sticker, px + 36, py + 92)
   ctx.restore()
+
+  const localStamp = resolveLocalStamp(packet)
 
   // 五感胶囊
   const chips: [string, string][] = [
-    ['TEMP', `${packet.tempC}°C`],
+    ['TEMP', `${packet.tempC}°C${packet.weather?.trim() ? ` · ${packet.weather.trim()}` : ''}`],
     ['WIND', `${WIND_LABELS[clamp(Math.round(packet.windLevel), 0, 3)]} · L${clamp(Math.round(packet.windLevel), 0, 3)}`],
     ['SCENT', packet.scentTag.trim() || '未命名气味'],
     ['AUDIO', packet.voice ? `${AMB_LABELS[packet.ambience]} + 原声` : AMB_LABELS[packet.ambience]],
   ]
+  if (localStamp) {
+    chips.push(['STAMP', `${localStamp.motif} ${localStamp.title}`])
+  }
   let chipX = 150
   let chipY = 1306
   ctx.font = `500 21px ${SANS}`
@@ -699,16 +735,35 @@ function drawTwilightPostcard(
   ctx.fillText(`SIGNAL ${signal.toFixed(3)}`, 1650, 1412)
   ctx.textAlign = 'left'
 
-  // 目光细语
+  // 目光细语 / 寄出短笺
+  const letterText = packet.letter?.trim()
   ctx.font = `500 28px ${SERIF}`
   ctx.fillStyle = 'rgba(255,248,238,0.92)'
-  ctx.fillText('她留下的目光', 150, 1582)
+  ctx.fillText(letterText ? '寄出的短笺与目光' : '她留下的目光', 150, 1582)
   ctx.font = `400 13px ${MONO}`
   ctx.fillStyle = 'rgba(242,194,139,0.48)'
   const gazeLabel = `GAZE NOTES / ${packet.focus.length}`
   trackedText(ctx, gazeLabel, 1650 - trackedWidth(ctx, gazeLabel, 2.4), 1582, 2.4)
 
-  if (packet.focus.length === 0) {
+  if (letterText) {
+    ctx.font = `300 24px ${SERIF}`
+    ctx.fillStyle = 'rgba(255,244,226,0.94)'
+    const quoteLines = wrapLines(ctx, `“${letterText}”`, 1460, 2)
+    quoteLines.forEach((line, i) => {
+      ctx.fillText(line, 152, 1632 + i * 36)
+    })
+    const notesStart = 1632 + quoteLines.length * 36 + 18
+    packet.focus.slice(0, 2).forEach((point, index) => {
+      const y = notesStart + index * 46
+      if (y > 1790) return
+      ctx.font = `500 13px ${MONO}`
+      ctx.fillStyle = 'rgba(242,194,139,0.8)'
+      ctx.fillText(`0${index + 1}`, 152, y)
+      ctx.font = `300 22px ${SERIF}`
+      ctx.fillStyle = 'rgba(246,238,224,0.82)'
+      ctx.fillText(truncate(ctx, point.note.trim() || '她在这里停了一会儿，没有说话。', 1360), 196, y)
+    })
+  } else if (packet.focus.length === 0) {
     ctx.font = `300 23px ${SERIF}`
     ctx.fillStyle = 'rgba(232,224,210,0.4)'
     ctx.fillText('她还没有在这里留下目光。', 152, 1638)
@@ -851,6 +906,7 @@ function drawPolaroidPostcard(
   roundedPath(ctx, px, py, pw, ph, 10)
   ctx.clip()
   drawGazePins(ctx, packet, px, py, pw, ph)
+  drawStickerBadge(ctx, packet.sticker, px + 26, py + 26)
   ctx.restore()
 
   // 相纸下方留白手写区
@@ -859,17 +915,40 @@ function drawPolaroidPostcard(
   ctx.fillStyle = '#1f232c'
   ctx.fillText(packet.title, 128, 1590)
 
+  const localStamp = resolveLocalStamp(packet)
+  const weatherOrWind = packet.weather?.trim() || wind
   ctx.font = `400 22px ${MONO}`
   ctx.fillStyle = 'rgba(31, 35, 44, 0.56)'
-  const metaLine = `${packet.city} · ${packet.tempC}°C · ${wind}${packet.scentTag ? ` · ${packet.scentTag}` : ''} · ${formatDateShort(packet.createdAt)}`
-  ctx.fillText(truncate(ctx, metaLine, 1420), 130, 1646)
+  const metaLine = `${packet.city} · ${packet.tempC}°C · ${weatherOrWind}${localStamp ? ` · ${localStamp.title}` : ''}${packet.scentTag ? ` · ${packet.scentTag}` : ''} · ${formatDateShort(packet.createdAt)}`
+  ctx.fillText(truncate(ctx, metaLine, 1460), 130, 1646)
 
   ctx.fillStyle = 'rgba(31, 35, 44, 0.12)'
   ctx.fillRect(128, 1684, 1544, 1.5)
 
   // 留言列表（左侧）
   let cursorY = 1746
-  if (packet.focus.length === 0) {
+  const letterText = packet.letter?.trim()
+  if (letterText) {
+    ctx.font = `400 27px ${SERIF}`
+    ctx.fillStyle = 'rgba(28, 32, 42, 0.92)'
+    const lines = wrapLines(ctx, `“${letterText}”`, 1440, 2)
+    lines.forEach((line) => {
+      ctx.fillText(line, 128, cursorY)
+      cursorY += 44
+    })
+    cursorY += 10
+    packet.focus.slice(0, 2).forEach((point, index) => {
+      const note = point.note.trim()
+      if (!note || cursorY > 1910) return
+      ctx.font = `500 15px ${MONO}`
+      ctx.fillStyle = '#b44f3c'
+      ctx.fillText(`0${index + 1}`, 128, cursorY)
+      ctx.font = `400 24px ${SERIF}`
+      ctx.fillStyle = 'rgba(28, 32, 42, 0.78)'
+      ctx.fillText(truncate(ctx, note, 1140), 178, cursorY)
+      cursorY += 44
+    })
+  } else if (packet.focus.length === 0) {
     ctx.font = `300 26px ${SERIF}`
     ctx.fillStyle = 'rgba(31, 35, 44, 0.45)'
     ctx.fillText('这一刻没有留下文字，风替她把画面记住了。', 128, cursorY)
@@ -1008,7 +1087,7 @@ function drawFilmPostcard(
   ctx.font = `400 19px ${MONO}`
   ctx.fillStyle = 'rgba(242, 194, 139, 0.78)'
   ctx.fillText(
-    `${packet.city} · ${packet.tempC}°C · ${wind} · ${formatDate(packet.createdAt)}`,
+    `${packet.city} · ${packet.tempC}°C · ${packet.weather?.trim() || wind} · ${formatDate(packet.createdAt)}`,
     W / 2,
     1376,
   )
@@ -1024,9 +1103,27 @@ function drawFilmPostcard(
 
   ctx.textAlign = 'left'
 
-  // 目光手记（三行居中式卡槽）
+  // 目光手记 / 短笺（三行居中式卡槽）
   const notesTop = whisper ? 1608 : 1480
-  if (packet.focus.length > 0) {
+  const filmLetter = packet.letter?.trim()
+  if (filmLetter) {
+    ctx.font = `300 25px ${SERIF}`
+    ctx.fillStyle = 'rgba(255, 246, 232, 0.92)'
+    const lines = wrapLines(ctx, `“${filmLetter}”`, 1320, 2)
+    lines.forEach((line, idx) => {
+      ctx.fillText(line, 190, notesTop + idx * 42)
+    })
+    const restTop = notesTop + lines.length * 42 + 16
+    packet.focus.slice(0, 1).forEach((point, idx) => {
+      const y = restTop + idx * 48
+      ctx.font = `500 15px ${MONO}`
+      ctx.fillStyle = 'rgba(242, 194, 139, 0.75)'
+      ctx.fillText(`0${idx + 1}`, 190, y)
+      ctx.font = `300 23px ${SERIF}`
+      ctx.fillStyle = 'rgba(246, 240, 228, 0.8)'
+      ctx.fillText(truncate(ctx, point.note.trim() || '她在这里停了一会儿，没有说话。', 1240), 240, y)
+    })
+  } else if (packet.focus.length > 0) {
     packet.focus.slice(0, 3).forEach((point, idx) => {
       const y = notesTop + idx * 54
       ctx.font = `500 15px ${MONO}`
@@ -1139,6 +1236,7 @@ function drawLetterPostcard(
   trackedText(ctx, `${packet.city} · ${formatDate(packet.createdAt)} · No. ${code}`, 142, 308, 2.4)
 
   // 右上角带照片缩略图的拟真齿孔邮票
+  const localStamp = resolveLocalStamp(packet)
   const sx = 1404
   const sy = 114
   const sw = 248
@@ -1147,13 +1245,22 @@ function drawLetterPostcard(
   ctx.fillStyle = '#f3eadb'
   roundedPath(ctx, sx, sy, sw, sh, 10)
   ctx.fill()
+  if (localStamp) {
+    ctx.strokeStyle = localStamp.accent
+    ctx.lineWidth = 3
+    ctx.stroke()
+  }
   drawCoverWithTone(ctx, image, sx + 16, sy + 16, sw - 32, sh - 78, 6, options.tone)
   ctx.fillStyle = '#1d2230'
-  ctx.font = `600 18px ${MONO}`
-  ctx.fillText('6371 KM', sx + 18, sy + sh - 32)
+  ctx.font = `600 17px ${MONO}`
+  ctx.fillText(localStamp ? truncate(ctx, localStamp.denom, 90) : '6371 KM', sx + 18, sy + sh - 32)
   ctx.textAlign = 'right'
-  ctx.font = `500 17px ${SERIF}`
-  ctx.fillText(truncate(ctx, packet.city, 110), sx + sw - 18, sy + sh - 31)
+  ctx.font = `500 16px ${SERIF}`
+  ctx.fillText(
+    truncate(ctx, localStamp ? localStamp.title : packet.city, 126),
+    sx + sw - 18,
+    sy + sh - 31,
+  )
   ctx.textAlign = 'left'
   ctx.restore()
 
@@ -1180,6 +1287,7 @@ function drawLetterPostcard(
   roundedPath(ctx, px, py, pw, ph, 20)
   ctx.clip()
   drawGazePins(ctx, packet, px, py, pw, ph)
+  drawStickerBadge(ctx, packet.sticker, px + 24, py + 24)
   ctx.restore()
   ctx.strokeStyle = 'rgba(242, 194, 139, 0.22)'
   ctx.lineWidth = 1.5
@@ -1192,12 +1300,43 @@ function drawLetterPostcard(
   ctx.fillRect(140, 1332, 1520, 1.5)
   ctx.fillRect(splitX, 1368, 1.5, 760)
 
-  // 左栏：手记 + 林微低语 + 波形
+  // 左栏：信笺正文 + 手记 + 林微低语 + 波形
+  const letterText = packet.letter?.trim()
   ctx.font = `500 28px ${SERIF}`
   ctx.fillStyle = '#fff8ee'
-  ctx.fillText('捎往地心的目光', 140, 1404)
+  ctx.fillText(letterText ? '寄信人的短笺与目光' : '捎往地心的目光', 140, 1404)
 
-  if (packet.focus.length === 0) {
+  if (letterText) {
+    const letterLines = wrapLines(ctx, `“${letterText}”`, 840, 3)
+    const boxH = 44 + letterLines.length * 36
+    roundedPath(ctx, 140, 1432, 860, boxH, 16)
+    ctx.fillStyle = 'rgba(255, 248, 238, 0.045)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(242, 194, 139, 0.22)'
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    ctx.font = `300 23px ${SERIF}`
+    ctx.fillStyle = 'rgba(255, 246, 234, 0.94)'
+    letterLines.forEach((line, lIdx) => {
+      ctx.fillText(line, 166, 1472 + lIdx * 36)
+    })
+
+    const gazeStart = 1432 + boxH + 34
+    packet.focus.slice(0, 2).forEach((point, idx) => {
+      const y = gazeStart + idx * 54
+      if (y > 1680) return
+      ctx.font = `500 14px ${MONO}`
+      ctx.fillStyle = 'rgba(242, 194, 139, 0.85)'
+      ctx.fillText(`0${idx + 1}`, 140, y)
+      ctx.font = `300 21px ${SERIF}`
+      ctx.fillStyle = 'rgba(246, 238, 224, 0.82)'
+      ctx.fillText(
+        truncate(ctx, point.note.trim() || '她在这里停了一会儿，没有说话。', 810),
+        184,
+        y,
+      )
+    })
+  } else if (packet.focus.length === 0) {
     ctx.font = `300 23px ${SERIF}`
     ctx.fillStyle = 'rgba(232, 224, 210, 0.45)'
     ctx.fillText('这一刻的沉默，已随信号一并寄出。', 140, 1468)
@@ -1265,8 +1404,8 @@ function drawLetterPostcard(
   ctx.fillRect(rx, 1690, 560, 1)
 
   const rows: [string, string][] = [
-    ['气温 / 风力', `${packet.tempC}°C · ${wind}`],
-    ['气味线索', packet.scentTag.trim() || '安静的空气'],
+    ['气温 / 天气', `${packet.tempC}°C · ${packet.weather?.trim() || wind}`],
+    ['风力 / 气味', `${wind} · ${packet.scentTag.trim() || '安静的空气'}`],
     ['声景采集', packet.voice ? `${AMB_LABELS[packet.ambience]} + 原声` : AMB_LABELS[packet.ambience]],
     ['中继码', code],
   ]

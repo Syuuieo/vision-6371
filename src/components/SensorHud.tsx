@@ -1,5 +1,5 @@
 import { PRESSURE_ALERT, STEPS } from '../data/narrative'
-import { sunArc } from '../scenes/PrologueScene'
+import { sunArc } from '../data/prologueWorldMeta'
 import type { ActId, EggId, Phase, SensorReadings } from '../types/sensor'
 
 interface SensorHudProps {

@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { APP_VERSION, CHANGELOG } from '../data/changelog'
+import { clearAlbum, getAlbumCount } from '../services/albumStorage'
 import { milestones, useJourney } from '../services/journey'
 import type { QualityTier, VisionSettings } from '../services/settings'
+import { localSignalCount } from '../services/localVisionStats'
 import type { StoryRelayState } from '../utils/storyRelay'
 
 interface SettingsDrawerProps {
@@ -112,12 +114,24 @@ export function SettingsDrawer({
 }: SettingsDrawerProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
   const journey = useJourney()
+  const [clearArmed, setClearArmed] = useState(false)
+  const [clearedNote, setClearedNote] = useState<string | null>(null)
+
+  const handleClose = () => {
+    setClearArmed(false)
+    setClearedNote(null)
+    onClose()
+  }
 
   useEffect(() => {
     if (!open) return
     closeRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        setClearArmed(false)
+        setClearedNote(null)
+        onClose()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -125,6 +139,8 @@ export function SettingsDrawer({
 
   if (!open) return null
 
+  const albumCount = getAlbumCount()
+  const localVisions = localSignalCount()
   const badges = milestones(journey, relay)
   const earned = badges.filter((badge) => badge.done).length
 
@@ -135,21 +151,21 @@ export function SettingsDrawer({
       aria-modal="true"
       aria-label="设置与关于"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
+        if (event.target === event.currentTarget) handleClose()
       }}
     >
       <div className="cinema-surface no-scrollbar max-h-[calc(100dvh-2.5rem)] w-full max-w-[560px] overflow-y-auto rounded-[26px] p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="hud-label text-signal/75">SETTINGS · 视界 6371</div>
-            <h2 className="mt-1.5 font-serif text-[19px] font-light tracking-[0.08em] text-[#fff6ea]">
+            <h2 className="mt-1.5 font-serif text-[19px] font-normal tracking-[0.08em] text-[#fff6ea]">
               设置与关于
             </h2>
           </div>
           <button
             ref={closeRef}
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label="关闭设置"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-white/75 transition hover:border-signal/55 hover:text-signal"
           >
@@ -275,6 +291,57 @@ export function SettingsDrawer({
               </div>
             ))}
           </div>
+          <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.025] px-3.5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-serif text-[12.5px] text-[#fff6ea]">本机存储</div>
+                <div className="mt-0.5 text-[11px] text-white/50">
+                  纪念册 {albumCount} 帧 · 本机封存视野 {localVisions} 条（大图优先转存 IndexedDB）
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {clearArmed ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setClearArmed(false)}
+                      className="rounded-full border border-white/16 px-2.5 py-1 font-serif text-[11px] text-white/65 hover:text-white"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          window.localStorage.removeItem('vision6371_drift_inbox_v1')
+                        } catch {
+                          /* ignore */
+                        }
+                        clearAlbum()
+                        setClearArmed(false)
+                        setClearedNote('已清空本机纪念册与缓存')
+                      }}
+                      className="rounded-full border border-ember/55 bg-ember/15 px-3 py-1 font-serif text-[11px] text-[#ffb9ac] hover:bg-ember/25"
+                    >
+                      确认清空
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={albumCount === 0}
+                    onClick={() => setClearArmed(true)}
+                    className="rounded-full border border-white/15 px-3 py-1 font-serif text-[11px] text-white/70 transition hover:border-ember/50 hover:text-[#ffb9ac] disabled:opacity-40"
+                  >
+                    清空本机纪念册
+                  </button>
+                )}
+              </div>
+            </div>
+            {clearedNote && (
+              <div className="mt-2 font-serif text-[11.5px] text-signal">{clearedNote}</div>
+            )}
+          </div>
         </section>
 
         <section className="mt-6 space-y-3">
@@ -318,7 +385,7 @@ export function SettingsDrawer({
           <button type="button" onClick={onReset} className="btn-ghost">
             恢复默认
           </button>
-          <button type="button" onClick={onClose} className="btn-primary">
+          <button type="button" onClick={handleClose} className="btn-primary">
             完成
           </button>
         </div>

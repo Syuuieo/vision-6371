@@ -2,7 +2,7 @@
 
 @theme {
   --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
-  --font-serif: "Songti SC", "STSong", "Noto Serif SC", "SimSun", Georgia, serif;
+  --font-serif: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
   --font-mono: "SFMono-Regular", "JetBrains Mono", Consolas, ui-monospace, monospace;
 
   --color-signal: #f2c28b;
@@ -27,6 +27,8 @@
     color: #eef1f8;
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    font-weight: 400;
+    line-height: 1.6;
     text-rendering: optimizeLegibility;
     overflow: hidden;
     overscroll-behavior: none;

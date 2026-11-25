@@ -16,6 +16,7 @@ interface SceneSpark {
 interface VisionViewport3DProps {
   packet: VisionPacket
   mode: StudioMode
+  paused?: boolean
   onAddFocus: (x: number, y: number) => void
   onSelectFocus?: (id: string | null) => void
   onHeartbeat: () => number | void
@@ -52,6 +53,7 @@ interface SceneApi {
   setFocus: (focus: FocusPoint[]) => void
   setMode: (mode: StudioMode) => void
   setHoldLevel: (level: number) => void
+  setPaused: (paused: boolean) => void
   triggerPulse: () => void
 }
 
@@ -176,6 +178,7 @@ function makeGlowTexture() {
 export function VisionViewport3D({
   packet,
   mode,
+  paused = false,
   onAddFocus,
   onSelectFocus,
   onHeartbeat,
@@ -186,6 +189,8 @@ export function VisionViewport3D({
   const hostRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const apiRef = useRef<SceneApi | null>(null)
+  const pausedRef = useRef(paused)
+  pausedRef.current = paused
 
   const packetRef = useRef(packet)
   packetRef.current = packet
@@ -205,6 +210,7 @@ export function VisionViewport3D({
   )
 
   const [imageReady, setImageReady] = useState(false)
+  const [contextLost, setContextLost] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [hold, setHold] = useState(0)
   const [heartbeatAt, setHeartbeatAt] = useState(0)
@@ -303,6 +309,8 @@ export function VisionViewport3D({
     let viewH = 1
     let loadedUrl = ''
     let modeLive: StudioMode = mode
+    let pausedLive = pausedRef.current
+    let contextLostLive = false
     let focusLive: FocusPoint[] = packetRef.current.focus
     let elapsed = 0
     let pulseStart = -10
@@ -578,6 +586,17 @@ export function VisionViewport3D({
       if (particleUniforms) particleUniforms.uPulse.value = 0.001
     }
 
+    function setPaused(next: boolean) {
+      pausedLive = next
+      if (disposed) return
+      if (next || contextLostLive) {
+        renderer.setAnimationLoop(null)
+      } else {
+        clockObj.getDelta()
+        renderer.setAnimationLoop(animation)
+      }
+    }
+
     apiRef.current = {
       setPhoto,
       setParticles,
@@ -587,6 +606,7 @@ export function VisionViewport3D({
       },
       setMode,
       setHoldLevel,
+      setPaused,
       triggerPulse,
     }
 
@@ -676,10 +696,28 @@ export function VisionViewport3D({
     })
     resizeObserver.observe(host)
 
+    const onContextLost = (event: Event) => {
+      event.preventDefault()
+      contextLostLive = true
+      renderer.setAnimationLoop(null)
+      if (!disposed) setContextLost(true)
+    }
+
+    const onContextRestored = () => {
+      contextLostLive = false
+      if (!disposed) setContextLost(false)
+      if (!disposed && !pausedLive) {
+        clockObj.getDelta()
+        renderer.setAnimationLoop(animation)
+      }
+    }
+
     host.addEventListener('pointermove', onPointerMove)
     host.addEventListener('pointerleave', onPointerLeave)
     renderer.domElement.addEventListener('pointerdown', onCanvasPointerDown)
     renderer.domElement.addEventListener('pointerup', onCanvasPointerUp)
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+    renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
 
     setPhoto(initialTextureUrl)
     setParticles(packetRef.current.particles)
@@ -741,7 +779,9 @@ export function VisionViewport3D({
 
       renderer.render(scene, camera)
     }
-    renderer.setAnimationLoop(animation)
+    if (!pausedLive) {
+      renderer.setAnimationLoop(animation)
+    }
 
     return () => {
       disposed = true
@@ -753,6 +793,8 @@ export function VisionViewport3D({
       host.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('pointerdown', onCanvasPointerDown)
       renderer.domElement.removeEventListener('pointerup', onCanvasPointerUp)
+      renderer.domElement.removeEventListener('webglcontextlost', onContextLost)
+      renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored)
       disposeBeacons()
       if (particlePoints) {
         scene.remove(particlePoints)
@@ -794,6 +836,10 @@ export function VisionViewport3D({
   useEffect(() => {
     apiRef.current?.setMode(mode)
   }, [mode])
+
+  useEffect(() => {
+    apiRef.current?.setPaused(paused)
+  }, [paused])
 
   useEffect(() => {
     if (gyroState !== 'on') {
@@ -915,6 +961,15 @@ export function VisionViewport3D({
 
   return (
     <div ref={hostRef} className="group relative h-full w-full select-none overflow-hidden bg-[#0a1226]">
+      {contextLost && (
+        <img
+          src={packet.image}
+          alt={packet.title}
+          className="absolute inset-0 z-[1] h-full w-full object-cover"
+          style={photoFilterCss ? { filter: photoFilterCss } : undefined}
+          draggable={false}
+        />
+      )}
       <div
         className="pointer-events-none absolute inset-0 z-[1]"
         style={{
@@ -1114,7 +1169,7 @@ export function VisionViewport3D({
                 </svg>
               </button>
             </div>
-            <p className="mt-2 font-serif text-[14px] font-light leading-[1.85] tracking-[0.04em] text-[#fff8ee]/92">
+            <p className="mt-2 font-serif text-[14px] font-normal leading-[1.85] tracking-[0.04em] text-[#fff8ee]/92">
               {selected.note.trim() || '她在这里停了一会儿，没有说话。'}
             </p>
             <div className="mt-2 text-right font-serif text-[11px] tracking-[0.1em] text-white/48">

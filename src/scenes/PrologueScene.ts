@@ -40,6 +40,7 @@ export interface PrologueSceneOptions {
   onTelemetry?: (telemetry: PlayerTelemetry) => void
   onBoundary?: () => void
   onSkimChange?: (amount: number) => void
+  onContextLost?: (lost: boolean) => void
 }
 
 function makeGlowTexture() {
@@ -108,6 +109,17 @@ export class PrologueScene {
   private look = makeLook(0)
   private lookTarget = makeLook(0)
 
+  private handleContextLost = (event: Event) => {
+    event.preventDefault()
+    this.stopLoop()
+    this.options.onContextLost?.(true)
+  }
+
+  private handleContextRestored = () => {
+    this.options.onContextLost?.(false)
+    this.startLoop()
+  }
+
   private get lowDetail(): boolean {
     if (this.quality === 'lite') return true
     if (this.quality === 'full') return false
@@ -146,6 +158,8 @@ export class PrologueScene {
     canvas.style.height = '100%'
     canvas.style.touchAction = 'none'
     canvas.style.cursor = 'grab'
+    canvas.addEventListener('webglcontextlost', this.handleContextLost)
+    canvas.addEventListener('webglcontextrestored', this.handleContextRestored)
     host.appendChild(canvas)
     this.canvas = canvas
 
@@ -450,6 +464,10 @@ export class PrologueScene {
     this.pipeline?.dispose()
     this.noiseTex?.dispose()
     this.glowTex?.dispose()
+    if (this.canvas) {
+      this.canvas.removeEventListener('webglcontextlost', this.handleContextLost)
+      this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored)
+    }
     this.renderer?.dispose()
     this.renderer?.forceContextLoss()
     if (this.canvas?.parentElement) this.canvas.parentElement.removeChild(this.canvas)

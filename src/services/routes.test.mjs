@@ -197,6 +197,34 @@ describe('POST + GET ownership handling', () => {
     expect(JSON.stringify(await read.json())).not.toContain('owner')
   })
 
+  it('preserves optional postcard fields when supplied', async () => {
+    const { app } = setup()
+    const postcardPacket = {
+      ...packet,
+      stampId: 'tibet-snow',
+      frameId: 'navy-gold',
+      sticker: '🔭 仰望星河',
+      weather: '晴空微风',
+      letter: '把高原清冽的晚风分你一半。',
+    }
+    const created = await call(app, '/api/visions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ packet: postcardPacket, thumbnail: IMAGE, visibility: 'public' }),
+    })
+    expect(created.status).toBe(201)
+    const { code } = await created.json()
+
+    const read = await call(app, `/api/visions/${code}`, { method: 'GET' })
+    expect(read.status).toBe(200)
+    const data = await read.json()
+    expect(data.packet.stampId).toBe('tibet-snow')
+    expect(data.packet.frameId).toBe('navy-gold')
+    expect(data.packet.sticker).toBe('🔭 仰望星河')
+    expect(data.packet.weather).toBe('晴空微风')
+    expect(data.packet.letter).toBe('把高原清冽的晚风分你一半。')
+  })
+
   it('throttles when the public burst window is full', async () => {
     const rows = Array.from({ length: 40 }, (_, index) =>
       visionRow({ code: `B${String(index).padStart(5, '0')}`, created_at: new Date().toISOString() }),
@@ -223,5 +251,23 @@ describe('POST + GET ownership handling', () => {
       body: JSON.stringify({ packet, thumbnail: IMAGE, visibility: 'public' }),
     })
     expect(response.status).toBe(201)
+  })
+
+  it('throttles duplicate or burst echo messages on heartbeat within 60 seconds', async () => {
+    const { app } = setup({ visions: [visionRow()] })
+    const first = await call(app, '/api/visions/ABC234/heartbeat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: '晚风很轻' }),
+    })
+    expect(first.status).toBe(200)
+
+    await expect(
+      call(app, '/api/visions/ABC234/heartbeat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: '晚风很轻' }),
+      }),
+    ).rejects.toMatchObject({ code: 'rate_limited', status: 429 })
   })
 })

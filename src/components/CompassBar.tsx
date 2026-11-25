@@ -1,4 +1,4 @@
-import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../engine/core/ctx'
+import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../data/prologueWorldMeta'
 
 interface CompassBarProps {
   yaw: number

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../engine/core/ctx'
+import { WORLD_DISCOVERIES, type WorldDiscoveryId } from '../data/prologueWorldMeta'
 import { EASTER_EGGS, QUOTES } from '../data/narrative'
 import type { ActId, EggId } from '../types/sensor'
 import type { MemoryFrame } from '../utils/memoryStripExport'
@@ -100,7 +100,7 @@ export function FieldJournalModal({
               <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_12px_rgba(242,194,139,0.9)]" />
               <span className="hud-label text-signal/85">FIELD JOURNAL · 传感观测手账</span>
             </div>
-            <h2 className="mt-1.5 font-serif text-[21px] font-light tracking-[0.08em] text-[#fff8ee] sm:text-[23px]">
+            <h2 className="mt-1.5 font-serif text-[21px] font-normal tracking-[0.08em] text-[#fff8ee] sm:text-[23px]">
               替她收好的风声与异常回响
             </h2>
             <p className="mt-1 font-serif text-[12px] tracking-[0.04em] text-white/58">

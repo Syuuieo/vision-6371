@@ -49,11 +49,11 @@ public/
   voice/                     # 46 条离线预生成的序章与城市林微语音 MP3
 src/
   audio/                     # soundscape.ts / ambientMixer.ts / voicePlayer.ts Web Audio 引擎
-  components/                # Prologue / Radio / PostVision / DioramaExperience / FieldJournalModal 等
-  data/                      # 八幕叙事、全球 18 城预设与签名、更新日志
+  components/                # Prologue(+prologue/) / Radio / PostVision(+mailbox/) / Diorama 等
+  data/                      # 八幕叙事、全球 18 城预设与签名、邮票/漂流信、更新日志
   engine/                    # 模块化 3D 草原世界引擎（core / shaders / world / fx / player）
   scenes/                    # PrologueScene.ts / DioramaWorld.ts Three.js 场景控制器
-  services/                  # visionApi.ts / albumStorage.ts / journey.ts / settings.ts
+  services/                  # visionApi.ts / albumStorage.ts / mediaDb.ts / journey.ts / settings.ts
   types/                     # 传感状态与视野数据包类型定义
-  utils/                     # 接力状态、图像压缩、胶片、明信片与纪念册 PNG 导出
+  utils/                     # hashRoute / 接力状态、图像压缩、胶片、明信片与纪念册 PNG 导出
 ```

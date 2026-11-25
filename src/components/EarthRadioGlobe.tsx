@@ -867,12 +867,22 @@ export const EarthRadioGlobe = forwardRef<EarthRadioGlobeHandle, EarthRadioGlobe
         renderer.setSize(width, height, false)
       }
 
+      const onContextLost = (event: Event) => {
+        event.preventDefault()
+        setWebglFailed(true)
+      }
+      const onContextRestored = () => {
+        setWebglFailed(false)
+      }
+
       renderer.domElement.style.cursor = 'grab'
       renderer.domElement.addEventListener('pointerdown', onPointerDown)
       renderer.domElement.addEventListener('pointermove', onPointerMove)
       renderer.domElement.addEventListener('pointerup', onPointerUp)
       renderer.domElement.addEventListener('pointercancel', onPointerUp)
       renderer.domElement.addEventListener('wheel', onWheel, { passive: false })
+      renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+      renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
       const resizeObserver = new ResizeObserver(onResize)
       resizeObserver.observe(host)
       onResize()
@@ -933,6 +943,8 @@ export const EarthRadioGlobe = forwardRef<EarthRadioGlobeHandle, EarthRadioGlobe
         renderer.domElement.removeEventListener('pointerup', onPointerUp)
         renderer.domElement.removeEventListener('pointercancel', onPointerUp)
         renderer.domElement.removeEventListener('wheel', onWheel)
+        renderer.domElement.removeEventListener('webglcontextlost', onContextLost)
+        renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored)
         apiRef.current = null
         disposeObject(scene)
         glowTexture.dispose()

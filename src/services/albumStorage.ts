@@ -1,3 +1,5 @@
+import { deleteMedia, deleteMediaByPrefix, getMedia, putMedia } from './mediaDb'
+
 export type DioramaSceneId =
   | 'shanghai'
   | 'library'
@@ -6,7 +8,7 @@ export type DioramaSceneId =
   | 'harbin'
   | 'observatory'
 
-export type AlbumSceneId = DioramaSceneId | 'meadow'
+export type AlbumSceneId = DioramaSceneId | 'meadow' | 'postcard'
 export type AlbumMood = 'dawn' | 'dusk' | 'night'
 
 export interface AlbumEntry {
@@ -26,8 +28,9 @@ export interface AlbumEntry {
 
 const STORAGE_KEY = 'vision6371_keepsake_album_v1'
 const STAMPS_KEY = 'vision6371_diorama_stamps_v1'
-const MAX_ENTRIES = 18
-const MAX_BYTES = 3_400_000
+const MAX_ENTRIES = 48
+const MAX_INLINE_BYTES = 1_400_000
+const IDB_PREFIX = 'idb:album:'
 const VALID_MOODS: readonly AlbumMood[] = ['dawn', 'dusk', 'night']
 const VALID_STAMP_SCENES: readonly DioramaSceneId[] = [
   'shanghai',
@@ -37,6 +40,46 @@ const VALID_STAMP_SCENES: readonly DioramaSceneId[] = [
   'harbin',
   'observatory',
 ]
+
+const memoryImages = new Map<string, string>()
+const albumListeners = new Set<() => void>()
+
+function notifyAlbumChange() {
+  albumListeners.forEach((listener) => {
+    try {
+      listener()
+    } catch {
+      /* ignore */
+    }
+  })
+}
+
+export function subscribeAlbum(listener: () => void): () => void {
+  albumListeners.add(listener)
+  return () => {
+    albumListeners.delete(listener)
+  }
+}
+
+export function inferAlbumSceneId(city: string, presetId?: string): AlbumSceneId {
+  const text = `${city} ${presetId ?? ''}`.trim().toLowerCase()
+  if (text.includes('上海') || text.includes('shanghai')) return 'shanghai'
+  if (text.includes('南京') || text.includes('图书馆') || text.includes('library')) return 'library'
+  if (text.includes('悉尼') || text.includes('sydney')) return 'sydney'
+  if (text.includes('夏威夷') || text.includes('hawaii') || text.includes('sea')) return 'hawaii'
+  if (text.includes('哈尔滨') || text.includes('harbin')) return 'harbin'
+  if (
+    text.includes('拉萨') ||
+    text.includes('西藏') ||
+    text.includes('那曲') ||
+    text.includes('观星') ||
+    text.includes('observatory')
+  ) {
+    return 'observatory'
+  }
+  if (text.includes('草原') || text.includes('meadow')) return 'meadow'
+  return 'postcard'
+}
 
 function isValidEntry(value: unknown): value is AlbumEntry {
   if (!value || typeof value !== 'object') return false
@@ -59,25 +102,14 @@ function approxBytes(entries: AlbumEntry[]) {
   return JSON.stringify(entries).length * 2
 }
 
-function persistEntries(entries: AlbumEntry[]): AlbumEntry[] {
-  let trimmed = entries.slice(0, MAX_ENTRIES)
-  while (trimmed.length > 1 && approxBytes(trimmed) > MAX_BYTES) {
-    trimmed = trimmed.slice(0, -1)
+function cacheImage(entry: AlbumEntry) {
+  if (entry.image && !entry.image.startsWith(IDB_PREFIX)) {
+    memoryImages.set(entry.id, entry.image)
+    void putMedia(`album:${entry.id}`, entry.image)
   }
-  if (typeof window === 'undefined') return trimmed
-  while (trimmed.length >= 0) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed))
-      return trimmed
-    } catch {
-      if (trimmed.length <= 1) return []
-      trimmed = trimmed.slice(0, -1)
-    }
-  }
-  return trimmed
 }
 
-export function loadAlbum(): AlbumEntry[] {
+function readRawEntries(): AlbumEntry[] {
   if (typeof window === 'undefined') return []
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
@@ -90,28 +122,134 @@ export function loadAlbum(): AlbumEntry[] {
   }
 }
 
+function hydrateSync(entries: AlbumEntry[]): AlbumEntry[] {
+  const hydrated: AlbumEntry[] = []
+  for (const entry of entries) {
+    if (entry.image.startsWith(IDB_PREFIX)) {
+      const mem = memoryImages.get(entry.id)
+      if (mem) hydrated.push({ ...entry, image: mem })
+    } else {
+      memoryImages.set(entry.id, entry.image)
+      hydrated.push(entry)
+    }
+  }
+  return hydrated
+}
+
+function persistEntries(entries: AlbumEntry[]): AlbumEntry[] {
+  const trimmed = entries.slice(0, MAX_ENTRIES)
+  trimmed.forEach(cacheImage)
+
+  if (typeof window === 'undefined') {
+    const result = hydrateSync(trimmed)
+    notifyAlbumChange()
+    return result
+  }
+
+  // 先让最新的条目优先内联，超过安全体积则将旧图卸载到 IndexedDB，仅保留 idb 指针
+  let storageCopy: AlbumEntry[] = trimmed.map((e) => ({ ...e }))
+  for (let i = storageCopy.length - 1; i >= 0 && approxBytes(storageCopy) > MAX_INLINE_BYTES; i -= 1) {
+    if (!storageCopy[i].image.startsWith(IDB_PREFIX)) {
+      storageCopy[i] = { ...storageCopy[i], image: `${IDB_PREFIX}${storageCopy[i].id}` }
+    }
+  }
+
+  while (storageCopy.length >= 0) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storageCopy))
+      const result = hydrateSync(trimmed)
+      notifyAlbumChange()
+      return result
+    } catch {
+      // 如果 localStorage 仍报配额异常，优先继续把剩余内联图片卸载为 idb 指针
+      let offloaded = false
+      for (let i = storageCopy.length - 1; i >= 0; i -= 1) {
+        if (!storageCopy[i].image.startsWith(IDB_PREFIX)) {
+          storageCopy[i] = { ...storageCopy[i], image: `${IDB_PREFIX}${storageCopy[i].id}` }
+          offloaded = true
+          break
+        }
+      }
+      if (offloaded) continue
+      if (storageCopy.length <= 1) {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, '[]')
+        } catch {
+          /* ignore */
+        }
+        const result = hydrateSync(trimmed)
+        notifyAlbumChange()
+        return result
+      }
+      storageCopy = storageCopy.slice(0, -1)
+    }
+  }
+  const result = hydrateSync(trimmed)
+  notifyAlbumChange()
+  return result
+}
+
+export function loadAlbum(): AlbumEntry[] {
+  return hydrateSync(readRawEntries())
+}
+
+export async function loadAlbumAsync(): Promise<AlbumEntry[]> {
+  const raw = readRawEntries()
+  const resolved: AlbumEntry[] = []
+  for (const entry of raw) {
+    if (!entry.image.startsWith(IDB_PREFIX)) {
+      memoryImages.set(entry.id, entry.image)
+      void putMedia(`album:${entry.id}`, entry.image)
+      resolved.push(entry)
+      continue
+    }
+    const cached = memoryImages.get(entry.id)
+    if (cached) {
+      resolved.push({ ...entry, image: cached })
+      continue
+    }
+    const stored = await getMedia(`album:${entry.id}`)
+    if (stored) {
+      memoryImages.set(entry.id, stored)
+      resolved.push({ ...entry, image: stored })
+    }
+  }
+  return resolved
+}
+
+export function getAlbumCount(): number {
+  return readRawEntries().length
+}
+
 export function saveAlbumEntry(entry: AlbumEntry): AlbumEntry[] {
-  const existing = loadAlbum().filter((item) => item.id !== entry.id)
+  cacheImage(entry)
+  const existing = readRawEntries().filter((item) => item.id !== entry.id)
   return persistEntries([entry, ...existing])
 }
 
 export function updateAlbumNote(id: string, note: string): AlbumEntry[] {
-  const next = loadAlbum().map((item) => (item.id === id ? { ...item, note: note.slice(0, 160) } : item))
+  const next = readRawEntries().map((item) => (item.id === id ? { ...item, note: note.slice(0, 160) } : item))
   return persistEntries(next)
 }
 
 export function deleteAlbumEntry(id: string): AlbumEntry[] {
-  const next = loadAlbum().filter((item) => item.id !== id)
+  memoryImages.delete(id)
+  void deleteMedia(`album:${id}`)
+  const next = readRawEntries().filter((item) => item.id !== id)
   return persistEntries(next)
 }
 
 export function clearAlbum(): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    /* ignore */
+  memoryImages.clear()
+  void deleteMediaByPrefix('album:')
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
   }
+  notifyAlbumChange()
 }
 
 export function loadDioramaStamps(): DioramaSceneId[] {

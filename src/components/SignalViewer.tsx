@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AmbientMixer } from '../audio/ambientMixer'
 import { getCityVoiceId, useVoiceState, voicePlayer } from '../audio/voicePlayer'
 import { signatureFor, type SignatureEffect } from '../data/citySignature'
+import { LOCAL_STAMPS } from '../data/mailboxData'
 import { countEcho, countHeartbeat } from '../services/journey'
 import { deleteMyVision, ownsLocalVision, sendRadioHeartbeat } from '../services/visionApi'
 import type { RadioSignal, VisionEcho } from '../types/vision'
@@ -115,6 +116,8 @@ export function SignalViewer({
 
   const packet = signal.packet
   const cityVoiceId = getCityVoiceId(packet.city)
+  const whisperText = getCityWhisper(packet.city)
+  const whisperId = cityVoiceId ?? `whisper-${packet.city}`
   const wind = WIND_LABELS[Math.min(3, Math.max(0, Math.round(packet.windLevel)))]
   const signature = signatureFor(packet.city, packet.ambience)
   const weather = signature.weather || wind
@@ -488,7 +491,7 @@ export function SignalViewer({
                 <div className="min-w-0">
                   <div className="font-serif text-[16px] text-[#fff8ee]">{packet.sender}</div>
                   <div className="mt-1 font-sans text-[12px] text-white/62">
-                    {packet.city} · {packet.tempC}°C · {weather}
+                    {packet.city} · {packet.tempC}°C · {packet.weather?.trim() || weather}
                   </div>
                 </div>
                 <div className="shrink-0 rounded-2xl border border-signal/35 bg-signal/12 px-3.5 py-2 text-right">
@@ -498,6 +501,33 @@ export function SignalViewer({
                   </div>
                 </div>
               </div>
+              {packet.letter?.trim() && (
+                <div className="mt-3 rounded-2xl border border-signal/28 bg-[#0b152c]/70 px-3.5 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-serif text-[11px] tracking-[0.06em] text-signal">
+                      寄信人的短笺
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {packet.sticker?.trim() && (
+                        <span className="rounded-full border border-white/14 bg-white/[0.04] px-2 py-0.5 font-serif text-[10.5px] text-signal/90">
+                          {packet.sticker.trim()}
+                        </span>
+                      )}
+                      {(() => {
+                        const st = LOCAL_STAMPS.find((s) => s.id === packet.stampId)
+                        return st ? (
+                          <span className="rounded-full border border-signal/35 bg-signal/10 px-2 py-0.5 font-serif text-[10.5px] text-[#fff6ea]">
+                            {st.motif} {st.title}
+                          </span>
+                        ) : null
+                      })()}
+                    </div>
+                  </div>
+                  <p className="mt-1.5 font-serif text-[12.5px] leading-[1.8] text-[#fff8ee]/92">
+                    “{packet.letter.trim()}”
+                  </p>
+                </div>
+              )}
               <p className="mt-3 font-serif text-[12.5px] leading-[1.85] text-white/70">
                 {packet.focus.length > 0
                   ? `她在这片视野里停过 ${packet.focus.length} 次，点击画面上的光点可以读她的细语。`
@@ -522,41 +552,43 @@ export function SignalViewer({
               <div className="mt-3 rounded-2xl border border-signal/25 bg-signal/[0.06] px-3.5 py-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-serif text-[11px] tracking-[0.06em] text-signal">来自地心的回响 · 林微</div>
-                  {cityVoiceId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (muted) {
-                          showToast('全局静音中 · 请先开启声音')
-                          return
-                        }
-                        mixer.stopVoice()
-                        void voicePlayer.unlock()
-                        void voicePlayer.toggle(cityVoiceId, 'headset')
-                      }}
-                      className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-serif text-[11px] transition ${
-                        voiceState.playingId === cityVoiceId || voiceState.loadingId === cityVoiceId
-                          ? 'border-signal/60 bg-signal/20 text-signal'
-                          : 'border-signal/35 bg-signal/10 text-signal/90 hover:border-signal/65 hover:bg-signal/18'
+                  <button
+                    type="button"
+                    title={cityVoiceId ? '播放预录林微城市语音' : '通过语音合成朗读林微城市低语'}
+                    onClick={async () => {
+                      if (muted) {
+                        showToast('全局静音中 · 请先开启声音')
+                        return
+                      }
+                      mixer.stopVoice()
+                      await voicePlayer.unlock()
+                      const ok = await voicePlayer.toggleWhisper(whisperId, whisperText, cityVoiceId, 'headset')
+                      if (!cityVoiceId && !ok && voicePlayer.getSnapshot().playingId !== whisperId) {
+                        showToast('已收到林微文字回响 · 当前浏览器未启用语音合成')
+                      }
+                    }}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-serif text-[11px] transition ${
+                      voiceState.playingId === whisperId || voiceState.loadingId === whisperId
+                        ? 'border-signal/60 bg-signal/20 text-signal'
+                        : 'border-signal/35 bg-signal/10 text-signal/90 hover:border-signal/65 hover:bg-signal/18'
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full bg-signal ${
+                        voiceState.playingId === whisperId ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]' : 'opacity-70'
                       }`}
-                    >
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                          voiceState.playingId === cityVoiceId ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]' : 'opacity-70'
-                        }`}
-                      />
-                      <span>
-                        {voiceState.playingId === cityVoiceId
-                          ? '正在低语 · 暂停'
-                          : voiceState.loadingId === cityVoiceId
-                            ? '载入中…'
-                            : '听她低语'}
-                      </span>
-                    </button>
-                  )}
+                    />
+                    <span>
+                      {voiceState.playingId === whisperId
+                        ? '正在低语 · 暂停'
+                        : voiceState.loadingId === whisperId
+                          ? '载入中…'
+                          : '听她低语'}
+                    </span>
+                  </button>
                 </div>
                 <p className="mt-1.5 font-serif text-[12.5px] leading-[1.75] text-[#fff2dc]/92">
-                  {getCityWhisper(packet.city)}
+                  {whisperText}
                 </p>
               </div>
               <button
@@ -591,7 +623,7 @@ export function SignalViewer({
                     key={echo.id}
                     className="rounded-2xl border border-white/10 bg-white/[0.035] px-3.5 py-3 transition hover:border-signal/35"
                   >
-                    <p className="font-serif text-[13px] font-light leading-[1.8] text-[#fff8ee]/90">
+                    <p className="font-serif text-[13px] font-normal leading-[1.8] text-[#fff8ee]/90">
                       {echo.message}
                     </p>
                     <div className="mt-1.5 text-right font-sans text-[11px] text-white/42">

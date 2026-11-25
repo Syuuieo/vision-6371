@@ -68,6 +68,11 @@ export function PostcardPreviewModal({
         packet.windLevel,
         packet.scentTag,
         packet.ambience,
+        packet.stampId ?? '',
+        packet.frameId ?? '',
+        packet.sticker ?? '',
+        packet.weather ?? '',
+        packet.letter ?? '',
         packet.voice ? 'v1' : 'v0',
         packet.createdAt,
         packet.image.slice(0, 80),
@@ -89,6 +94,11 @@ export function PostcardPreviewModal({
       packet.windLevel,
       packet.scentTag,
       packet.ambience,
+      packet.stampId,
+      packet.frameId,
+      packet.sticker,
+      packet.weather,
+      packet.letter,
       packet.voice,
       packet.createdAt,
       packet.image,
@@ -224,7 +234,7 @@ export function PostcardPreviewModal({
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-6">
           <div>
             <div className="font-mono text-[10px] tracking-[0.22em] text-signal/78">POSTCARD PRINT LAB</div>
-            <h2 className="mt-0.5 font-serif text-[17px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[19px]">
+            <h2 className="mt-0.5 font-serif text-[17px] font-normal tracking-[0.06em] text-[#fff8ee] sm:text-[19px]">
               冲印专属明信片
             </h2>
           </div>

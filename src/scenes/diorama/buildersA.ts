@@ -307,11 +307,12 @@ export function buildShanghai(ctx: DioramaBuilderCtx) {
   }
 
   let ferryBoost = 0
+  let ferryPhase = 0
   ctx.registerInteractive(hull, {
     goalId: 'pearl',
     focusPoint: new THREE.Vector3(0, 0.35, 1.95),
     onClick: (pt) => {
-      ferryBoost = 1.6
+      ferryBoost = Math.min(1.1, ferryBoost + 0.85)
       ctx.triggerRipple(pt?.x ?? ferry.position.x, pt?.z ?? 1.95)
       ctx.completeGoal('pearl')
       return { label: '黄浦江轮鸣笛破浪驶过', sfx: 'horn' }
@@ -384,10 +385,10 @@ export function buildShanghai(ctx: DioramaBuilderCtx) {
   ctx.setFinaleTrigger(launchFireworks)
 
   ctx.addTick((t, dt) => {
-    ferryBoost = Math.max(0, ferryBoost - dt * 0.55)
-    const phase = t * (0.36 + ferryBoost * 0.35)
-    ferry.position.x = Math.sin(phase) * 2.25
-    ferry.rotation.y = Math.cos(phase) >= 0 ? 0 : Math.PI
+    ferryBoost = Math.max(0, ferryBoost - dt * 0.6)
+    ferryPhase += dt * (0.34 + ferryBoost * 0.24)
+    ferry.position.x = Math.sin(ferryPhase) * 2.25
+    ferry.rotation.y = Math.cos(ferryPhase) >= 0 ? 0 : Math.PI
     ferry.position.y = 0.02 + Math.sin(t * 2.3) * 0.025
 
     puffs.forEach((p, idx) => {
@@ -1032,6 +1033,8 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
   g.add(boat)
 
   // 两枚彩色航标浮筒
+  let sailSpeed = 0
+  let sailPhase = 1.85
   for (const [bx, bz, col] of [[-2.1, 1.35, '#ff785a'], [2.05, 2.25, '#ffd468']] as const) {
     const buoy = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.14, 0.34, 8), createMat(col, { emissive: col, emissiveIntensity: 0.35 }))
     buoy.position.set(bx, 0.08, bz)
@@ -1040,7 +1043,7 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
       goalId: 'buoys',
       focusPoint: new THREE.Vector3(bx, 0.3, bz),
       onClick: () => {
-        sailSpeed = 1.9
+        sailSpeed = Math.min(1.1, sailSpeed + 0.85)
         ctx.triggerRipple(bx, bz)
         ctx.completeGoal('buoys')
         return { label: '盛夏海风鼓满风帆穿行海港', sfx: 'ripple' }
@@ -1048,12 +1051,11 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
     })
   }
 
-  let sailSpeed = 0
   ctx.registerInteractive(hull, {
     goalId: 'buoys',
     focusPoint: new THREE.Vector3(0, 0.5, 1.85),
     onClick: (pt) => {
-      sailSpeed = 2.0
+      sailSpeed = Math.min(1.2, sailSpeed + 0.95)
       ctx.triggerRipple(pt?.x ?? boat.position.x, pt?.z ?? 1.85)
       ctx.completeGoal('buoys')
       return { label: '白帆乘风加速滑过蔚蓝港湾', sfx: 'ripple' }
@@ -1064,7 +1066,7 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
     ctx.registerInteractive(water.mesh, {
       goalId: 'buoys',
       onClick: (pt) => {
-        sailSpeed = 1.35
+        sailSpeed = Math.min(0.9, sailSpeed + 0.65)
         ctx.triggerRipple(pt?.x ?? 0, pt?.z ?? 1.6)
         ctx.completeGoal('buoys')
         return { label: '海湾荡起清凉夏日波浪', sfx: 'ripple' }
@@ -1104,10 +1106,10 @@ export function buildSydney(ctx: DioramaBuilderCtx) {
   })
 
   ctx.addTick((t, dt) => {
-    sailSpeed = Math.max(0, sailSpeed - dt * 0.55)
-    const phase = t * (0.4 + sailSpeed * 0.45)
-    boat.position.x = Math.cos(phase) * 2.15
-    boat.rotation.y = Math.sin(phase) >= 0 ? Math.PI : 0
+    sailSpeed = Math.max(0, sailSpeed - dt * 0.65)
+    sailPhase += dt * (0.36 + sailSpeed * 0.28)
+    boat.position.x = Math.cos(sailPhase) * 2.15
+    boat.rotation.y = Math.sin(sailPhase) >= 0 ? Math.PI : 0
     boat.rotation.z = Math.sin(t * 2.2) * 0.065
 
     if (dolphinTimer >= 0) {

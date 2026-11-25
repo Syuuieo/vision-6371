@@ -114,6 +114,20 @@ export class DioramaWorld {
   private orbitDir = 1
   private onInteract?: (event: DioramaInteractEvent) => void
   private onProgress?: (snapshot: DioramaProgressSnapshot) => void
+  private onContextLost?: (lost: boolean) => void
+
+  private readonly handleContextLost = (event: Event) => {
+    event.preventDefault()
+    this.renderer.setAnimationLoop(null)
+    this.onContextLost?.(true)
+  }
+
+  private readonly handleContextRestored = () => {
+    this.onContextLost?.(false)
+    if (!this.disposed) {
+      this.renderer.setAnimationLoop(() => this.renderFrame())
+    }
+  }
 
   private interactives: InteractiveNode[] = []
   private hitMeshes: THREE.Object3D[] = []
@@ -147,11 +161,13 @@ export class DioramaWorld {
     initialScene: DioramaSceneId,
     onInteract?: (event: DioramaInteractEvent) => void,
     onProgress?: (snapshot: DioramaProgressSnapshot) => void,
+    onContextLost?: (lost: boolean) => void,
   ) {
     this.host = host
     this.sceneId = initialScene
     this.onInteract = onInteract
     this.onProgress = onProgress
+    this.onContextLost = onContextLost
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -215,6 +231,8 @@ export class DioramaWorld {
     dom.addEventListener('pointerup', this.onPointerUp)
     dom.addEventListener('pointercancel', this.onPointerUp)
     dom.addEventListener('wheel', this.onWheel, { passive: false })
+    dom.addEventListener('webglcontextlost', this.handleContextLost)
+    dom.addEventListener('webglcontextrestored', this.handleContextRestored)
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(host)
@@ -884,6 +902,8 @@ export class DioramaWorld {
     dom.removeEventListener('pointerup', this.onPointerUp)
     dom.removeEventListener('pointercancel', this.onPointerUp)
     dom.removeEventListener('wheel', this.onWheel)
+    dom.removeEventListener('webglcontextlost', this.handleContextLost)
+    dom.removeEventListener('webglcontextrestored', this.handleContextRestored)
     this.resizeObserver.disconnect()
 
     while (this.worldGroup.children.length > 0) {
@@ -894,6 +914,7 @@ export class DioramaWorld {
     disposeTree(this.skyDome.mesh)
     disposeDioramaTextures(this.textures)
     this.renderer.dispose()
+    this.renderer.forceContextLoss()
     dom.parentNode?.removeChild(dom)
   }
 }

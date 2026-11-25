@@ -1,7 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { Soundscape } from './audio/soundscape'
 import { voicePlayer } from './audio/voicePlayer'
-import { SettingsDrawer } from './components/SettingsDrawer'
 import { TopNav } from './components/TopNav'
 import type { AlbumEntry } from './services/albumStorage'
 import { markVisitDay } from './services/journey'
@@ -12,6 +11,7 @@ import {
   useSettings,
 } from './services/settings'
 import type { ModuleId, Phase } from './types/sensor'
+import { parseModuleFromHash, syncModuleHash } from './utils/hashRoute'
 import {
   getCityWhisper,
   loadStoryRelay,
@@ -34,6 +34,9 @@ const SignalReceiver = lazy(() =>
 const DioramaExperience = lazy(() =>
   import('./components/DioramaExperience').then((m) => ({ default: m.DioramaExperience })),
 )
+const SettingsDrawer = lazy(() =>
+  import('./components/SettingsDrawer').then((m) => ({ default: m.SettingsDrawer })),
+)
 
 function ChannelLoading() {
   return (
@@ -45,7 +48,7 @@ function ChannelLoading() {
       <div className="mt-5 font-mono text-[10px] tracking-[0.28em] text-signal/75">
         TUNING NEUTRINO CHANNEL
       </div>
-      <div className="mt-2 font-serif text-[13px] font-light tracking-[0.08em] text-white/65">
+      <div className="mt-2 font-serif text-[13px] font-normal tracking-[0.08em] text-white/65">
         正在接通传感频段…
       </div>
     </div>
@@ -69,7 +72,13 @@ function removeSignalFromUrl() {
 export default function App() {
   const settings = useSettings()
   const [sound] = useState(() => new Soundscape())
-  const [module, setModule] = useState<ModuleId>(() => (readSignalCode() ? 'radio' : 'prologue'))
+  const [module, setModule] = useState<ModuleId>(() => {
+    if (readSignalCode()) return 'radio'
+    if (typeof window !== 'undefined') {
+      return parseModuleFromHash(window.location.hash) ?? 'prologue'
+    }
+    return 'prologue'
+  })
   const [navHistory, setNavHistory] = useState<ModuleId[]>([])
   const [prologuePhase, setProloguePhase] = useState<Phase>('ritual')
   const [prologueExitTick, setPrologueExitTick] = useState(0)
@@ -153,6 +162,32 @@ export default function App() {
     return () => query.removeEventListener('change', onChange)
   }, [])
 
+  useEffect(() => {
+    if (signalCode) return
+    if (!parseModuleFromHash(window.location.hash)) {
+      syncModuleHash(module, true)
+    }
+  }, [signalCode, module])
+
+  useEffect(() => {
+    if (signalCode) return
+    const onHashOrPop = () => {
+      const parsed = parseModuleFromHash(window.location.hash)
+      if (parsed && parsed !== module) {
+        setRadioFocusCode(null)
+        setRadioAutoOpen(false)
+        setNavHistory((prev) => (prev[prev.length - 1] === parsed ? prev.slice(0, -1) : prev))
+        setModule(parsed)
+      }
+    }
+    window.addEventListener('hashchange', onHashOrPop)
+    window.addEventListener('popstate', onHashOrPop)
+    return () => {
+      window.removeEventListener('hashchange', onHashOrPop)
+      window.removeEventListener('popstate', onHashOrPop)
+    }
+  }, [module, signalCode])
+
   const calmMotion = settings.reducedMotion || systemReducedMotion
 
   const clearSignal = () => {
@@ -168,6 +203,7 @@ export default function App() {
       setNavHistory((prev) => [...prev, module].slice(-8))
     }
     setModule(next)
+    syncModuleHash(next, false)
   }
 
   const goHome = () => {
@@ -176,6 +212,7 @@ export default function App() {
     setRadioAutoOpen(false)
     setNavHistory([])
     setModule('prologue')
+    syncModuleHash('prologue', false)
     setPrologueExitTick((tick) => tick + 1)
   }
 
@@ -191,10 +228,12 @@ export default function App() {
         setRadioFocusCode(null)
         setRadioAutoOpen(false)
         setModule(previous)
+        syncModuleHash(previous, true)
       } else {
         setRadioFocusCode(null)
         setRadioAutoOpen(false)
         setModule('prologue')
+        syncModuleHash('prologue', true)
       }
       return
     }
@@ -211,6 +250,7 @@ export default function App() {
       setNavHistory((prev) => [...prev, module].slice(-8))
     }
     setModule('radio')
+    syncModuleHash('radio', false)
   }
 
   const enterPost = () => {
@@ -219,6 +259,7 @@ export default function App() {
       setNavHistory((prev) => [...prev, module].slice(-8))
     }
     setModule('post')
+    syncModuleHash('post', false)
   }
 
   const toggleSound = async () => {
@@ -319,15 +360,19 @@ export default function App() {
         onBack={goBack}
         onGoHome={goHome}
       />
-      <SettingsDrawer
-        open={settingsOpen}
-        settings={settings}
-        relay={relay}
-        systemReducedMotion={systemReducedMotion}
-        onChange={updateSettings}
-        onReset={resetSettings}
-        onClose={() => setSettingsOpen(false)}
-      />
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDrawer
+            open={settingsOpen}
+            settings={settings}
+            relay={relay}
+            systemReducedMotion={systemReducedMotion}
+            onChange={updateSettings}
+            onReset={resetSettings}
+            onClose={() => setSettingsOpen(false)}
+          />
+        </Suspense>
+      )}
       <div className="grain-overlay" aria-hidden="true" />
     </div>
   )

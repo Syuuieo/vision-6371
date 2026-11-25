@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.4.0'
+export const APP_VERSION = '3.7.2'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,61 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.7.2',
+    date: '2026-11-25',
+    title: '首页零 Three.js 秒开拆包、IndexedDB 分域隔离与子组件可读性收尾',
+    items: [
+      '把草原地标元数据与太阳弧线公式 `sunArc` 抽离至零依赖的 `prologueWorldMeta.ts`，`PrologueScene` 改为悬停预载 + 点击动态 `import`，`SettingsDrawer` 改为懒加载，打开首页封面时不再下载约 900 kB 的 `Three.js` 引擎与 `PrologueScene` 代码。',
+      '为 `mediaDb.ts` 新增 `deleteMediaByPrefix`：设置里「清空本机纪念册」只按 `album:` 前缀精准删除照片缓存，彻底避免误删本机封存视野中的 10 秒现场录音（`vision-voice:`）。',
+      '让 `DriftInboxView` 接入 `subscribeAlbum` 并调整清空顺序：在本机清空纪念册与收件箱缓存后，已打开的漂流收件箱按钮状态（已祝福 / 已收藏）会立即同步复位。',
+      '补齐 `prologue/` 与 `mailbox/` 嵌套子目录及加载页中遗漏的 24 处偏细 `font-light`，统一优化为更清晰的 `font-normal (400)` 字重。',
+    ],
+  },
+  {
+    version: '3.7.1',
+    date: '2026-11-25',
+    title: '首屏主包瘦身、纪念册实时同步与中文可读性细节打磨',
+    items: [
+      '拆分轻量城市索引 `seedRadioBriefs.ts` 与 `localVisionStats.ts`，将 91 KB 级电台画布生成逻辑彻底移出首屏主包，大幅削减入口包体。',
+      '为 `albumStorage` 增加 `subscribeAlbum` 实时订阅机制，在设置抽屉清空或编辑本机纪念册时，微缩漫游与视野信箱的图库列表即时同步。',
+      '修复序章退出回封面时 `contextLost` 状态未复位，并将全站中文标题与正文字重由易偏细的 `font-light (300)` 统一调整为更清晰耐读的 `font-normal (400)`。',
+    ],
+  },
+  {
+    version: '3.7.0',
+    date: '2026-11-25',
+    title: '序章封面按需挂载 3D、千行组件模块化拆解与海外城市全覆盖语音',
+    items: [
+      '为序章封面实现「按需延迟挂载 3D」：打开首页停留在封面仪式阶段时以零 GPU 耗能的轻量 CSS/SVG 黎明地平线渲染，点击「戴上她的眼睛」或「继续第 X 幕」瞬间于黑幕转场内静默加载 HDR 草原引擎；退出回封面自动释放 3D 上下文，大幅减轻移动端首屏负载与发热。',
+      '将原 3,344 行的 `PrologueExperience.tsx` 拆解为 `prologue/ActInteractivePanels.tsx`、`prologue/NarrativeModals.tsx`、`prologue/EndingSequenceOverlay.tsx` 三大高内聚子模块，保持交互 100% 兼容的同时净减约 1,000 行代码。',
+      '补齐海外 6 城（悉尼、夏威夷、雷克雅未克、开普敦、京都、巴黎）及任意自定义城市的林微低语语音支持：`voicePlayer` 在无预录 MP3 时平滑衔接 Web Speech 中文语音合成与无线耳机铃声提示，`SignalViewer`「听她低语」全城市按钮常驻可用。',
+    ],
+  },
+  {
+    version: '3.6.0',
+    date: '2026-11-25',
+    title: '全站阅读字体优化、微缩帆船物理修复、移动端信笺适配与存储安全加固',
+    items: [
+      '更换全站与导出明信片/纪念页字体栈为高清晰无衬线现代字体（告别 Windows 宋体锯齿，正文字重与行距同步调优，阅读更清晰）。',
+      '修复微缩纪念册「悉尼白帆」「上海江轮」「夏威夷独木舟」「高山浑天仪」因绝对时间相乘导致的偶发超速瞬移问题，改为 `dt` 连续积分推进并封顶点击加速度。',
+      '修复移动端「视野信箱 → 信笺实景」卡片被半屏视窗裁剪显示不全的问题：移动端改用自然整屏流式展开并自动暂停后台 `VisionViewport3D` WebGL 渲染，同时补充 `webglcontextlost` 静图降级与恢复。',
+      '修复 `albumStorage` 冷启动写入可能抹除 IndexedDB 卸载旧图的隐患，增加 `visionApi` 10 秒现场录音 IndexedDB 卸载，打通 `?signal=` 分享落页展示当地邮票/贴纸/天气/短笺，并在设置抽屉增加本机存储统计与清空入口。',
+      '为电台心跳接口增加 60 秒内重复/高频回声限流，并将浏览器前进后退与顶部返回历史栈对齐。',
+    ],
+  },
+  {
+    version: '3.5.0',
+    date: '2026-11-25',
+    title: '闭环统一、IndexedDB 图库扩容、Hash 路由与组件解耦精简',
+    items: [
+      '打通「视野信箱 → 电台 → 明信片冲印」全链路所见即所得：`VisionPacket` 正式承载 `stampId` / `frameId` / `sticker` / `weather` / `letter`，服务端 `routes.mjs` 清洗透传，4 套高清 PNG 导出模板（含航空信笺与银盐拍立得）与电台观景侧栏全部实时呈现当地邮票、贴纸、天气与信件正文。',
+      '真实打通「📮 漂流收件箱」与电台池：拆分独立的 `DriftInboxView` 等 4 个信箱子组件，自动拉取真实公开/本地电台来信并与精选来信混排；回赠祝福会同步写入本机状态并向真实电台发送同频心跳；收进纪念册通过 `inferAlbumSceneId` 自动归类并防重复。',
+      '为第 03 章「写信寄视野」做交互减法：移除画面上多余的重复返回按钮，将环境底噪、10 秒录音、风感与气味收纳进可折叠「感官附签」，默认只展示选图、选邮票、写信、寄出主流程。',
+      '升级图片持久化与浏览体验：新增零依赖 `mediaDb.ts` IndexedDB 媒体库，`albumStorage` 容量上限提升至 48 帧并在超限时自动把旧图卸载至 IndexedDB 防止挤爆 `localStorage`；新增轻量 Hash 路由（`#/prologue`、`#/radio`、`#/mailbox`、`#/diorama`）支持刷新保留页面与浏览器前进/后退。',
+      '增强移动端 WebGL 稳定性：为序章草原、地球仪电台、微缩奇境统一接入 `webglcontextlost` / `webglcontextrestored` 事件恢复与内存释放提示。',
+    ],
+  },
   {
     version: '3.4.0',
     date: '2026-11-25',

@@ -6,7 +6,6 @@ import {
   VISION_PRESETS,
   getPresetImage,
   getPresetThumb,
-  windLabel,
 } from '../data/presetVisions'
 import type {
   AmbientKind,
@@ -19,7 +18,6 @@ import type {
   VisionVisibility,
 } from '../types/vision'
 import { WIND_DESCRIPTIONS } from '../types/vision'
-import { citySignature } from '../data/citySignature'
 import {
   CARD_FRAMES,
   CARD_STICKERS,
@@ -28,12 +26,16 @@ import {
   findStampForCity,
   type CardFrameMeta,
 } from '../data/mailboxData'
-import { loadAlbum, saveAlbumEntry, type AlbumEntry } from '../services/albumStorage'
+import { loadAlbum, loadAlbumAsync, subscribeAlbum, type AlbumEntry } from '../services/albumStorage'
 import { countVisionSent } from '../services/journey'
-import { buildShareLink, deleteMyVision, listMyVisions, publishRadioSignal, type MyVision } from '../services/visionApi'
+import { deleteMyVision, listMyVisions, publishRadioSignal, type MyVision } from '../services/visionApi'
 import { compressImage, dataUrlBytes, formatBytes } from '../utils/imageCompress'
 import { POSTCARD_TONES, type PostcardTone } from '../utils/postcardExport'
 import { getCityWhisper, type StoryRelayState } from '../utils/storyRelay'
+import { DriftInboxView } from './mailbox/DriftInboxView'
+import { LetterCardPreview } from './mailbox/LetterCardPreview'
+import { MyVisionsModal } from './mailbox/MyVisionsModal'
+import { PublishResultModal } from './mailbox/PublishResultModal'
 import { PostcardPreviewModal } from './PostcardPreviewModal'
 import { VisionViewport3D } from './VisionViewport3D'
 
@@ -70,7 +72,7 @@ const inputClass =
 
 export function PostVisionStudio({
   muted,
-  onBack,
+  onBack: _onBack,
   onOpenRadio,
   relay,
   onRelayCity,
@@ -107,9 +109,7 @@ export function PostVisionStudio({
       initialAlbumEntry?.note ||
       '把今天看到的这一刻风景和心情折进明信片，贴好当地邮票寄给远方的你。',
   )
-  const [inboxIdx, setInboxIdx] = useState(0)
-  const [inboxLiked, setInboxLiked] = useState<string[]>([])
-  const [inboxSaved, setInboxSaved] = useState<string[]>([])
+  const [sensoryOpen, setSensoryOpen] = useState(false)
 
   const [presetId, setPresetId] = useState<string | null>(() =>
     initialAlbumEntry ? null : firstPreset.id,
@@ -176,6 +176,21 @@ export function PostVisionStudio({
   useEffect(() => {
     if (initialAlbumEntry) onConsumeInitialEntry?.()
   }, [initialAlbumEntry, onConsumeInitialEntry])
+
+  useEffect(() => {
+    let alive = true
+    const sync = () => {
+      void loadAlbumAsync().then((loaded) => {
+        if (alive) setAlbumEntries(loaded)
+      })
+    }
+    sync()
+    const unsub = subscribeAlbum(sync)
+    return () => {
+      alive = false
+      unsub()
+    }
+  }, [])
 
   const [uploading, setUploading] = useState(false)
   const [uploadNote, setUploadNote] = useState<string | null>(null)
@@ -260,9 +275,6 @@ export function PostVisionStudio({
 
   const activeStamp = LOCAL_STAMPS.find((s) => s.id === selectedStampId) ?? LOCAL_STAMPS[0]
   const activeFrame = CARD_FRAMES.find((f) => f.id === selectedFrameId) ?? CARD_FRAMES[0]
-  const activeInboxLetter = DRIFT_INBOX_LETTERS[inboxIdx % DRIFT_INBOX_LETTERS.length]
-  const activeInboxStamp =
-    LOCAL_STAMPS.find((s) => s.id === activeInboxLetter.stampId) ?? LOCAL_STAMPS[0]
 
   const buildPacket = (): VisionPacket => {
     const cleanLetter = letterBody.trim()
@@ -274,8 +286,13 @@ export function PostVisionStudio({
           : []
     return {
       ...livePacket,
-      scentTag: [selectedSticker, letterWeather, scent.trim()].filter(Boolean).join(' · ').slice(0, 28),
+      scentTag: scent.trim(),
       focus: nextFocus,
+      stampId: selectedStampId,
+      frameId: selectedFrameId,
+      sticker: selectedSticker,
+      weather: letterWeather.trim(),
+      letter: cleanLetter,
       createdAt: Date.now(),
     }
   }
@@ -571,18 +588,6 @@ export function PostVisionStudio({
     setMineOpen(true)
   }
 
-  const mineCloseRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!mineOpen) return
-    mineCloseRef.current?.focus()
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMineOpen(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mineOpen])
-
   const removeMine = async (code: string) => {
     if (deleting) return
     setDeleting(code)
@@ -615,17 +620,6 @@ export function PostVisionStudio({
         {/* 视野信箱双模式切换条：写信寄视野 vs 漂流收件箱 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label="返回上一级"
-              className="flex shrink-0 items-center gap-1 rounded-full border border-white/14 bg-white/[0.04] px-3 py-1.5 font-serif text-[12px] text-white/80 transition hover:border-signal/55 hover:text-signal"
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              返回
-            </button>
             <div className="flex rounded-full border border-white/14 bg-[#081228]/72 p-0.5 backdrop-blur-md">
               <button
                 type="button"
@@ -651,161 +645,38 @@ export function PostVisionStudio({
               >
                 <span>📮 漂流收件箱</span>
                 <span className="rounded-full bg-white/15 px-1.5 py-0.2 font-mono text-[10px]">
-                  {DRIFT_INBOX_LETTERS.length}
+                  {DRIFT_INBOX_LETTERS.length}+
                 </span>
               </button>
             </div>
           </div>
           <div className="hidden font-serif text-[11.5px] tracking-[0.04em] text-white/55 sm:block">
-            从纪念册挑风景 · 贴上当地邮票写信随机漂流 · 也能拆开来自远方的明信片祝福
+            从纪念册挑风景 · 贴上当地邮票写信漂流 · 也能拆开真实电台与远方的明信片
           </div>
         </div>
 
         {mailboxTab === 'inbox' ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center py-2">
-            <div className="cinema-surface animate-fade-up relative w-full max-w-[780px] overflow-hidden rounded-[28px] border-signal/35 p-5 sm:p-8">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_10px_rgba(242,194,139,0.9)]" />
-                    <span className="font-mono text-[10.5px] tracking-[0.18em] text-signal/85">
-                      DRIFT POST · 来自「{activeInboxLetter.fromTitle}」的视野
-                    </span>
-                  </div>
-                  <h2 className="mt-1.5 font-serif text-[20px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[24px]">
-                    {activeInboxLetter.city} · {activeInboxLetter.tempC}°C · {activeInboxLetter.weather}
-                  </h2>
-                </div>
-
-                {/* 锯齿邮票装饰 */}
-                <div
-                  className="relative flex shrink-0 flex-col items-center rounded-xl border-2 border-dashed px-3 py-2 text-center shadow-lg"
-                  style={{
-                    borderColor: activeInboxStamp.accent,
-                    backgroundColor: 'rgba(12, 22, 46, 0.85)',
-                  }}
-                >
-                  <span className="text-[16px] leading-none">{activeInboxStamp.motif}</span>
-                  <span className="mt-1 font-serif text-[11px] text-[#fff8ee]">
-                    {activeInboxStamp.title}
-                  </span>
-                  <span className="font-mono text-[9.5px] text-signal/85">
-                    {activeInboxStamp.denom}
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative mt-4 overflow-hidden rounded-2xl border border-white/15 bg-black/40">
-                <img
-                  src={getPresetImage(activeInboxLetter.presetId)}
-                  alt={activeInboxLetter.city}
-                  className="aspect-[16/9] max-h-[300px] w-full object-cover"
-                  draggable={false}
-                />
-                <span className="absolute left-3 top-3 rounded-full border border-white/18 bg-[#070e1f]/75 px-3 py-1 font-serif text-[11px] text-signal backdrop-blur-md">
-                  {activeInboxLetter.sticker}
-                </span>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/12 bg-white/[0.03] p-4 sm:p-5">
-                <p className="font-serif text-[14.5px] leading-[1.9] tracking-[0.04em] text-[#fff8ee]/92">
-                  “{activeInboxLetter.letter}”
-                </p>
-                <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2.5 font-serif text-[12px] text-white/62">
-                  <span>邮戳号 · #{activeInboxLetter.id.toUpperCase()}</span>
-                  <span className="text-signal">署名：{activeInboxLetter.sender}</span>
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-wrap items-center justify-between gap-2.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInboxLiked((cur) =>
-                        cur.includes(activeInboxLetter.id)
-                          ? cur
-                          : [...cur, activeInboxLetter.id],
-                      )
-                      if (soundOn && !muted) {
-                        void mixer.ensure()
-                        mixer.playInteractionSfx('star')
-                      }
-                      showToast('已向「' + activeInboxLetter.sender + '」回赠一颗同频祝福 ❤️')
-                    }}
-                    className={
-                      'rounded-full border px-3.5 py-2 font-serif text-[12px] transition ' +
-                      (inboxLiked.includes(activeInboxLetter.id)
-                        ? 'border-signal/60 bg-signal/18 text-signal'
-                        : 'border-white/16 bg-white/[0.04] text-white/82 hover:border-signal/50 hover:text-signal')
-                    }
-                  >
-                    {inboxLiked.includes(activeInboxLetter.id) ? '已送出祝福 ♥' : '回赠祝福 ♡'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const saved = saveAlbumEntry({
-                        id: 'drift-' + activeInboxLetter.id + '-' + Date.now(),
-                        sceneId: 'shanghai',
-                        sceneTitle: activeInboxLetter.fromTitle + ' · ' + activeInboxLetter.city,
-                        city: activeInboxLetter.city,
-                        mood: activeInboxLetter.tempC < 0 ? 'night' : 'dusk',
-                        image: getPresetImage(activeInboxLetter.presetId),
-                        note: activeInboxLetter.letter + ' —— ' + activeInboxLetter.sender,
-                        interactions: 1,
-                        createdAt: Date.now(),
-                        awakened: true,
-                        stampTitle: activeInboxStamp.title,
-                      })
-                      setAlbumEntries(saved)
-                      setInboxSaved((cur) =>
-                        cur.includes(activeInboxLetter.id) ? cur : [...cur, activeInboxLetter.id],
-                      )
-                      showToast('已把这封远方明信片收进我的纪念册')
-                    }}
-                    className="rounded-full border border-white/16 bg-white/[0.04] px-3.5 py-2 font-serif text-[12px] text-white/82 transition hover:border-signal/50 hover:text-signal"
-                  >
-                    {inboxSaved.includes(activeInboxLetter.id) ? '✓ 已收进纪念册' : '收进我的纪念册'}
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInboxIdx((prev) => (prev + 1) % DRIFT_INBOX_LETTERS.length)
-                    if (soundOn && !muted) {
-                      void mixer.ensure()
-                      mixer.playInteractionSfx('lamp')
-                    }
-                  }}
-                  className="btn-primary"
-                >
-                  拆开下一封随机视野 ✉
-                </button>
-              </div>
-            </div>
-          </div>
+          <DriftInboxView
+            mixer={mixer}
+            soundOn={soundOn}
+            muted={muted}
+            onAlbumUpdated={setAlbumEntries}
+            onOpenRadio={onOpenRadio}
+            onToast={showToast}
+          />
         ) : (
         <div className="relative flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:grid-cols-[minmax(360px,0.39fr)_minmax(0,0.61fr)] lg:gap-4">
-        <section className="cinema-surface-soft order-1 flex h-[44dvh] min-h-[300px] flex-col overflow-hidden rounded-[28px] lg:order-2 lg:h-full lg:min-h-0">
+        <section
+          className={`cinema-surface-soft order-1 flex flex-col overflow-hidden rounded-[28px] lg:order-2 lg:h-full lg:min-h-0 ${
+            cardView === 'letter'
+              ? 'h-auto min-h-0'
+              : 'h-[44dvh] min-h-[300px]'
+          }`}
+        >
           <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-2.5">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <button
-                type="button"
-                onClick={onBack}
-                aria-label="返回上一级"
-                className="flex shrink-0 items-center gap-1 rounded-full border border-white/14 bg-white/[0.04] px-2.5 py-1 font-serif text-[12px] text-white/80 transition hover:border-signal/55 hover:text-signal"
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                返回
-              </button>
-              <h1 className="min-w-0 truncate font-serif text-[15px] tracking-[0.06em] text-[#fff8ee] sm:text-[16px]">
-                {livePacket.title}
-              </h1>
-            </div>
+            <h1 className="min-w-0 truncate font-serif text-[15px] tracking-[0.06em] text-[#fff8ee] sm:text-[16px]">
+              {livePacket.title}
+            </h1>
             <div className="flex shrink-0 rounded-full border border-white/12 bg-white/[0.04] p-0.5">
               <button
                 type="button"
@@ -868,71 +739,37 @@ export function PostVisionStudio({
               if (file) void handleFile(file)
             }}
           >
-            <VisionViewport3D
-              packet={livePacket}
-              mode={mode}
-              onAddFocus={handleAddFocus}
-              onHeartbeat={handleHeartbeat}
-              onPlayVoice={() => void handlePlayVoice()}
-              onSceneInteract={(kind) => {
-                if (soundOn && !muted) {
-                  void mixer.ensure()
-                  mixer.playInteractionSfx(kind)
-                }
-              }}
-              photoFilterCss={activeToneMeta.cssFilter}
-            />
-            {cardView === 'letter' && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-[#060c1a]/78 p-4 backdrop-blur-md">
-                <div
-                  className={
-                    'relative w-full max-w-[490px] rounded-[24px] border-2 p-4 shadow-2xl sm:p-5 ' +
-                    activeFrame.borderClass +
-                    ' ' +
-                    activeFrame.bgClass +
-                    ' ' +
-                    activeFrame.textClass
+            <div className={cardView === 'letter' ? 'hidden h-full w-full lg:block' : 'h-full w-full'}>
+              <VisionViewport3D
+                packet={livePacket}
+                mode={mode}
+                paused={cardView === 'letter'}
+                onAddFocus={handleAddFocus}
+                onHeartbeat={handleHeartbeat}
+                onPlayVoice={() => void handlePlayVoice()}
+                onSceneInteract={(kind) => {
+                  if (soundOn && !muted) {
+                    void mixer.ensure()
+                    mixer.playInteractionSfx(kind)
                   }
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-mono text-[10px] tracking-[0.18em] text-signal/85">
-                        POSTCARD · {city || '某座城'}
-                      </div>
-                      <div className="mt-0.5 font-serif text-[15px] tracking-[0.04em]">
-                        {city} {tempC}°C · {letterWeather}
-                      </div>
-                    </div>
-                    <div
-                      className="flex flex-col items-center rounded-xl border-2 border-dashed px-2.5 py-1.5 text-center"
-                      style={{ borderColor: activeStamp.accent }}
-                    >
-                      <span className="text-[14px] leading-none">{activeStamp.motif}</span>
-                      <span className="mt-1 font-serif text-[10px]">{activeStamp.title}</span>
-                      <span className="font-mono text-[9px] text-signal/85">{activeStamp.denom}</span>
-                    </div>
-                  </div>
-                  <div className="relative mt-3 overflow-hidden rounded-xl border border-white/15">
-                    <img
-                      src={image}
-                      alt={title}
-                      className="aspect-video w-full object-cover"
-                      style={{ filter: activeToneMeta.cssFilter }}
-                      draggable={false}
-                    />
-                    <span className="absolute bottom-2 left-2 rounded-full bg-[#070e1f]/75 px-2.5 py-0.5 font-serif text-[10.5px] text-signal backdrop-blur-sm">
-                      {selectedSticker}
-                    </span>
-                  </div>
-                  <p className="mt-3 font-serif text-[13px] leading-[1.8]">
-                    “{letterBody || '把这一刻的天色与风声折进信封寄给你。'}”
-                  </p>
-                  <div className="mt-2.5 flex items-center justify-between border-t border-white/10 pt-2 font-serif text-[11.5px] text-white/65">
-                    <span>{title}</span>
-                    <span className="text-signal">署名：{sender || '我'}</span>
-                  </div>
-                </div>
-              </div>
+                }}
+                photoFilterCss={activeToneMeta.cssFilter}
+              />
+            </div>
+            {cardView === 'letter' && (
+              <LetterCardPreview
+                activeFrame={activeFrame}
+                activeStamp={activeStamp}
+                city={city}
+                tempC={tempC}
+                letterWeather={letterWeather}
+                image={image}
+                title={title}
+                cssFilter={activeToneMeta.cssFilter}
+                selectedSticker={selectedSticker}
+                letterBody={letterBody}
+                sender={sender}
+              />
             )}
             {dragging && (
               <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-[#091226]/75 backdrop-blur-sm">
@@ -977,7 +814,7 @@ export function PostVisionStudio({
                     </SectionLabel>
                     <button
                       type="button"
-                      onClick={() => setAlbumEntries(loadAlbum())}
+                      onClick={() => void loadAlbumAsync().then(setAlbumEntries)}
                       className="font-serif text-[11px] text-signal/85 hover:underline"
                     >
                       刷新
@@ -1273,125 +1110,6 @@ export function PostVisionStudio({
                   </div>
                 </div>
 
-                <div>
-                  <SectionLabel>挑选一段环境底噪</SectionLabel>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {AMBIENCE_OPTIONS.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => chooseAmbience(option.id)}
-                        className={`rounded-xl border px-2 py-2.5 text-center font-serif text-[12.5px] transition ${
-                          ambience === option.id
-                            ? 'border-signal/65 bg-signal/15 text-[#fff8ee]'
-                            : 'border-white/12 bg-white/[0.03] text-white/65 hover:border-white/30 hover:text-white'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-3">
-                  <button
-                    type="button"
-                    onClick={toggleSound}
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition ${
-                      soundOn
-                        ? 'border-signal/60 bg-signal/15 text-signal'
-                        : 'border-white/15 text-white/55 hover:border-white/35'
-                    }`}
-                    aria-label={soundOn ? '关闭环境声' : '打开环境声'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M4 9.5v5h3.4L12 18.5v-13L7.4 9.5H4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-                      {!soundOn && <path d="M16 9.5l4 5M20 9.5l-4 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
-                      {soundOn && <path d="M15.5 9a4.2 4.2 0 0 1 0 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
-                    </svg>
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between font-sans text-[12px] text-white/70">
-                      <span>{soundOn ? '环境声正在播放' : '环境声已暂停'}</span>
-                      <span className="text-signal">{Math.round(volume * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={volume}
-                      onChange={(event) => setVolume(Number(event.target.value))}
-                      className="mt-1.5 w-full accent-[#f2c28b]"
-                      aria-label="环境声音量"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <SectionLabel>录一段 10 秒现场原声（可选）</SectionLabel>
-                  {recording ? (
-                    <div className="mt-2 flex items-center gap-3 rounded-2xl border border-ember/45 bg-ember/10 px-3.5 py-2.5">
-                      <span className="h-2.5 w-2.5 animate-ping rounded-full bg-ember" />
-                      <div className="flex-1 font-sans text-[12.5px] text-[#ffd6c9]">
-                        正在录音 · 还剩 {recordSeconds} 秒
-                      </div>
-                      <button
-                        type="button"
-                        className="rounded-full border border-ember/50 px-3 py-1 font-serif text-[12px] text-[#ffd6c9] transition hover:bg-ember/20"
-                        onClick={stopRecording}
-                      >
-                        完成
-                      </button>
-                    </div>
-                  ) : voice ? (
-                    <div className="mt-2 flex items-center justify-between gap-2 rounded-2xl border border-signal/35 bg-signal/10 px-3.5 py-2.5">
-                      <div className="min-w-0">
-                        <div className="font-serif text-[12.5px] text-[#fff8ee]">
-                          已录好 · {voiceSeconds.toFixed(1)} 秒
-                        </div>
-                        <div className="font-sans text-[11px] text-white/55">{formatBytes(voiceBytes)}</div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => void handlePlayVoice()}
-                          className="rounded-full border border-white/20 px-2.5 py-1 font-serif text-[11.5px] text-white/85 transition hover:border-signal/60"
-                        >
-                          试听
-                        </button>
-                        <button
-                          type="button"
-                          onClick={startRecording}
-                          className="rounded-full border border-white/20 px-2.5 py-1 font-serif text-[11.5px] text-white/85 transition hover:border-signal/60"
-                        >
-                          重录
-                        </button>
-                        <button
-                          type="button"
-                          onClick={removeVoice}
-                          className="rounded-full border border-white/15 px-2.5 py-1 font-serif text-[11.5px] text-white/60 transition hover:border-ember/50 hover:text-ember"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={startRecording}
-                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-2.5 font-serif text-[12.5px] text-white/75 transition hover:border-signal/60 hover:bg-signal/10 hover:text-[#fff8ee]"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.5" />
-                        <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
-                      点击录制 10 秒身边声音
-                    </button>
-                  )}
-                  {recordError && <div className="mt-1.5 font-sans text-[11.5px] text-ember">{recordError}</div>}
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <SectionLabel>所在城市</SectionLabel>
@@ -1419,41 +1137,187 @@ export function PostVisionStudio({
                   </label>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between">
-                    <SectionLabel>风的触感</SectionLabel>
-                    <span className="font-sans text-[11.5px] text-white/55">
-                      {WIND_DESCRIPTIONS[windLevel] ?? WIND_DESCRIPTIONS[0]}
+                <div className="overflow-hidden rounded-2xl border border-white/12 bg-white/[0.025]">
+                  <button
+                    type="button"
+                    onClick={() => setSensoryOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left transition hover:bg-white/[0.03]"
+                    aria-expanded={sensoryOpen}
+                  >
+                    <div>
+                      <div className="font-serif text-[12.5px] text-[#fff8ee]">
+                        感官附签（可选）
+                      </div>
+                      <div className="mt-0.5 font-sans text-[11px] text-white/48">
+                        {AMBIENCE_OPTIONS.find((o) => o.id === ambience)?.label ?? '微风'} ·{' '}
+                        {['无风', '微风', '清风', '长风'][windLevel] ?? '微风'}
+                        {voice ? ' · 含现场原声' : ''}
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-white/14 px-2.5 py-1 font-serif text-[11px] text-signal">
+                      {sensoryOpen ? '收起' : '展开微调'}
                     </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-4 gap-1.5">
-                    {['无风', '微风', '清风', '长风'].map((label, level) => (
-                      <button
-                        key={label}
-                        type="button"
-                        onClick={() => setWindLevel(level)}
-                        className={`rounded-xl border px-2 py-2 font-serif text-[12px] transition ${
-                          windLevel === level
-                            ? 'border-signal/65 bg-signal/15 text-[#fff8ee]'
-                            : 'border-white/12 bg-white/[0.03] text-white/60 hover:border-white/30'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                  </button>
 
-                <label className="block">
-                  <SectionLabel>空气里的气味</SectionLabel>
-                  <input
-                    value={scent}
-                    maxLength={22}
-                    onChange={(event) => setScent(event.target.value)}
-                    className={inputClass}
-                    placeholder="桂花与旧书页"
-                  />
-                </label>
+                  {sensoryOpen && (
+                    <div className="space-y-4 border-t border-white/10 p-3.5">
+                      <div>
+                        <SectionLabel>挑选一段环境底噪</SectionLabel>
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                          {AMBIENCE_OPTIONS.map((option) => (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => chooseAmbience(option.id)}
+                              className={`rounded-xl border px-2 py-2 text-center font-serif text-[12px] transition ${
+                                ambience === option.id
+                                  ? 'border-signal/65 bg-signal/15 text-[#fff8ee]'
+                                  : 'border-white/12 bg-white/[0.03] text-white/65 hover:border-white/30 hover:text-white'
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5">
+                        <button
+                          type="button"
+                          onClick={toggleSound}
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition ${
+                            soundOn
+                              ? 'border-signal/60 bg-signal/15 text-signal'
+                              : 'border-white/15 text-white/55 hover:border-white/35'
+                          }`}
+                          aria-label={soundOn ? '关闭环境声' : '打开环境声'}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 9.5v5h3.4L12 18.5v-13L7.4 9.5H4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                            {!soundOn && <path d="M16 9.5l4 5M20 9.5l-4 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
+                            {soundOn && <path d="M15.5 9a4.2 4.2 0 0 1 0 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
+                          </svg>
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between font-sans text-[12px] text-white/70">
+                            <span>{soundOn ? '环境声正在播放' : '环境声已暂停'}</span>
+                            <span className="text-signal">{Math.round(volume * 100)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={volume}
+                            onChange={(event) => setVolume(Number(event.target.value))}
+                            className="mt-1.5 w-full accent-[#f2c28b]"
+                            aria-label="环境声音量"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <SectionLabel>录一段 10 秒现场原声（可选）</SectionLabel>
+                        {recording ? (
+                          <div className="mt-2 flex items-center gap-3 rounded-2xl border border-ember/45 bg-ember/10 px-3.5 py-2.5">
+                            <span className="h-2.5 w-2.5 animate-ping rounded-full bg-ember" />
+                            <div className="flex-1 font-sans text-[12.5px] text-[#ffd6c9]">
+                              正在录音 · 还剩 {recordSeconds} 秒
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded-full border border-ember/50 px-3 py-1 font-serif text-[12px] text-[#ffd6c9] transition hover:bg-ember/20"
+                              onClick={stopRecording}
+                            >
+                              完成
+                            </button>
+                          </div>
+                        ) : voice ? (
+                          <div className="mt-2 flex items-center justify-between gap-2 rounded-2xl border border-signal/35 bg-signal/10 px-3.5 py-2.5">
+                            <div className="min-w-0">
+                              <div className="font-serif text-[12.5px] text-[#fff8ee]">
+                                已录好 · {voiceSeconds.toFixed(1)} 秒
+                              </div>
+                              <div className="font-sans text-[11px] text-white/55">{formatBytes(voiceBytes)}</div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void handlePlayVoice()}
+                                className="rounded-full border border-white/20 px-2.5 py-1 font-serif text-[11.5px] text-white/85 transition hover:border-signal/60"
+                              >
+                                试听
+                              </button>
+                              <button
+                                type="button"
+                                onClick={startRecording}
+                                className="rounded-full border border-white/20 px-2.5 py-1 font-serif text-[11.5px] text-white/85 transition hover:border-signal/60"
+                              >
+                                重录
+                              </button>
+                              <button
+                                type="button"
+                                onClick={removeVoice}
+                                className="rounded-full border border-white/15 px-2.5 py-1 font-serif text-[11.5px] text-white/60 transition hover:border-ember/50 hover:text-ember"
+                              >
+                                删除
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={startRecording}
+                            className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-2.5 font-serif text-[12.5px] text-white/75 transition hover:border-signal/60 hover:bg-signal/10 hover:text-[#fff8ee]"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="1.5" />
+                              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                            点击录制 10 秒身边声音
+                          </button>
+                        )}
+                        {recordError && <div className="mt-1.5 font-sans text-[11.5px] text-ember">{recordError}</div>}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <SectionLabel>风的触感</SectionLabel>
+                          <span className="font-sans text-[11.5px] text-white/55">
+                            {WIND_DESCRIPTIONS[windLevel] ?? WIND_DESCRIPTIONS[0]}
+                          </span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-4 gap-1.5">
+                          {['无风', '微风', '清风', '长风'].map((label, level) => (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => setWindLevel(level)}
+                              className={`rounded-xl border px-2 py-2 font-serif text-[12px] transition ${
+                                windLevel === level
+                                  ? 'border-signal/65 bg-signal/15 text-[#fff8ee]'
+                                  : 'border-white/12 bg-white/[0.03] text-white/60 hover:border-white/30'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <label className="block">
+                        <SectionLabel>空气里的气味</SectionLabel>
+                        <input
+                          value={scent}
+                          maxLength={22}
+                          onChange={(event) => setScent(event.target.value)}
+                          className={inputClass}
+                          placeholder="桂花与旧书页"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1668,238 +1532,41 @@ export function PostVisionStudio({
       )}
 
       {publishOpen && publishResult && (
-        <div
-          className="fixed inset-0 z-[75] flex items-center justify-center bg-[#060c1a]/80 px-4 backdrop-blur-md"
-          onClick={() => setPublishOpen(false)}
-        >
-          <div
-            className="relative max-h-[90dvh] w-full max-w-[540px] overflow-y-auto rounded-[28px] border border-white/15 bg-[#0d1832]/95 p-5 shadow-2xl sm:p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex gap-4">
-              <img
-                src={publishResult.signal.packet.image}
-                alt={publishResult.signal.packet.title}
-                className="h-[88px] w-[132px] shrink-0 rounded-2xl border border-white/12 object-cover"
-                draggable={false}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-serif text-[17px] text-[#fff8ee]">
-                  {publishResult.signal.packet.title}
-                </div>
-                <div className="mt-1 font-sans text-[12px] text-white/65">
-                  {publishResult.signal.packet.city} · {publishResult.signal.packet.tempC}°C ·{' '}
-                  {citySignature(publishResult.signal.packet.city)?.weather ??
-                    windLabel(publishResult.signal.packet.windLevel)}
-                </div>
-                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-signal/35 bg-signal/12 px-3 py-1 font-mono text-[11px] tracking-[0.12em] text-signal">
-                  信号编号 {publishResult.code}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-white/12 bg-[#081022]/85 p-3">
-              <div className="font-serif text-[12px] text-white/65">
-                分享链接 · 把这双眼睛交给想分享的人
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={publishResult.link}
-                  onFocus={(event) => event.currentTarget.select()}
-                  className="min-w-0 flex-1 truncate rounded-xl border border-white/10 bg-[#060c1a] px-3 py-2 font-mono text-[11.5px] text-signal outline-none"
-                  aria-label="分享链接"
-                />
-                <button
-                  type="button"
-                  onClick={() => void copyShareLink()}
-                  className="shrink-0 rounded-xl border border-signal/40 bg-signal/15 px-3.5 py-2 font-serif text-[12px] text-signal transition hover:bg-signal/25"
-                >
-                  {copied ? '已复制' : '复制'}
-                </button>
-              </div>
-            </div>
-
-            <p className="mt-4 font-serif text-[13px] leading-[1.85] text-white/75">
-              {publishResult.visibility === 'private'
-                ? '这是一枚私密视界，只有拿到这条链接的人才能打开它。'
-                : publishResult.source === 'cloud'
-                  ? `它已经点亮在 ${publishResult.signal.packet.city} 的地图上，任何人打开电台都能借用这一秒的风景。`
-                  : '这枚视界已保存在当前设备，分享链接同样可以打开查看。'}
-            </p>
-
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-full border border-white/18 px-4 py-2 font-serif text-[12.5px] text-white/80 transition hover:border-white/40"
-                onClick={() => setPublishOpen(false)}
-              >
-                继续编辑
-              </button>
-              <button
-                type="button"
-                className="rounded-full border border-white/18 px-4 py-2 font-serif text-[12.5px] text-white/80 transition hover:border-signal/60"
-                onClick={() => {
-                  setPublishOpen(false)
-                  openPostcardModal()
-                }}
-              >
-                冲印明信片
-              </button>
-              {publishResult.visibility === 'public' && (
-                <button
-                  type="button"
-                  className="rounded-full bg-signal px-5 py-2 font-serif text-[12.5px] font-medium text-[#170f07] transition hover:brightness-105"
-                  onClick={() => {
-                    setPublishOpen(false)
-                    onOpenRadio(publishResult.code)
-                  }}
-                >
-                  去电台看看
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <PublishResultModal
+          result={publishResult}
+          copied={copied}
+          onClose={() => setPublishOpen(false)}
+          onCopyLink={() => void copyShareLink()}
+          onOpenPostcard={openPostcardModal}
+          onOpenRadio={onOpenRadio}
+        />
       )}
-      {mineOpen && (
-        <div
-          className="fixed inset-0 z-[78] flex items-center justify-center bg-[#060c1a]/80 px-4 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-label="我寄出的视野"
-          onClick={() => setMineOpen(false)}
-        >
-          <div
-            className="no-scrollbar max-h-[86dvh] w-full max-w-[560px] overflow-y-auto rounded-[28px] border border-white/15 bg-[#0d1832]/95 p-5 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="font-mono text-[10px] tracking-[0.24em] text-signal/75">MY VISIONS</div>
-                <h2 className="mt-1.5 font-serif text-[18px] font-light tracking-[0.06em] text-[#fff6ea]">
-                  我寄出的视野
-                </h2>
-              </div>
-              <button
-                ref={mineCloseRef}
-                type="button"
-                onClick={() => setMineOpen(false)}
-                className="shrink-0 rounded-full border border-white/18 px-3.5 py-1.5 font-serif text-[12px] text-white/75 transition hover:border-signal/55 hover:text-signal"
-              >
-                关闭
-              </button>
-            </div>
-            <p className="mt-2.5 text-[11.5px] leading-relaxed text-white/45">
-              这里只列出这台设备寄出过的视野。撤回会同时删掉电台上的那一份；若此刻连不上云端，就只清本机，不会弹出错误。
-            </p>
-
-            {mine.length === 0 ? (
-              <p className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-6 text-center font-serif text-[13px] text-white/50">
-                还没有寄出过视野。挑一片风景，寄给地心试试。
-              </p>
-            ) : (
-              <div className="mt-4 space-y-2.5">
-                {mine.map((item) => (
-                  <div
-                    key={item.code}
-                    className="rounded-2xl border border-white/12 bg-white/[0.03] p-3"
-                  >
-                    <div className="flex gap-3">
-                      <img
-                        src={item.thumbnail}
-                        alt={item.title}
-                        className="h-[56px] w-[84px] shrink-0 rounded-xl border border-white/12 object-cover"
-                        draggable={false}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-serif text-[13.5px] text-[#fff8ee]">{item.title}</div>
-                        <div className="mt-0.5 truncate text-[11px] text-white/50">
-                          {item.city} · {item.hearts} 次共鸣 · {new Date(item.savedAt).toLocaleDateString('zh-CN')}
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full border border-white/15 px-2 py-0.5 font-mono text-[10px] tracking-[0.1em] text-white/55">
-                            {item.code}
-                          </span>
-                          <span className="rounded-full border border-signal/30 px-2 py-0.5 text-[10px] text-signal/80">
-                            {item.visibility === 'private' ? '仅凭链接' : '公开'}
-                          </span>
-                          <span className="rounded-full border border-white/12 px-2 py-0.5 text-[10px] text-white/45">
-                            {item.onCloud ? '已在电台' : '仅本机'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-2.5 flex flex-wrap items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void writeClipboard(buildShareLink(item.code))
-                          showToast('分享链接已复制')
-                        }}
-                        className="rounded-full border border-white/18 px-3 py-1.5 font-serif text-[11.5px] text-white/75 transition hover:border-signal/55 hover:text-signal"
-                      >
-                        复制链接
-                      </button>
-                      {item.visibility === 'public' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMineOpen(false)
-                            onOpenRadio(item.code)
-                          }}
-                          className="rounded-full border border-white/18 px-3 py-1.5 font-serif text-[11.5px] text-white/75 transition hover:border-signal/55 hover:text-signal"
-                        >
-                          打开
-                        </button>
-                      )}
-                      {item.deletable ? (
-                        confirmCode === item.code ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmCode(null)}
-                              className="rounded-full border border-white/18 px-3 py-1.5 font-serif text-[11.5px] text-white/60 transition hover:border-white/40"
-                            >
-                              取消
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void removeMine(item.code)}
-                              disabled={deleting === item.code}
-                              className="rounded-full border border-[#ff9b8a]/50 bg-[#ff9b8a]/12 px-3 py-1.5 font-serif text-[11.5px] text-[#ffb9ac] transition hover:bg-[#ff9b8a]/22 disabled:cursor-wait disabled:opacity-60"
-                            >
-                              {deleting === item.code ? '撤回中…' : '确认撤回'}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmCode(item.code)}
-                            className="rounded-full border border-white/18 px-3 py-1.5 font-serif text-[11.5px] text-white/60 transition hover:border-[#ff9b8a]/55 hover:text-[#ffb9ac]"
-                          >
-                            撤回
-                          </button>
-                        )
-                      ) : (
-                        <span className="px-1 text-[10.5px] leading-relaxed text-white/35">
-                          这份寄出于旧版本，没有撤回凭证
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <MyVisionsModal
+        open={mineOpen}
+        items={mine}
+        confirmCode={confirmCode}
+        deleting={deleting}
+        onClose={() => setMineOpen(false)}
+        onCopyLink={(link) => {
+          void writeClipboard(link)
+          showToast('分享链接已复制')
+        }}
+        onOpenRadio={onOpenRadio}
+        onArmDelete={setConfirmCode}
+        onConfirmDelete={(code) => void removeMine(code)}
+      />
       {postcardOpen && (
         <PostcardPreviewModal
           open
           packet={buildPacket()}
           shareCode={publishResult?.code}
+          initialTheme={
+            selectedFrameId === 'warm-paper'
+              ? 'polaroid'
+              : selectedFrameId === 'navy-gold'
+                ? 'letter'
+                : 'twilight'
+          }
           initialTone={photoTone}
           whisperText={relay?.promise || getCityWhisper(city)}
           onClose={() => setPostcardOpen(false)}

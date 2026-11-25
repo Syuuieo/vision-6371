@@ -6,9 +6,12 @@ const MAX_THUMBNAIL_CHARS = 360_000
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const PARTICLES = new Set(['rain', 'firefly', 'snow', 'dust', 'none'])
 const AMBIENCES = new Set(['wind', 'rain', 'ocean', 'cicada', 'night', 'library', 'snow', 'city', 'none'])
+const FRAME_IDS = new Set(['navy-gold', 'warm-paper', 'aurora-air'])
 const MAX_ECHOES = 24
 const PUBLIC_BURST_WINDOW_MS = 10 * 60 * 1000
 const PUBLIC_BURST_LIMIT = 40
+const HEARTBEAT_ECHO_WINDOW_MS = 60 * 1000
+const HEARTBEAT_ECHO_BURST_LIMIT = 12
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } })
 
@@ -74,7 +77,7 @@ function cleanPacket(value) {
   const voice = value.voice == null
     ? null
     : voiceData(value.voice, MAX_VOICE_CHARS) ? value.voice : null
-  return {
+  const packet = {
     id: text(value.id, 64) ? value.id : crypto.randomUUID(),
     title: value.title.trim(),
     sender: value.sender.trim(),
@@ -89,6 +92,12 @@ function cleanPacket(value) {
     focus: cleanFocus(value.focus),
     createdAt: Date.now(),
   }
+  if (text(value.stampId, 32, true)) packet.stampId = value.stampId.trim()
+  if (typeof value.frameId === 'string' && FRAME_IDS.has(value.frameId)) packet.frameId = value.frameId
+  if (text(value.sticker, 28, true)) packet.sticker = value.sticker.trim()
+  if (text(value.weather, 28, true)) packet.weather = value.weather.trim()
+  if (text(value.letter, 220, true)) packet.letter = value.letter.trim()
+  return packet
 }
 
 function echoOf(row) {
@@ -272,6 +281,15 @@ export function application({ db, BackendError }) {
       const code = heartbeat[1].toUpperCase()
       const vision = await findVision(code)
       if (!vision) fail('not_found', 404)
+      const trimmedMsg = message.trim()
+      if (trimmedMsg) {
+        const recent = await recentEchoes(vision.id)
+        const cutoff = Date.now() - HEARTBEAT_ECHO_WINDOW_MS
+        const inWindow = recent.filter((e) => Number.isFinite(e.createdAt) && e.createdAt >= cutoff)
+        if (inWindow.length >= HEARTBEAT_ECHO_BURST_LIMIT || inWindow.some((e) => e.message === trimmedMsg)) {
+          fail('rate_limited', 429)
+        }
+      }
       let hearts = vision.hearts
       let written = false
       for (let attempt = 0; attempt < 8; attempt += 1) {

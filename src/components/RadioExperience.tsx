@@ -252,7 +252,7 @@ export function RadioExperience({
       <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-6 pt-[66px] sm:px-5 sm:pt-[78px] lg:h-full lg:min-h-0 lg:grid lg:grid-cols-[minmax(0,1.42fr)_minmax(360px,0.58fr)] lg:gap-4 lg:pb-5">
         <section className="cinema-surface-soft relative flex h-[62dvh] min-h-[420px] flex-col overflow-hidden rounded-[28px] lg:h-full lg:min-h-0">
           <div className="pointer-events-none absolute left-5 top-5 z-10 max-w-[90%] pr-3 sm:max-w-[85%]">
-            <h1 className="hud-ink font-serif text-[20px] font-light tracking-[0.08em] text-[#fff8ee] sm:text-[24px]">
+            <h1 className="hud-ink font-serif text-[20px] font-normal tracking-[0.08em] text-[#fff8ee] sm:text-[24px]">
               地球表面电台
             </h1>
             <p className="mt-1 font-serif text-[12.5px] tracking-[0.04em] text-signal/90 sm:text-[13px]">
@@ -380,7 +380,7 @@ export function RadioExperience({
         <aside className="cinema-surface flex min-h-[42dvh] flex-col overflow-hidden rounded-[28px] lg:h-full lg:min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-white/10 px-4 py-3.5">
             <div>
-              <h2 className="font-serif text-[16px] font-light tracking-[0.08em] text-[#fff8ee]">
+              <h2 className="font-serif text-[16px] font-normal tracking-[0.08em] text-[#fff8ee]">
                 最近抵达的风景
               </h2>
               <p className="mt-0.5 font-serif text-[11.5px] text-white/55">

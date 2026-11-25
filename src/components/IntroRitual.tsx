@@ -10,6 +10,8 @@ interface IntroRitualProps {
   onListenEcho?: (code: string) => void
   flashSafe?: boolean
   onToggleFlashSafe?: () => void
+  onPreloadScene?: () => void
+  sceneMounted?: boolean
 }
 
 export function IntroRitual({
@@ -22,9 +24,42 @@ export function IntroRitual({
   onListenEcho,
   flashSafe = false,
   onToggleFlashSafe,
+  onPreloadScene,
+  sceneMounted = false,
 }: IntroRitualProps) {
   return (
     <div className={`fixed inset-0 z-40 overflow-hidden ${opening ? 'pointer-events-none' : ''}`}>
+      {/* 按需挂载 3D 前，用极轻 CSS + SVG 黎明地平线承载封面氛围，零 GPU 负载 */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 transition-opacity duration-700 ${
+          sceneMounted ? 'opacity-0' : 'opacity-100'
+        }`}
+        style={{
+          background:
+            'radial-gradient(85% 55% at 50% 62%, rgba(242, 194, 139, 0.22), rgba(28, 48, 86, 0.36) 48%, rgba(6, 11, 24, 0.96) 100%), linear-gradient(180deg, #060b18 0%, #0f1d3a 54%, #1a2844 100%)',
+        }}
+      >
+        <svg
+          viewBox="0 0 1440 320"
+          preserveAspectRatio="none"
+          className="absolute inset-x-0 bottom-0 h-[36vh] w-full opacity-55"
+        >
+          <path
+            d="M0,224 C220,178 410,248 640,214 C860,180 1120,136 1440,196 L1440,320 L0,320 Z"
+            fill="rgba(7, 13, 28, 0.85)"
+          />
+          <path
+            d="M0,256 C280,228 540,276 880,240 C1140,212 1300,236 1440,248 L1440,320 L0,320 Z"
+            fill="rgba(5, 9, 20, 0.96)"
+          />
+        </svg>
+        <div
+          className="absolute left-1/2 top-[58%] h-44 w-[76vw] max-w-[780px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-50 blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(242, 194, 139, 0.32), transparent 72%)' }}
+        />
+      </div>
+
       {/* 极轻的径向电影暗角：让 3D 晨雾、体积云与花海完整呼吸 */}
       <div
         className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${
@@ -61,7 +96,7 @@ export function IntroRitual({
           </h1>
 
           <p
-            className="animate-fade-up hud-ink-soft mt-5 max-w-[33rem] font-serif text-[15px] font-light leading-[1.95] tracking-[0.06em] text-white/88 sm:text-[17px]"
+            className="animate-fade-up hud-ink-soft mt-5 max-w-[33rem] font-serif text-[15px] font-normal leading-[1.95] tracking-[0.06em] text-white/88 sm:text-[17px]"
             style={{ animationDelay: '0.52s' }}
           >
             地航局寄来一副传感眼镜——
@@ -85,6 +120,8 @@ export function IntroRitual({
                 <button
                   type="button"
                   onClick={onEnter}
+                  onPointerEnter={onPreloadScene}
+                  onFocus={onPreloadScene}
                   disabled={opening}
                   className="relative rounded-full bg-signal px-8 py-3.5 font-serif text-[15px] font-medium tracking-[0.14em] text-[#170f07] shadow-[0_14px_42px_-8px_rgba(242,194,139,0.74)] transition hover:scale-[1.03] hover:brightness-105 active:scale-[0.98] disabled:cursor-wait"
                 >
@@ -95,6 +132,8 @@ export function IntroRitual({
                 <button
                   type="button"
                   onClick={onResume}
+                  onPointerEnter={onPreloadScene}
+                  onFocus={onPreloadScene}
                   disabled={opening}
                   className="cinema-surface-soft relative rounded-full border-signal/38 px-5 py-3.5 font-serif text-[13.5px] tracking-[0.06em] text-signal transition hover:border-signal/75 hover:bg-signal/14 active:scale-[0.98] disabled:cursor-wait"
                 >

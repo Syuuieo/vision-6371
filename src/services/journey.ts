@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { seedBrief, seedSignalCodes } from '../data/seedRadioVisions'
+import { seedBrief, seedSignalCodes } from '../data/seedRadioBriefs'
 import { getCityWhisper, type StoryRelayState } from '../utils/storyRelay'
 
 export interface JourneyState {

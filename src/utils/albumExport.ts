@@ -94,12 +94,12 @@ export async function exportAlbumCardPng(entry: AlbumEntry): Promise<void> {
 
   // 顶部角标与唤醒印记徽章
   ctx.fillStyle = '#f2c28b'
-  ctx.font = '500 24px "Noto Serif SC", Georgia, serif'
+  ctx.font = '500 24px "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif'
   ctx.fillText(`◆  ${entry.sceneTitle}`, px, py + ph + 62)
 
   if (entry.awakened) {
     const sealText = `◆ 奇境印记 · ${entry.stampTitle ?? 'AWAKENED'}`
-    ctx.font = '500 17px "Noto Serif SC", Georgia, serif'
+    ctx.font = '500 17px "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif'
     const sealW = ctx.measureText(sealText).width + 26
     const sealX = px + pw - sealW
     const sealY = py + ph - 52
@@ -130,7 +130,7 @@ export async function exportAlbumCardPng(entry: AlbumEntry): Promise<void> {
   // 用户的留言
   const noteText = entry.note.trim() || '替不能再来地面的人，把这一刻的晴朗与灯火收进纪念册。'
   ctx.fillStyle = '#fff6ea'
-  ctx.font = '300 28px "Noto Serif SC", Georgia, serif'
+  ctx.font = '400 28px "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif'
   const lines = wrapLines(ctx, noteText, pw, 3)
   lines.forEach((line, idx) => {
     ctx.fillText(line, px, py + ph + 142 + idx * 44)
@@ -138,7 +138,7 @@ export async function exportAlbumCardPng(entry: AlbumEntry): Promise<void> {
 
   // 底部落款
   ctx.fillStyle = 'rgba(242, 194, 139, 0.68)'
-  ctx.font = '18px "Noto Serif SC", Georgia, serif'
+  ctx.font = '18px "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif'
   const footerLeft = entry.promiseQuote
     ? `草原约定：${entry.promiseQuote}`
     : '视界 6371 · 立体漫游纪念册 · 留给人间与记忆'
