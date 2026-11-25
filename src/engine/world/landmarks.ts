@@ -217,7 +217,7 @@ function makeStylizedMat(options: {
       uUseVertexColor: { value: usesInstColor ? 1 : 0 },
       uFlutter: { value: options.flutter ? 1 : 0 },
     },
-    defines: options.vertexColors ? { USE_VCOLOR: '' } : undefined,
+    ...(options.vertexColors ? { defines: { USE_VCOLOR: '' } } : {}),
     side: options.side ?? THREE.FrontSide,
     vertexShader: /* glsl */ `
       #ifdef USE_VCOLOR
