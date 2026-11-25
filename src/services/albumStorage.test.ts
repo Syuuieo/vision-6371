@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   clearAlbum,
+  clearDioramaStamps,
   deleteAlbumEntry,
   loadAlbum,
+  loadDioramaStamps,
+  markDioramaStamp,
   saveAlbumEntry,
   updateAlbumNote,
   type AlbumEntry,
@@ -47,6 +50,7 @@ describe('albumStorage', () => {
       configurable: true,
     })
     clearAlbum()
+    clearDioramaStamps()
   })
 
   it('saves, loads, and updates personal notes', () => {
@@ -65,5 +69,25 @@ describe('albumStorage', () => {
     const remaining = deleteAlbumEntry('e2')
     expect(remaining.map((e) => e.id)).toEqual(['e1'])
     expect(loadAlbum().length).toBe(1)
+  })
+
+  it('supports dawn mood, awakened seal metadata, and diorama stamps', () => {
+    const entry: AlbumEntry = {
+      ...makeEntry('dawn-1', '晨光里的风帆与海豚'),
+      sceneId: 'sydney',
+      mood: 'dawn',
+      awakened: true,
+      stampTitle: '盛夏扬帆印记',
+    }
+    saveAlbumEntry(entry)
+    const [saved] = loadAlbum()
+    expect(saved.mood).toBe('dawn')
+    expect(saved.awakened).toBe(true)
+    expect(saved.stampTitle).toBe('盛夏扬帆印记')
+
+    expect(loadDioramaStamps()).toEqual([])
+    expect(markDioramaStamp('shanghai')).toEqual(['shanghai'])
+    expect(markDioramaStamp('shanghai')).toEqual(['shanghai'])
+    expect(markDioramaStamp('observatory')).toEqual(['shanghai', 'observatory'])
   })
 })

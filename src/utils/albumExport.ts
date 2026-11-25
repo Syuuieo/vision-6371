@@ -92,14 +92,31 @@ export async function exportAlbumCardPng(entry: AlbumEntry): Promise<void> {
   ctx.lineWidth = 2
   ctx.strokeRect(px, py, pw, ph)
 
-  // 顶部角标
+  // 顶部角标与唤醒印记徽章
   ctx.fillStyle = '#f2c28b'
   ctx.font = '500 24px "Noto Serif SC", Georgia, serif'
   ctx.fillText(`◆  ${entry.sceneTitle}`, px, py + ph + 62)
 
+  if (entry.awakened) {
+    const sealText = `◆ 奇境印记 · ${entry.stampTitle ?? 'AWAKENED'}`
+    ctx.font = '500 17px "Noto Serif SC", Georgia, serif'
+    const sealW = ctx.measureText(sealText).width + 26
+    const sealX = px + pw - sealW
+    const sealY = py + ph - 52
+    ctx.fillStyle = 'rgba(10, 18, 36, 0.78)'
+    ctx.fillRect(sealX, sealY, sealW, 34)
+    ctx.strokeStyle = 'rgba(242, 194, 139, 0.75)'
+    ctx.lineWidth = 1.5
+    ctx.strokeRect(sealX, sealY, sealW, 34)
+    ctx.fillStyle = '#f2c28b'
+    ctx.fillText(sealText, sealX + 13, sealY + 23)
+  }
+
   ctx.fillStyle = 'rgba(255, 255, 255, 0.52)'
   ctx.font = '20px ui-monospace, SFMono-Regular, monospace'
-  const stamp = `${entry.city} · ${entry.mood === 'night' ? 'STARLIGHT' : 'GOLDEN DUSK'} · ${formatDate(entry.createdAt)}`
+  const moodTag =
+    entry.mood === 'dawn' ? 'MORNING LIGHT' : entry.mood === 'night' ? 'STARLIGHT' : 'GOLDEN DUSK'
+  const stamp = `${entry.city} · ${moodTag} · ${formatDate(entry.createdAt)}`
   const stampW = ctx.measureText(stamp).width
   ctx.fillText(stamp, px + pw - stampW, py + ph + 60)
 

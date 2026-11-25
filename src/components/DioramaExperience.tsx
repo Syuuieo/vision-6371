@@ -3,11 +3,18 @@ import { AmbientMixer } from '../audio/ambientMixer'
 import {
   DIORAMA_SCENES,
   DioramaWorld,
+  buildGoalSnapshot,
+  type DioramaFilter,
   type DioramaInteractEvent,
+  type DioramaMood,
+  type DioramaProgressSnapshot,
+  type DioramaZoomPreset,
 } from '../scenes/DioramaWorld'
 import {
   deleteAlbumEntry,
   loadAlbum,
+  loadDioramaStamps,
+  markDioramaStamp,
   saveAlbumEntry,
   updateAlbumNote,
   type AlbumEntry,
@@ -26,11 +33,33 @@ interface DioramaExperienceProps {
 }
 
 const QUICK_NOTES = [
-  '替不能再来地面的人，把这一刻的灯火存进纪念册。',
-  '北半球正降温时，我在南半球替你收下了 28°C 的海风。',
-  '今晚的星星很亮，走过这里时想起草原上那句约定。',
-  '风声和翻书声都很轻，留作下一次重逢时的凭据。',
+  '替不能再来地面的人，把这一刻的奇境灯火存进纪念册。',
+  '北半球正降温时，我在南半球替你收下了 28°C 的海豚与白帆。',
+  '今晚的流星与极光很亮，走过这里时想起草原上那句约定。',
+  '风声、翻书声和波光都很轻，留作下一次重逢时的凭据。',
 ]
+
+const MOOD_OPTIONS: { id: DioramaMood; label: string }[] = [
+  { id: 'dawn', label: '晨曦' },
+  { id: 'dusk', label: '暮色' },
+  { id: 'night', label: '星夜' },
+]
+
+const ZOOM_OPTIONS: { id: DioramaZoomPreset; label: string }[] = [
+  { id: 'wide', label: '全景' },
+  { id: 'standard', label: '标准' },
+  { id: 'macro', label: '特写' },
+]
+
+const FILTER_OPTIONS: { id: DioramaFilter; label: string }[] = [
+  { id: 'none', label: '原色' },
+  { id: 'warm', label: '暖金' },
+  { id: 'cinema', label: '青暮' },
+]
+
+function moodBadgeLabel(mood: AlbumEntry['mood']) {
+  return mood === 'dawn' ? '晨曦' : mood === 'night' ? '星夜' : '黄昏'
+}
 
 function formatStamp(ts: number) {
   const d = new Date(ts)
@@ -54,16 +83,24 @@ export function DioramaExperience({
   const [mixer] = useState(() => new AmbientMixer())
 
   const [sceneId, setSceneId] = useState<DioramaSceneId>('shanghai')
-  const [mood, setMood] = useState<'dusk' | 'night'>('dusk')
+  const [mood, setMood] = useState<DioramaMood>('dusk')
+  const [autoOrbit, setAutoOrbit] = useState(true)
   const [soundOn, setSoundOn] = useState(true)
   const [viewfinder, setViewfinder] = useState(false)
+  const [zoomPreset, setZoomPreset] = useState<DioramaZoomPreset>('standard')
+  const [filmFilter, setFilmFilter] = useState<DioramaFilter>('none')
   const [shutterFlash, setShutterFlash] = useState(false)
   const [interactCount, setInteractCount] = useState(0)
+  const [progress, setProgress] = useState<DioramaProgressSnapshot>(() =>
+    buildGoalSnapshot('shanghai', new Set()),
+  )
+  const [stamps, setStamps] = useState<DioramaSceneId[]>(() => loadDioramaStamps())
   const [toast, setToast] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null)
 
   const [album, setAlbum] = useState<AlbumEntry[]>(() => loadAlbum())
   const [albumOpen, setAlbumOpen] = useState(false)
+  const [albumCategory, setAlbumCategory] = useState<'all' | 'diorama' | 'meadow'>('all')
   const [pendingShot, setPendingShot] = useState<string | null>(null)
   const [draftNote, setDraftNote] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -72,6 +109,8 @@ export function DioramaExperience({
 
   const soundOnRef = useRef(soundOn)
   const mutedRef = useRef(muted)
+  const sceneIdRef = useRef(sceneId)
+  const stampsRef = useRef(stamps)
   const activeMeta = useMemo(
     () => DIORAMA_SCENES.find((s) => s.id === sceneId) ?? DIORAMA_SCENES[0],
     [sceneId],
@@ -86,31 +125,53 @@ export function DioramaExperience({
     mixer.setMuted(muted)
   }, [mixer, muted])
 
-  const showToast = (msg: string) => {
+  useEffect(() => {
+    sceneIdRef.current = sceneId
+  }, [sceneId])
+
+  useEffect(() => {
+    stampsRef.current = stamps
+  }, [stamps])
+
+  const showToast = (msg: string, ms = 2600) => {
     setToast(msg)
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
-    toastTimerRef.current = window.setTimeout(() => setToast(null), 2600)
+    toastTimerRef.current = window.setTimeout(() => setToast(null), ms)
   }
 
-  // 初始化立体微缩场景引擎
+  // 初始化立体微缩奇境引擎
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
-    const world = new DioramaWorld(host, 'shanghai', (event: DioramaInteractEvent) => {
-      setInteractCount(event.count)
-      setToast(event.label)
-      if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
-      toastTimerRef.current = window.setTimeout(() => setToast(null), 2400)
-      if (soundOnRef.current && !mutedRef.current) {
-        void mixer.ensure()
-        mixer.playInteractionSfx(event.sfx)
-      }
-      try {
-        navigator.vibrate?.(16)
-      } catch {
-        /* ignore */
-      }
-    })
+    const world = new DioramaWorld(
+      host,
+      sceneIdRef.current,
+      (event: DioramaInteractEvent) => {
+        setInteractCount(event.count)
+        setToast(event.label)
+        if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
+        toastTimerRef.current = window.setTimeout(
+          () => setToast(null),
+          event.awakened ? 4200 : 2400,
+        )
+        if (soundOnRef.current && !mutedRef.current) {
+          void mixer.ensure()
+          mixer.playInteractionSfx(event.sfx)
+        }
+        try {
+          navigator.vibrate?.(event.awakened ? [20, 30, 30] : 16)
+        } catch {
+          /* ignore */
+        }
+      },
+      (snap) => {
+        setProgress(snap)
+        if (snap.awakened) {
+          const nextStamps = markDioramaStamp(snap.sceneId)
+          setStamps(nextStamps)
+        }
+      },
+    )
     worldRef.current = world
     return () => {
       world.dispose()
@@ -124,23 +185,55 @@ export function DioramaExperience({
     return () => mixer.dispose()
   }, [mixer])
 
-  // 切换立体场景时同步声景与城市记录
+  // 切换立体场景时同步环境声与城市八音盒旋律
   useEffect(() => {
-    worldRef.current?.loadScene(sceneId)
-    worldRef.current?.setMood(mood)
+    worldRef.current?.loadScene(sceneId, stampsRef.current.includes(sceneId))
     onRecordCity?.(activeMeta.city)
     mixer.setKind(activeMeta.ambience)
-    mixer.setVolume(0.56)
+    mixer.setVolume(0.5)
     mixer.setActive(soundOn)
-    if (soundOn && !muted) void mixer.ensure()
-  }, [activeMeta.ambience, activeMeta.city, mixer, mood, muted, onRecordCity, sceneId, soundOn])
+    if (soundOn && !muted) {
+      void mixer.ensure()
+      mixer.startStation(activeMeta.city)
+    } else {
+      mixer.stopStation()
+    }
+  }, [activeMeta.ambience, activeMeta.city, mixer, muted, onRecordCity, sceneId, soundOn])
 
   useEffect(() => {
     worldRef.current?.setMood(mood)
   }, [mood])
 
+  useEffect(() => {
+    worldRef.current?.setAutoOrbit(autoOrbit)
+  }, [autoOrbit])
+
+  useEffect(() => {
+    worldRef.current?.setZoomPreset(zoomPreset)
+  }, [zoomPreset])
+
+  const switchScene = (nextId: DioramaSceneId) => {
+    setSceneId(nextId)
+    setInteractCount(0)
+    setProgress(buildGoalSnapshot(nextId, new Set()))
+  }
+
+  const handleGuideNextGoal = () => {
+    const msg = worldRef.current?.focusNextGoal()
+    if (msg) showToast(msg, 3400)
+  }
+
+  const handleReplayFinale = () => {
+    worldRef.current?.replayFinale()
+    if (soundOn && !muted) {
+      void mixer.ensure()
+      mixer.playInteractionSfx('celebrate')
+    }
+    showToast(`重放 · ${activeMeta.stampTitle}`, 3000)
+  }
+
   const takePhoto = () => {
-    const dataUrl = worldRef.current?.captureFrame()
+    const dataUrl = worldRef.current?.captureFrame(filmFilter)
     if (!dataUrl) {
       showToast('画面正在渲染，请稍后再按快门')
       return
@@ -165,6 +258,7 @@ export function DioramaExperience({
 
   const confirmSaveShot = () => {
     if (!pendingShot) return
+    const isAwakened = progress.awakened || stamps.includes(activeMeta.id)
     const entry: AlbumEntry = {
       id: `alb-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       sceneId: activeMeta.id,
@@ -176,6 +270,8 @@ export function DioramaExperience({
       interactions: interactCount,
       createdAt: Date.now(),
       promiseQuote: relay.promise || relay.wish,
+      awakened: isAwakened,
+      stampTitle: isAwakened ? activeMeta.stampTitle : undefined,
     }
     const next = saveAlbumEntry(entry)
     setAlbum(next)
@@ -211,10 +307,27 @@ export function DioramaExperience({
     }
   }
 
+  const filteredAlbum = useMemo(() => {
+    if (albumCategory === 'meadow') return album.filter((e) => e.sceneId === 'meadow')
+    if (albumCategory === 'diorama') return album.filter((e) => e.sceneId !== 'meadow')
+    return album
+  }, [album, albumCategory])
+
+  const stampUnlockedHere = progress.awakened || stamps.includes(activeMeta.id)
+
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-[#0c1324] select-none">
-      {/* 全屏纪念碑谷风格 3D 微缩立体场景 */}
-      <div ref={hostRef} className="absolute inset-0" />
+      {/* 全屏立体微缩奇境 3D 场景 */}
+      <div
+        ref={hostRef}
+        className={`absolute inset-0 transition-[filter] duration-300 ${
+          filmFilter === 'warm'
+            ? '[filter:sepia(0.14)_saturate(1.12)]'
+            : filmFilter === 'cinema'
+              ? '[filter:contrast(1.06)_saturate(0.92)_hue-rotate(-6deg)]'
+              : ''
+        }`}
+      />
 
       {/* 快门闪光（遵守闪烁抑制设置） */}
       {shutterFlash && (
@@ -237,101 +350,175 @@ export function DioramaExperience({
             <div className="border-b border-white/50" />
           </div>
           <div className="hud-ink absolute left-3 top-3 font-mono text-[10.5px] tracking-[0.2em] text-signal">
-            REC · 35MM DIORAMA · {activeMeta.city}
+            REC · 35MM · {activeMeta.city} · {moodBadgeLabel(mood)}
           </div>
         </div>
       )}
 
-      {/* 左上角无框编辑部浮层（承接序章剧情且严格尊重原著离别设定） */}
-      <aside className="pointer-events-none fixed left-4 top-[70px] z-20 max-w-[330px] sm:left-6 sm:top-[82px]">
-        <div className="hud-ink flex flex-col gap-1.5">
+      {/* 左上角无框编辑部浮层 + 奇境唤醒目标面板 */}
+      <aside className="pointer-events-none fixed left-4 top-[68px] z-20 max-w-[330px] sm:left-6 sm:top-[78px]">
+        <div className="hud-ink flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="cinema-gem h-2 w-2 bg-signal shadow-[0_0_12px_rgba(242,194,139,0.9)]" />
             <span className="font-mono text-[10.5px] tracking-[0.2em] text-signal/90">
               DIORAMA · {activeMeta.region}
             </span>
           </div>
-          <h1 className="font-serif text-[21px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[24px]">
+          <h1 className="font-serif text-[20px] font-light tracking-[0.06em] text-[#fff8ee] sm:text-[23px]">
             {activeMeta.title}
           </h1>
-          <p className="font-serif text-[12px] leading-[1.7] text-white/76">
+          <p className="font-serif text-[11.5px] leading-[1.65] text-white/75">
             {activeMeta.tempDusk} · {activeMeta.interactHint}
           </p>
         </div>
 
-        {/* 序章剧情温和联动：纪念而非打破原著最后一次地心告别 */}
-        <div className="cinema-surface-soft pointer-events-auto mt-3 rounded-2xl px-3.5 py-2.5">
+        {/* 三步奇境唤醒玩法清单 */}
+        <div className="cinema-surface-soft pointer-events-auto mt-2.5 rounded-2xl px-3.5 py-2.5">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-serif text-[11px] tracking-[0.08em] text-signal/90">
-              {relay.completedPrologue ? '延续草原上的约定' : '纪念册手记'}
-            </span>
-            {interactCount > 0 && (
-              <span className="font-mono text-[10px] text-white/60">互动 {interactCount} 次</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-serif text-[11.5px] tracking-[0.06em] text-signal">
+                奇境唤醒 · {progress.completed}/{progress.total}
+              </span>
+              {stampUnlockedHere && (
+                <span className="rounded-full bg-signal/20 px-2 py-0.5 font-serif text-[10px] text-signal">
+                  {activeMeta.stampTitle}
+                </span>
+              )}
+            </div>
+            {progress.awakened ? (
+              <button
+                type="button"
+                onClick={handleReplayFinale}
+                className="rounded-full border border-signal/55 bg-signal/16 px-2.5 py-0.5 font-serif text-[10.5px] text-signal transition hover:bg-signal/26"
+              >
+                再现奇观
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGuideNextGoal}
+                className="rounded-full border border-white/16 bg-white/[0.04] px-2.5 py-0.5 font-serif text-[10.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
+              >
+                寻光指引
+              </button>
             )}
           </div>
-          <p className="mt-1 font-serif text-[11.5px] leading-[1.7] text-white/75">
-            {relay.promise
-              ? `草原的连线已留在 6,371 公里深处。带着那句「${relay.promise}」，替她把人间的灯火与冬夏收进这本纪念册。`
-              : relay.wish
-                ? `带着石拱下的心愿「${relay.wish}」，在立体微缩风景里替记忆定格一帧温柔。`
-                : '草原那一天是她最后一次看见地表。在这里小范围环视世界角落，拍下风景与留言，收进属于你的纪念册。'}
-          </p>
-          {!relay.completedPrologue && onGoPrologue && (
-            <button
-              type="button"
-              onClick={onGoPrologue}
-              className="mt-1.5 font-serif text-[11px] text-signal/90 underline decoration-signal/40 underline-offset-4 transition hover:text-signal"
-            >
-              先去体验序章 · 地球的一天 →
-            </button>
-          )}
+
+          <ul className="mt-2 space-y-1.5">
+            {progress.goals.map((goal) => (
+              <li key={goal.id} className="flex items-center gap-2 text-[11.5px]">
+                <span
+                  className={`cinema-gem h-1.5 w-1.5 shrink-0 transition ${
+                    goal.done
+                      ? 'bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]'
+                      : 'border border-white/35 bg-transparent'
+                  }`}
+                />
+                <span
+                  className={`font-serif transition ${
+                    goal.done ? 'text-white/48 line-through' : 'text-white/84'
+                  }`}
+                >
+                  {goal.title}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <p className="font-serif text-[11px] leading-[1.6] text-white/62">
+              {relay.promise
+                ? `带着草原约定「${relay.promise}」，在六座城市收集印记与烟火。`
+                : '点亮三处奇境机关可解锁专属城市印记与 3D 奇观。'}
+            </p>
+            {!relay.completedPrologue && onGoPrologue && (
+              <button
+                type="button"
+                onClick={onGoPrologue}
+                className="mt-1 font-serif text-[10.5px] text-signal/90 underline decoration-signal/40 underline-offset-4 transition hover:text-signal"
+              >
+                返回序章 · 地球的一天 →
+              </button>
+            )}
+          </div>
         </div>
       </aside>
 
-      {/* 右上角快捷操作（昼夜切换 / 归位视角 / 环境声 / 纪念册入口） */}
-      <div className="pointer-events-auto fixed right-4 top-[70px] z-20 flex flex-wrap items-center justify-end gap-1.5 sm:right-6 sm:top-[82px]">
+      {/* 右上角控制栏：三态天光 / 自动缓转 / 视角复位 / 声乐 / 纪念册 */}
+      <div className="pointer-events-auto fixed right-4 top-[68px] z-20 flex flex-wrap items-center justify-end gap-1.5 sm:right-6 sm:top-[78px]">
+        <div className="cinema-surface-soft flex items-center rounded-full p-0.5">
+          {MOOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setMood(opt.id)}
+              className={`rounded-full px-2.5 py-1 font-serif text-[11px] transition ${
+                mood === opt.id
+                  ? 'bg-signal font-medium text-[#170f07] shadow-[0_0_10px_rgba(242,194,139,0.5)]'
+                  : 'text-white/75 hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         <button
           type="button"
-          onClick={() => setMood((m) => (m === 'dusk' ? 'night' : 'dusk'))}
-          className="cinema-surface-soft flex items-center gap-1.5 rounded-full px-3 py-1.5 font-serif text-[11.5px] text-white/86 transition hover:border-signal/55 hover:text-signal"
+          onClick={() => setAutoOrbit((v) => !v)}
+          aria-pressed={autoOrbit}
+          className={`cinema-surface-soft rounded-full px-2.5 py-1.5 font-serif text-[11px] transition ${
+            autoOrbit ? 'border-signal/50 text-signal' : 'text-white/72 hover:text-white'
+          }`}
         >
-          <span className="cinema-gem h-1.5 w-1.5 bg-signal" />
-          <span>{mood === 'dusk' ? '切至星夜' : '切回黄昏'}</span>
+          {autoOrbit ? '缓转开' : '缓转关'}
         </button>
+
         <button
           type="button"
-          onClick={() => worldRef.current?.resetView()}
-          className="cinema-surface-soft rounded-full px-3 py-1.5 font-serif text-[11.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
+          onClick={() => {
+            setZoomPreset('standard')
+            worldRef.current?.resetView()
+          }}
+          className="cinema-surface-soft hidden rounded-full px-2.5 py-1.5 font-serif text-[11px] text-white/78 transition hover:border-signal/55 hover:text-signal sm:block"
         >
-          复位视角
+          复位
         </button>
+
         <button
           type="button"
           onClick={() => {
             const next = !soundOn
             setSoundOn(next)
             mixer.setActive(next)
-            if (next) void mixer.ensure()
+            if (next && !muted) {
+              void mixer.ensure()
+              mixer.startStation(activeMeta.city)
+            } else {
+              mixer.stopStation()
+            }
           }}
-          className="cinema-surface-soft rounded-full px-3 py-1.5 font-serif text-[11.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
+          className="cinema-surface-soft rounded-full px-2.5 py-1.5 font-serif text-[11px] text-white/78 transition hover:border-signal/55 hover:text-signal"
         >
-          {soundOn ? '声景开' : '声景关'}
+          {soundOn ? '♪ 声乐开' : '声乐关'}
         </button>
+
         <button
           type="button"
           onClick={() => setAlbumOpen(true)}
-          className="flex items-center gap-1.5 rounded-full border border-signal/50 bg-signal/16 px-3.5 py-1.5 font-serif text-[12px] text-[#fff8ee] backdrop-blur-md transition hover:bg-signal/25"
+          className="flex items-center gap-1.5 rounded-full border border-signal/50 bg-signal/16 px-3 py-1.5 font-serif text-[11.5px] text-[#fff8ee] backdrop-blur-md transition hover:bg-signal/25"
         >
           <span>纪念册</span>
           <span className="rounded-full bg-signal px-1.5 py-0.2 font-mono text-[10px] font-medium text-[#170f07]">
             {album.length}
           </span>
+          <span className="font-mono text-[10px] text-signal/90">◆{stamps.length}/6</span>
         </button>
       </div>
 
       {/* 互动反馈吐司 */}
       {toast && (
-        <div className="pointer-events-none fixed left-1/2 top-[128px] z-30 w-max max-w-[90vw] -translate-x-1/2 sm:top-[84px]">
+        <div className="pointer-events-none fixed left-1/2 top-[122px] z-30 w-max max-w-[90vw] -translate-x-1/2 sm:top-[80px]">
           <div className="cinema-surface animate-fade-in flex items-center gap-2 rounded-full border-signal/35 px-4 py-1.5">
             <span className="cinema-gem h-1.5 w-1.5 bg-signal" />
             <span className="font-serif text-[12px] tracking-[0.04em] text-[#fff8ee]">{toast}</span>
@@ -339,31 +526,72 @@ export function DioramaExperience({
         </div>
       )}
 
-      {/* 底部场景切换栏 + 相机快门条 */}
-      <div className="pointer-events-none fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex flex-col items-center gap-2.5 sm:bottom-6">
-        <div className="hud-ink-soft hidden font-serif text-[11.5px] text-white/70 sm:block">
-          拖拽小范围环视微缩世界 · 滚轮缩放 · 直接点击建筑/灯火/船只/星石互动
-        </div>
+      {/* 底部场景切换栏 + 取景焦距滤镜与快门 */}
+      <div className="pointer-events-none fixed inset-x-3 bottom-[max(0.85rem,env(safe-area-inset-bottom))] z-20 flex flex-col items-center gap-2 sm:bottom-5">
+        {viewfinder && !pendingShot && !albumOpen && (
+          <div className="cinema-surface-soft pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-full px-3.5 py-1.5 backdrop-blur-md">
+            <div className="flex items-center gap-1">
+              <span className="font-serif text-[10.5px] text-white/50">焦距</span>
+              {ZOOM_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setZoomPreset(opt.id)}
+                  className={`rounded-full px-2 py-0.5 font-serif text-[11px] transition ${
+                    zoomPreset === opt.id
+                      ? 'bg-signal text-[#170f07] font-medium'
+                      : 'text-white/75 hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <span className="h-3.5 w-px bg-white/15" />
+            <div className="flex items-center gap-1">
+              <span className="font-serif text-[10.5px] text-white/50">底片</span>
+              {FILTER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setFilmFilter(opt.id)}
+                  className={`rounded-full px-2 py-0.5 font-serif text-[11px] transition ${
+                    filmFilter === opt.id
+                      ? 'bg-signal/25 text-signal'
+                      : 'text-white/72 hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
-        <div className="cinema-surface pointer-events-auto flex w-full max-w-[860px] flex-wrap items-center justify-between gap-2 rounded-3xl px-3 py-2.5 sm:flex-nowrap sm:rounded-full sm:px-3.5 sm:py-2">
+        <div className="cinema-surface pointer-events-auto flex w-full max-w-[900px] flex-wrap items-center justify-between gap-2 rounded-3xl px-3 py-2 sm:flex-nowrap sm:rounded-full sm:px-3.5">
           <div className="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {DIORAMA_SCENES.map((item) => {
               const active = item.id === sceneId
+              const hasStamp = stamps.includes(item.id)
               return (
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => {
-                    setSceneId(item.id)
-                    setInteractCount(0)
-                  }}
-                  className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 font-serif text-[12px] tracking-[0.04em] transition ${
+                  onClick={() => switchScene(item.id)}
+                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 font-serif text-[12px] tracking-[0.04em] transition ${
                     active
                       ? 'bg-signal font-medium text-[#170f07] shadow-[0_6px_18px_-6px_rgba(242,194,139,0.8)]'
                       : 'text-white/75 hover:bg-white/[0.08] hover:text-white'
                   }`}
                 >
-                  {item.short}
+                  {hasStamp && (
+                    <span
+                      className={`cinema-gem h-1.5 w-1.5 ${
+                        active ? 'bg-[#170f07]' : 'bg-signal shadow-[0_0_6px_rgba(242,194,139,0.9)]'
+                      }`}
+                    />
+                  )}
+                  <span>{item.short}</span>
                 </button>
               )
             })}
@@ -379,7 +607,7 @@ export function DioramaExperience({
                   : 'border-white/15 bg-white/[0.05] text-white/82 hover:border-signal/45 hover:text-signal'
               }`}
             >
-              {viewfinder ? '关闭取景框' : '取景框'}
+              {viewfinder ? '收起镜框' : '取景摄影'}
             </button>
             <button
               type="button"
@@ -412,7 +640,14 @@ export function DioramaExperience({
           <div className="cinema-surface animate-fade-up no-scrollbar max-h-[90dvh] w-full max-w-[540px] overflow-y-auto rounded-[26px] p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="hud-label text-signal/85">CAPTURED FRAME · {activeMeta.city}</div>
+                <div className="flex items-center gap-2">
+                  <span className="hud-label text-signal/85">CAPTURED FRAME · {activeMeta.city}</span>
+                  {stampUnlockedHere && (
+                    <span className="rounded-full bg-signal/20 px-2 py-0.5 font-serif text-[10px] text-signal">
+                      含「{activeMeta.stampTitle}」印记
+                    </span>
+                  )}
+                </div>
                 <h2 className="mt-1 font-serif text-[19px] font-light tracking-[0.06em] text-[#fff8ee]">
                   {activeMeta.title}
                 </h2>
@@ -469,7 +704,7 @@ export function DioramaExperience({
         </div>
       )}
 
-      {/* 视界纪念册总览弹窗（展示已拍立体照片 + 序章记忆胶片） */}
+      {/* 视界纪念册总览弹窗（含 6 城奇境印记馆 + 分类筛选 + 序章实拍胶片） */}
       {albumOpen && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-[#030712]/74 px-4 py-6 backdrop-blur-sm"
@@ -479,7 +714,7 @@ export function DioramaExperience({
           onClick={() => setAlbumOpen(false)}
         >
           <div
-            className="cinema-surface animate-fade-up no-scrollbar max-h-[88dvh] w-full max-w-[820px] overflow-y-auto rounded-[28px] p-5 sm:p-7"
+            className="cinema-surface animate-fade-up no-scrollbar max-h-[88dvh] w-full max-w-[840px] overflow-y-auto rounded-[28px] p-5 sm:p-7"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4">
@@ -489,10 +724,10 @@ export function DioramaExperience({
                   <span className="hud-label text-signal/85">KEEPSAKE ALBUM · 视界纪念册</span>
                 </div>
                 <h2 className="mt-1.5 font-serif text-[22px] font-light tracking-[0.08em] text-[#fff8ee]">
-                  已定格的立体风景与留言 ({album.length})
+                  奇境印记与立体留影 ({album.length})
                 </h2>
                 <p className="mt-1 font-serif text-[12px] text-white/58">
-                  每一帧都会永久保存在当前设备，可随时改写留言、导出高清纪念页或带去第 03 章寄出。
+                  点亮每座微缩奇境的全部机关即可收集对应城市印记，导出含金漆封印的高清纪念页。
                 </p>
               </div>
               <button
@@ -504,25 +739,92 @@ export function DioramaExperience({
               </button>
             </div>
 
+            {/* 六城奇境唤醒印记栏 */}
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {DIORAMA_SCENES.map((sc) => {
+                const earned = stamps.includes(sc.id)
+                return (
+                  <button
+                    key={sc.id}
+                    type="button"
+                    onClick={() => {
+                      switchScene(sc.id)
+                      setAlbumOpen(false)
+                    }}
+                    className={`rounded-2xl border p-3 text-left transition ${
+                      earned
+                        ? 'border-signal/40 bg-signal/[0.08] hover:border-signal/65'
+                        : 'border-white/10 bg-white/[0.02] hover:border-white/25'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-serif text-[12.5px] text-[#fff8ee]">{sc.short}</span>
+                      <span
+                        className={`cinema-gem h-2 w-2 ${
+                          earned ? 'bg-signal shadow-[0_0_8px_rgba(242,194,139,0.9)]' : 'border border-white/30'
+                        }`}
+                      />
+                    </div>
+                    <div className="mt-1 font-serif text-[11px] text-signal/88">
+                      {earned ? `◆ ${sc.stampTitle}` : '待唤醒 3 处机关'}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
             <div className="cinema-rule my-4" />
 
-            {album.length === 0 ? (
+            {/* 分类筛选 */}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                {[
+                  { id: 'all', label: `全部 (${album.length})` },
+                  {
+                    id: 'diorama',
+                    label: `微缩奇境 (${album.filter((e) => e.sceneId !== 'meadow').length})`,
+                  },
+                  {
+                    id: 'meadow',
+                    label: `序章草原 (${album.filter((e) => e.sceneId === 'meadow').length})`,
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setAlbumCategory(tab.id as typeof albumCategory)}
+                    className={`rounded-full px-3 py-1 font-serif text-[11.5px] transition ${
+                      albumCategory === tab.id
+                        ? 'bg-signal font-medium text-[#170f07]'
+                        : 'border border-white/12 text-white/70 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <span className="font-mono text-[10.5px] text-white/48">STAMPS {stamps.length}/6</span>
+            </div>
+
+            {filteredAlbum.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-6 py-12 text-center">
-                <p className="font-serif text-[15px] text-[#fff8ee]/88">纪念册还空着</p>
+                <p className="font-serif text-[15px] text-[#fff8ee]/88">
+                  {album.length === 0 ? '纪念册还空着' : '当前分类暂无留影'}
+                </p>
                 <p className="mt-2 font-serif text-[12.5px] leading-[1.8] text-white/55">
-                  先在立体微缩场景里点亮几盏灯、换个喜欢的角度，再按下底部「拍下纪念」即可留下第一页。
+                  在微缩奇境中按提示唤醒三项互动机关，再用取景摄影条调整焦距与底片色调拍下纪念吧。
                 </p>
                 <button
                   type="button"
                   onClick={() => setAlbumOpen(false)}
                   className="btn-primary mt-5"
                 >
-                  回去拍第一张
+                  回去拍摄立体奇境
                 </button>
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
-                {album.map((entry) => {
+                {filteredAlbum.map((entry) => {
                   const isEditing = editingId === entry.id
                   return (
                     <article
@@ -537,8 +839,13 @@ export function DioramaExperience({
                           draggable={false}
                         />
                         <span className="absolute left-2.5 top-2.5 rounded-full border border-white/16 bg-[#070e1f]/70 px-2.5 py-0.5 font-serif text-[10.5px] text-[#fff8ee] backdrop-blur-md">
-                          {entry.city} · {entry.mood === 'night' ? '星夜' : '黄昏'}
+                          {entry.city} · {moodBadgeLabel(entry.mood)}
                         </span>
+                        {entry.awakened && (
+                          <span className="absolute bottom-2.5 left-2.5 rounded-full border border-signal/55 bg-[#0a1224]/78 px-2.5 py-0.5 font-serif text-[10px] text-signal backdrop-blur-md">
+                            ◆ {entry.stampTitle ?? '奇境印记'}
+                          </span>
+                        )}
                         <span className="absolute right-2.5 top-2.5 rounded-full bg-black/45 px-2 py-0.5 font-mono text-[10px] text-white/70">
                           {formatStamp(entry.createdAt)}
                         </span>

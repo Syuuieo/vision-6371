@@ -646,7 +646,9 @@ export class AmbientMixer {
     }, delay)
   }
 
-  playInteractionSfx(kind: 'lamp' | 'star' | 'ripple' | 'snow' | 'shutter' | 'horn') {
+  playInteractionSfx(
+    kind: 'lamp' | 'star' | 'ripple' | 'snow' | 'shutter' | 'horn' | 'celebrate',
+  ) {
     if (!this.ctx || !this.sfxBus || this.muted || !this.active) return
     if (this.ctx.state !== 'running') return
     const ctx = this.ctx
@@ -705,25 +707,27 @@ export class AmbientMixer {
       return
     }
 
-    const notes: Record<'lamp' | 'star' | 'ripple' | 'snow', number[]> = {
+    const notes: Record<'lamp' | 'star' | 'ripple' | 'snow' | 'celebrate', number[]> = {
       lamp: [523.25, 659.25],
       star: [783.99, 1046.5, 1318.5],
       ripple: [392.0, 587.33],
       snow: [880.0, 1174.66],
+      celebrate: [523.25, 659.25, 783.99, 987.77, 1174.66],
     }
+    const isCelebrate = kind === 'celebrate'
     notes[kind].forEach((freq, i) => {
-      const at = now + i * 0.075
+      const at = now + i * (isCelebrate ? 0.095 : 0.075)
       const osc = ctx.createOscillator()
-      osc.type = 'sine'
+      osc.type = isCelebrate ? 'triangle' : 'sine'
       osc.frequency.setValueAtTime(freq, at)
       const g = ctx.createGain()
       g.gain.setValueAtTime(0.0001, at)
-      g.gain.exponentialRampToValueAtTime(0.075 / (i + 1), at + 0.012)
-      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.65)
+      g.gain.exponentialRampToValueAtTime((isCelebrate ? 0.085 : 0.075) / (1 + i * 0.45), at + 0.014)
+      g.gain.exponentialRampToValueAtTime(0.0001, at + (isCelebrate ? 1.15 : 0.65))
       osc.connect(g)
       g.connect(bus)
       osc.start(at)
-      osc.stop(at + 0.7)
+      osc.stop(at + (isCelebrate ? 1.2 : 0.7))
     })
   }
 
