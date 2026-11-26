@@ -202,6 +202,20 @@ export function SignalViewer({
     onCityResonate?.(signal.packet.city)
   }, [signal.code, signal.packet.city, onCityResonate])
 
+  useEffect(() => {
+    if (!cityVoiceId || muted || !soundOn || packet.voice) {
+      voicePlayer.stop()
+      return
+    }
+    const timer = window.setTimeout(() => {
+      void voicePlayer.unlock().then(() => voicePlayer.play(cityVoiceId, 'headset'))
+    }, 460)
+    return () => {
+      window.clearTimeout(timer)
+      voicePlayer.stop()
+    }
+  }, [signal.code, cityVoiceId, packet.voice, muted, soundOn])
+
   const applyResult = (nextHearts: number, nextEchoes: VisionEcho[]) => {
     const merged = mergeEchoes(echoesRef.current, nextEchoes)
     echoesRef.current = merged

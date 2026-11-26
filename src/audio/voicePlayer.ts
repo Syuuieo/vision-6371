@@ -23,6 +23,12 @@ export const CITY_VOICE_SLUGS: Record<string, string> = {
   哈尔滨: 'harbin',
   三亚: 'sanya',
   拉萨: 'lhasa',
+  悉尼: 'sydney',
+  夏威夷: 'hawaii',
+  雷克雅未克: 'reykjavik',
+  开普敦: 'capetown',
+  京都: 'kyoto',
+  巴黎: 'paris',
 }
 
 export function getCityVoiceId(city: string): string | null {
@@ -260,7 +266,7 @@ class VoicePlayer {
     this.setSnapshot(null, null)
   }
 
-  async play(id: string, mode: VoiceMode = 'headset'): Promise<boolean> {
+  async play(id: string, mode: VoiceMode = 'headset', onEnded?: () => void): Promise<boolean> {
     if (!id) return false
     const seq = ++this.playSeq
     this.stopSourceOnly()
@@ -338,6 +344,7 @@ class VoicePlayer {
       if (seq === this.playSeq) {
         this.activeSource = null
         this.setSnapshot(null, null)
+        onEnded?.()
       }
     }
 

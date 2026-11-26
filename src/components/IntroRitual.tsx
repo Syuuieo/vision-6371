@@ -1,8 +1,22 @@
 import type { DailyEcho } from '../services/journey'
+import type { ModuleId } from '../types/sensor'
+
+const PORTAL_CARDS: {
+  id: ModuleId
+  index: string
+  title: string
+  sub: string
+}[] = [
+  { id: 'prologue', index: '01', title: '草原序章', sub: '8 幕剧情 · 地心反转' },
+  { id: 'radio', index: '02', title: '全球电台', sub: '3D 地球 · 20 城原声' },
+  { id: 'post', index: '03', title: '视野信箱', sub: '漂流邮局 · 明信片' },
+  { id: 'diorama', index: '04', title: '立体纪念册', sub: '6 城微缩 3D 奇观' },
+]
 
 interface IntroRitualProps {
   opening: boolean
   onEnter: () => void
+  onNavigate?: (target: ModuleId) => void
   resumeLabel?: string | null
   onResume?: () => void
   echo?: DailyEcho | null
@@ -10,7 +24,6 @@ interface IntroRitualProps {
   onListenEcho?: (code: string) => void
   flashSafe?: boolean
   onToggleFlashSafe?: () => void
-  onOpenPremise?: () => void
   onPreloadScene?: () => void
   sceneMounted?: boolean
 }
@@ -18,6 +31,7 @@ interface IntroRitualProps {
 export function IntroRitual({
   opening,
   onEnter,
+  onNavigate,
   resumeLabel,
   onResume,
   echo,
@@ -25,7 +39,6 @@ export function IntroRitual({
   onListenEcho,
   flashSafe = false,
   onToggleFlashSafe,
-  onOpenPremise,
   onPreloadScene,
   sceneMounted = false,
 }: IntroRitualProps) {
@@ -85,7 +98,7 @@ export function IntroRitual({
           >
             <span className="h-px w-8 bg-gradient-to-r from-transparent to-signal/60" />
             <span className="font-serif text-[12.5px] tracking-[0.24em]">
-              献给刘慈欣《带上她的眼睛》
+              致敬刘慈欣《带上她的眼睛》
             </span>
             <span className="h-px w-8 bg-gradient-to-l from-transparent to-signal/60" />
           </div>
@@ -148,16 +161,6 @@ export function IntroRitual({
                   {resumeLabel}
                 </button>
               )}
-              {onOpenPremise && (
-                <button
-                  type="button"
-                  onClick={onOpenPremise}
-                  disabled={opening}
-                  className="cinema-surface-soft relative rounded-full border-white/18 px-5 py-3.5 font-serif text-[13.5px] tracking-[0.06em] text-white/85 transition hover:border-signal/55 hover:text-signal active:scale-[0.98]"
-                >
-                  故事前情
-                </button>
-              )}
             </div>
 
             {onToggleFlashSafe && (
@@ -204,6 +207,38 @@ export function IntroRitual({
               </div>
             </div>
           )}
+
+          <div
+            className="animate-fade-up mt-6 grid w-full max-w-[660px] grid-cols-2 gap-2 sm:grid-cols-4"
+            style={{ animationDelay: '1.05s' }}
+          >
+            {PORTAL_CARDS.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                disabled={opening}
+                onClick={() => {
+                  if (card.id === 'prologue') {
+                    onEnter()
+                  } else {
+                    onNavigate?.(card.id)
+                  }
+                }}
+                className="cinema-surface-soft group rounded-2xl px-3 py-2.5 text-left transition hover:border-signal/55 hover:bg-signal/[0.08] disabled:cursor-wait"
+              >
+                <div className="flex items-center justify-between font-mono text-[10px] tracking-[0.18em] text-signal/75">
+                  <span>{card.index}</span>
+                  <span className="transition-transform group-hover:translate-x-0.5">→</span>
+                </div>
+                <div className="mt-1 font-serif text-[13px] tracking-[0.04em] text-[#fff8ee] transition group-hover:text-signal">
+                  {card.title}
+                </div>
+                <div className="mt-0.5 truncate font-serif text-[11px] text-white/55">
+                  {card.sub}
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -262,6 +262,11 @@ export function DioramaExperience({
     showToast(`重放 · ${activeMeta.stampTitle}`, 3000)
   }
 
+  const handleAwakenAll = () => {
+    if (soundOn && !muted) void mixer.ensure()
+    worldRef.current?.awakenAll()
+  }
+
   const takePhoto = () => {
     const dataUrl = worldRef.current?.captureFrame(filmFilter)
     if (!dataUrl) {
@@ -425,13 +430,21 @@ export function DioramaExperience({
               </span>
               <span className="text-white/50">▾</span>
             </button>
-            {progress.awakened && (
+            {progress.awakened ? (
               <button
                 type="button"
                 onClick={handleReplayFinale}
                 className="cinema-surface-soft rounded-full border-signal/45 px-2.5 py-1 font-serif text-[11px] text-[#fff8ee] transition hover:border-signal hover:text-signal"
               >
                 再现奇观
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAwakenAll}
+                className="cinema-surface-soft rounded-full border-signal/45 px-2.5 py-1 font-serif text-[11px] text-signal transition hover:border-signal hover:bg-signal/16"
+              >
+                ✨ 唤醒奇观
               </button>
             )}
           </div>
@@ -458,13 +471,22 @@ export function DioramaExperience({
                     再现奇观
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleGuideNextGoal}
-                    className="rounded-full border border-white/16 bg-white/[0.04] px-2.5 py-0.5 font-serif text-[10.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
-                  >
-                    寻光指引
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleAwakenAll}
+                      className="rounded-full border border-signal/50 bg-signal/15 px-2.5 py-0.5 font-serif text-[10.5px] text-signal transition hover:bg-signal/25"
+                    >
+                      ✨ 唤醒奇观
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGuideNextGoal}
+                      className="rounded-full border border-white/16 bg-white/[0.04] px-2.5 py-0.5 font-serif text-[10.5px] text-white/80 transition hover:border-signal/55 hover:text-signal"
+                    >
+                      寻光指引
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"

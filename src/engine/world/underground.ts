@@ -19,10 +19,13 @@ export class UndergroundWorld {
   private readonly vehicle: THREE.Group
   private readonly vehicleCommsRing: THREE.Object3D
   private readonly vehicleBeacon: { mesh: THREE.Mesh; glow: THREE.Sprite; light: THREE.PointLight }
+  private readonly corePulseRings: THREE.Mesh[] = []
+  private readonly burstRing: THREE.Mesh
   private readonly pixelUniform = { value: 1 }
 
   active = false
   arrived = false
+  private burstProgress = -1
   private time = 0
   private readonly startPos = new THREE.Vector3()
   private readonly startLook = new THREE.Vector3()
@@ -345,6 +348,39 @@ export class UndergroundWorld {
     this.vehicleCommsRing = builtShip.commsRing
     this.vehicleBeacon = builtShip.beacon
     this.coreGroup.add(this.vehicle)
+
+    // 落日六号地心中微子周期光波环 + 终局心跳爆发冲击环
+    for (let i = 0; i < 3; i += 1) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(4.8, 0.06, 8, 72),
+        new THREE.MeshBasicMaterial({
+          color: i % 2 === 0 ? '#ffd08a' : '#ff9854',
+          transparent: true,
+          opacity: 0.0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      )
+      ring.position.copy(this.vehicle.position)
+      ring.rotation.set(0.16, 0.12, 0)
+      this.coreGroup.add(ring)
+      this.corePulseRings.push(ring)
+    }
+
+    this.burstRing = new THREE.Mesh(
+      new THREE.TorusGeometry(4.2, 0.18, 12, 84),
+      new THREE.MeshBasicMaterial({
+        color: '#ffe8be',
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    )
+    this.burstRing.position.copy(this.vehicle.position)
+    this.burstRing.visible = false
+    this.coreGroup.add(this.burstRing)
+
     this.coreGroup.visible = false
     this.group.add(this.coreGroup)
   }
@@ -638,12 +674,22 @@ export class UndergroundWorld {
     this.active = false
     this.time = 0
     this.arrived = false
+    this.burstProgress = -1
+    this.burstRing.visible = false
     this.group.visible = false
     this.magmaGroup.visible = false
     this.coreGroup.visible = false
     this.magmaUniforms.uOpacity.value = 0
     this.dustMote.uniforms.uOpacity.value = 0
     this.magmaSparks.uniforms.uOpacity.value = 0
+  }
+
+  triggerCoreBurst() {
+    if (!this.active) return
+    this.burstProgress = 0
+    this.burstRing.visible = true
+    this.burstRing.position.copy(this.vehicle.position)
+    this.burstRing.scale.setScalar(1)
   }
 
   update(
@@ -656,40 +702,68 @@ export class UndergroundWorld {
     lookCurrent: THREE.Vector3,
     applyCamera: (pos: THREE.Vector3, look: THREE.Vector3, fov: number) => void,
     onEvent?: (event: DescentEvent) => void,
+    calmMotion = false,
   ) {
     this.vehicle.position.y = -290.5 + Math.sin(elapsed * 0.4) * 0.32
     this.vehicle.rotation.y = 0.82 + Math.sin(elapsed * 0.17) * 0.07
     this.vehicle.rotation.z = 0.04 + Math.sin(elapsed * 0.23) * 0.02
-    this.vehicleCommsRing.rotation.z += dt * 0.45
+    const spinBoost = this.burstProgress >= 0 ? 3.2 * (1 - this.burstProgress) : 0
+    this.vehicleCommsRing.rotation.z += dt * (0.45 + spinBoost)
     this.magmaGroup.rotation.y = elapsed * 0.025
-    this.warpStreams.rotation.y = elapsed * 0.38
+    this.warpStreams.rotation.y = elapsed * 0.52
     this.coreAccretion.rotation.z = elapsed * 0.04
     this.coreAccretion.rotation.y = Math.sin(elapsed * 0.15) * 0.08
-    const blink = 0.3 + 0.7 * Math.pow(0.5 + 0.5 * Math.sin(elapsed * 1.7), 6)
-    ;(this.vehicleBeacon.glow.material as THREE.SpriteMaterial).opacity = blink
-    this.vehicleBeacon.glow.scale.setScalar(1.0 + blink * 1.1)
-    this.vehicleBeacon.light.intensity = 4 + blink * 10
-    this.vehicleBeacon.mesh.scale.setScalar(0.9 + blink * 0.22)
+    const baseBlink = 0.3 + 0.7 * Math.pow(0.5 + 0.5 * Math.sin(elapsed * 1.7), 6)
+    const burstFlare = this.burstProgress >= 0 ? Math.sin(this.burstProgress * Math.PI) * 1.15 : 0
+    const blink = Math.min(2, baseBlink + burstFlare)
+    ;(this.vehicleBeacon.glow.material as THREE.SpriteMaterial).opacity = Math.min(1, blink)
+    this.vehicleBeacon.glow.scale.setScalar(1.0 + blink * 1.35)
+    this.vehicleBeacon.light.intensity = 6 + blink * 14
+    this.vehicleBeacon.mesh.scale.setScalar(0.9 + blink * 0.28)
     this.coreSparks.rotation.y = elapsed * 0.02
     this.dustMote.uniforms.uTime.value = elapsed
     this.magmaSparks.uniforms.uTime.value = elapsed
     this.magmaUniforms.uTime.value = elapsed
     this.backdropUniform.value = elapsed
 
+    for (let i = 0; i < this.corePulseRings.length; i += 1) {
+      const ring = this.corePulseRings[i]
+      const phase = ((elapsed * 0.34) + i / this.corePulseRings.length) % 1
+      ring.position.y = this.vehicle.position.y
+      ring.scale.setScalar(1 + phase * 4.2)
+      ;(ring.material as THREE.MeshBasicMaterial).opacity =
+        this.core ? (1 - phase) * (1 - phase) * 0.42 : 0
+    }
+
+    if (this.burstProgress >= 0) {
+      this.burstProgress = Math.min(1, this.burstProgress + dt / 1.75)
+      const ease = 1 - Math.pow(1 - this.burstProgress, 3)
+      this.burstRing.position.y = this.vehicle.position.y
+      this.burstRing.position.z = this.vehicle.position.z + ease * 36
+      this.burstRing.scale.setScalar(1 + ease * 8.5)
+      ;(this.burstRing.material as THREE.MeshBasicMaterial).opacity =
+        (1 - this.burstProgress) * 0.85
+      if (this.burstProgress >= 1) {
+        this.burstProgress = -1
+        this.burstRing.visible = false
+      }
+    }
+
     if (!this.active) return
     if (this.arrived) {
-      const hoverX = Math.sin(elapsed * 0.12) * 1.6
-      const hoverY = -291.6 + Math.cos(elapsed * 0.1) * 0.35
-      camPos.set(hoverX, hoverY, 9)
-      lookCurrent.set(0, -293.6, -40)
-      applyCamera(camPos, lookCurrent, 50)
+      const pushIn = this.burstProgress >= 0 ? Math.sin(this.burstProgress * Math.PI * 0.5) * 4.4 : 0
+      const hoverX = Math.sin(elapsed * 0.16) * 2.4
+      const hoverY = -291.3 + Math.cos(elapsed * 0.12) * 0.42
+      camPos.set(hoverX, hoverY, 9.2 - pushIn)
+      lookCurrent.set(0, -292.6, -40)
+      applyCamera(camPos, lookCurrent, pushIn > 0 ? 48 - pushIn * 0.8 : 48)
       return
     }
 
     this.time += dt
     const t = this.time
 
-    if (!this.breached && t >= 2.42) {
+    if (!this.breached && t >= 2.3) {
       this.breached = true
       surfaceGroup.visible = false
       skyGroup.visible = false
@@ -700,38 +774,38 @@ export class UndergroundWorld {
       this.dustMote.uniforms.uOpacity.value = 0.55
       onEvent?.({ type: 'breach' })
     }
-    if (!this.mantle && t >= 4.25) {
+    if (!this.mantle && t >= 5.4) {
       this.mantle = true
       this.magmaGroup.visible = true
-      this.magmaUniforms.uOpacity.value = 0.72
-      this.magmaSparks.uniforms.uOpacity.value = 0.85
+      this.magmaUniforms.uOpacity.value = 0.78
+      this.magmaSparks.uniforms.uOpacity.value = 0.9
       scene.background = new THREE.Color('#140402')
       this.fogColor.set('#1f0703')
-      this.fogDensity = 0.009
+      this.fogDensity = 0.0085
       onEvent?.({ type: 'mantle' })
     }
-    if (!this.core && t >= 6.85) {
+    if (!this.core && t >= 8.8) {
       this.core = true
       this.coreGroup.visible = true
       this.magmaGroup.visible = false
-      this.dustMote.uniforms.uOpacity.value = 0.12
+      this.dustMote.uniforms.uOpacity.value = 0.14
       scene.background = new THREE.Color('#0d0302')
       this.fogColor.set('#160604')
-      this.fogDensity = 0.0048
+      this.fogDensity = 0.0046
       onEvent?.({ type: 'core' })
     }
 
-    if (t >= 9.15 && !this.arrived) {
+    if (t >= 11.8 && !this.arrived) {
       this.arrived = true
-      camPos.set(0, -291.6, 9)
-      lookCurrent.set(0, -293.6, -40)
-      applyCamera(camPos, lookCurrent, 50)
+      camPos.set(0, -291.3, 9.2)
+      lookCurrent.set(0, -292.6, -40)
+      applyCamera(camPos, lookCurrent, 48)
       onEvent?.({ type: 'arrive' })
       return
     }
 
-    const progress = clamp(t / 9.15, 0, 1)
-    if (t - this.lastTick > 0.12) {
+    const progress = clamp(t / 11.8, 0, 1)
+    if (t - this.lastTick > 0.1) {
       this.lastTick = t
       onEvent?.({ type: 'tick', progress })
     }
@@ -744,49 +818,54 @@ export class UndergroundWorld {
     const rockLook = new THREE.Vector3(0, -190, 0)
     const magma = new THREE.Vector3(0, -238, 0)
     const magmaLook = new THREE.Vector3(0, -300, 0)
-    const core = new THREE.Vector3(0, -291.6, 9)
-    const coreLook = new THREE.Vector3(0, -293.6, -40)
+    const core = new THREE.Vector3(0, -291.3, 9.2)
+    const coreLook = new THREE.Vector3(0, -292.6, -40)
 
     let pos: THREE.Vector3
     let look: THREE.Vector3
     let fov = this.startFov
 
-    if (t < 1.4) {
-      const k = easeInOutCubic(t / 1.4)
+    if (t < 1.5) {
+      const k = easeInOutCubic(t / 1.5)
       pos = this.startPos.clone().lerp(rise, k)
       look = this.startLook.clone().lerp(riseLook, k)
-      fov = this.startFov + (52 - this.startFov) * k
+      fov = this.startFov + (50 - this.startFov) * k
     } else if (t < 2.6) {
-      const k = easeInCubic((t - 1.4) / 1.2)
+      const k = easeInCubic((t - 1.5) / 1.1)
       pos = rise.clone().lerp(dive, k)
       look = riseLook.clone().lerp(diveLook, k)
-      fov = 52 + 4 * k
-    } else if (t < 4.7) {
-      const k = (t - 2.6) / 2.1
+      fov = 50 + 12 * k
+    } else if (t < 5.6) {
+      const k = (t - 2.6) / 3.0
       pos = dive.clone().lerp(rock, easeInOutSine(k))
       look = diveLook.clone().lerp(rockLook, k)
-      fov = 56
-    } else if (t < 6.7) {
-      const k = (t - 4.7) / 2
+      fov = 62 + 4 * k
+    } else if (t < 9.2) {
+      const k = (t - 5.6) / 3.6
       pos = rock.clone().lerp(magma, easeInOutSine(k))
       look = rockLook.clone().lerp(magmaLook, k)
-      fov = 56
+      fov = 66 + 8 * Math.sin(k * Math.PI * 0.5)
     } else {
-      const k = easeInOutCubic((t - 6.7) / 2.45)
+      const k = easeInOutCubic((t - 9.2) / 2.6)
       pos = magma.clone().lerp(core, k)
       look = magmaLook.clone().lerp(coreLook, k)
-      fov = 56 + (52 - 56) * k
+      fov = 74 + (48 - 74) * k
     }
 
-    if (t > 2.9 && t < 6.8) {
-      const sway = Math.sin((t - 2.9) * 0.8)
+    if (t > 2.6 && t < 9.0) {
+      const sway = Math.sin((t - 2.6) * 0.9)
       pos.x += sway * 1.15
-      pos.z += Math.cos((t - 2.9) * 0.62) * 0.9
+      pos.z += Math.cos((t - 2.6) * 0.7) * 0.9
       look.x += sway * 2.6
       look.z -= 9
+      if (!calmMotion && t > 5.4) {
+        const quake = Math.sin((t - 5.4) * 34) * 0.14
+        pos.x += quake
+        pos.y += Math.cos((t - 5.4) * 29) * 0.1
+      }
     }
 
-    this.fogDensity = this.core ? 0.005 : this.mantle ? 0.009 : 0.012
+    this.fogDensity = this.core ? 0.0046 : this.mantle ? 0.0085 : 0.012
     this.dustMote.points.position.set(pos.x, pos.y, pos.z)
     this.magmaSparks.points.position.set(pos.x, pos.y, pos.z)
     applyCamera(pos, look, fov)

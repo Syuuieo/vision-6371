@@ -25,6 +25,8 @@ interface EndingSequenceOverlayProps {
   memories: MemoryFrame[]
   exportingRoll: boolean
   showVoiceControl?: boolean
+  coreBursting?: boolean
+  flashSafe?: boolean
   onAdvanceIntro: () => void
   onSkipIntro: () => void
   onExitToRitual: () => void
@@ -48,6 +50,8 @@ export function EndingSequenceOverlay({
   memories,
   exportingRoll,
   showVoiceControl = true,
+  coreBursting = false,
+  flashSafe = false,
   onAdvanceIntro,
   onSkipIntro,
   onExitToRitual,
@@ -158,7 +162,7 @@ export function EndingSequenceOverlay({
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex flex-col items-center px-4 pb-[max(1.4rem,env(safe-area-inset-bottom))]">
           <div
             key={currentDescentCaption.layer}
-            className="cinema-caption mb-4 max-w-[34rem] rounded-full border border-ember/25 bg-[#120b0d]/68 px-5 py-2 text-center backdrop-blur-md"
+            className="cinema-caption mb-4 max-w-[36rem] rounded-full border border-ember/25 bg-[#120b0d]/68 px-5 py-2 text-center backdrop-blur-md"
           >
             <div className="font-mono text-[9.5px] tracking-[0.24em] text-ember">{currentDescentCaption.layer}</div>
             <p className="mt-0.5 font-serif text-[13px] tracking-[0.04em] text-[#ffe8d6]">
@@ -171,32 +175,58 @@ export function EndingSequenceOverlay({
             </span>
             <span className="text-[11px] tracking-[0.24em] text-white/45">KM</span>
           </div>
-          <div className="mt-2 h-[2px] w-48 overflow-hidden rounded-full bg-white/10">
+          <div className="mt-2 h-[2px] w-52 overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-gradient-to-r from-ember/50 via-ember to-[#ffe4c2] transition-[width] duration-200"
               style={{ width: `${Math.min(100, (depthKm / 6371.4) * 100)}%` }}
             />
           </div>
-          <div className="mt-2 font-mono text-[9.5px] tracking-[0.22em] text-[#ffad96]/80">
-            EARTH CORE · SIGNAL {(signal * 100).toFixed(0)}%
-          </div>
+          {(() => {
+            const ratio = Math.min(1, Math.max(0, depthKm / 6371.4))
+            const liveTemp = Math.round(18 + ratio * 5382)
+            const livePressure = (0.0001 + Math.pow(ratio, 1.35) * 359.9999).toFixed(1)
+            return (
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 font-mono text-[9.5px] tracking-[0.2em] text-[#ffad96]/85">
+                <span>TEMP {liveTemp.toLocaleString('en-US')}°C</span>
+                <span className="text-white/25">·</span>
+                <span>PRESSURE {livePressure} GPa</span>
+                <span className="text-white/25">·</span>
+                <span>SIGNAL {(signal * 100).toFixed(0)}%</span>
+              </div>
+            )
+          })()}
         </div>
       )}
 
       {phase === 'core_pulse' && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[44] flex flex-col items-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] text-center">
+          {coreBursting && !flashSafe && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none fixed inset-0 z-[-1] bg-[radial-gradient(circle_at_50%_52%,rgba(255,214,145,0.28),rgba(242,140,92,0.1)_44%,transparent_72%)] transition-opacity duration-700"
+            />
+          )}
           <div className="cinema-caption flex flex-col items-center">
-            <p className="max-w-[30rem] font-serif text-[14.5px] leading-[1.85] tracking-[0.05em] text-[#fff0dc]/90">
-              6,371.4 公里深处，落日六号的琥珀色信标仍在铁镍海里一下一下闪亮。
+            <p className="max-w-[32rem] font-serif text-[14.5px] leading-[1.85] tracking-[0.05em] text-[#fff0dc]/92">
+              {coreBursting
+                ? '已收到你的心跳——「落日六号」中微子信标全频共鸣中，正把人间星光送进地心深处…'
+                : '6,371.4 公里深处，落日六号的琥珀色信标仍在铁镍海里一下一下闪亮。'}
             </p>
             <button
               type="button"
+              disabled={coreBursting}
               onClick={onRespondCoreHeartbeat}
-              className="btn-primary pointer-events-auto relative mt-5"
+              className={`btn-primary pointer-events-auto relative mt-5 transition-all ${
+                coreBursting ? 'scale-105 brightness-110' : ''
+              }`}
             >
-              <span className="breathe-ring pointer-events-none absolute -inset-2 rounded-full border border-signal/55" />
+              <span
+                className={`breathe-ring pointer-events-none absolute -inset-2 rounded-full border ${
+                  coreBursting ? 'border-signal shadow-[0_0_28px_rgba(242,194,139,0.85)]' : 'border-signal/55'
+                }`}
+              />
               <span className="h-2 w-2 rounded-full bg-[#170f07]" />
-              <span>回应她的心跳</span>
+              <span>{coreBursting ? '中微子心跳同步中…' : '回应她的心跳 · 同步落日六号'}</span>
             </button>
           </div>
         </div>
@@ -206,29 +236,10 @@ export function EndingSequenceOverlay({
         <div className="pointer-events-none fixed inset-0 z-[46] flex flex-col justify-end">
           <div className="absolute inset-0 bg-gradient-to-t from-[#091122] via-[#091122]/80 to-transparent" />
           <div className="ending-rise no-scrollbar relative mx-auto max-h-dvh w-full max-w-[780px] overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-20 text-center">
-            {showVoiceControl && (
-              <button
-                type="button"
-                onClick={() => {
-                  void voicePlayer.unlock()
-                  void voicePlayer.toggle('epilogue-final', 'clear')
-                }}
-                className="pointer-events-auto mx-auto mb-4 flex w-max items-center gap-2 rounded-full border border-signal/35 bg-signal/10 px-3.5 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-signal transition hover:border-signal/65 hover:bg-signal/18"
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                    voiceState.playingId === 'epilogue-final'
-                      ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
-                      : 'animate-[blinkDot_2s_ease-in-out_infinite]'
-                  }`}
-                />
-                <span>
-                  {voiceState.playingId === 'epilogue-final'
-                    ? '地心深处 · 落日六号正在回应 · 暂停'
-                    : '地心深处 · 落日六号仍在回应 · 重听'}
-                </span>
-              </button>
-            )}
+            <div className="mx-auto mb-4 flex w-max items-center gap-2 rounded-full border border-signal/35 bg-signal/10 px-3.5 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-signal">
+              <span className="h-1.5 w-1.5 rounded-full bg-signal animate-[blinkDot_2s_ease-in-out_infinite]" />
+              <span>地心深处 · 落日六号信标仍在同频闪烁</span>
+            </div>
             <div className="hud-value text-[clamp(48px,8.5vw,92px)] font-light leading-none tracking-[0.04em] text-[#fff8ee]">
               {TRUTH.depth}
               <span className="ml-2 font-mono text-[12px] tracking-[0.22em] text-white/55">{TRUTH.unit}</span>

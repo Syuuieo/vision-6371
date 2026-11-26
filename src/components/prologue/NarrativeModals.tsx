@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { voicePlayer, type VoiceMode, type VoiceSnapshot } from '../../audio/voicePlayer'
 import { TRUTH } from '../../data/narrative'
 import type {
@@ -18,6 +19,7 @@ interface NarrativeModalsProps {
   voiceState: VoiceSnapshot
   lore: EasterEggMeta | null
   attenuating: boolean
+  calmMotion?: boolean
   showVoiceControl?: boolean
   meadowShot: { image: string; placeName: string; hour: number } | null
   meadowNote: string
@@ -27,11 +29,95 @@ interface NarrativeModalsProps {
   onToggleQuoteCollapse: () => void
   onPickChoice: (choice: DialogueChoice) => void
   onContinueQuote: () => void
+  onProceedDescent?: () => void
   onCloseLore: () => void
   onCloseMeadowShot: () => void
   onMeadowNoteChange: (val: string) => void
   onConfirmSaveMeadowShot: () => void
   onGoDiorama: () => void
+}
+
+interface TruthRevealOverlayProps {
+  calmMotion: boolean
+  onProceedDescent?: () => void
+}
+
+function TruthRevealOverlay({ calmMotion, onProceedDescent }: TruthRevealOverlayProps) {
+  const [revealProgress, setRevealProgress] = useState(() => (calmMotion ? 1 : 0))
+
+  useEffect(() => {
+    if (calmMotion) return
+    let rafId = 0
+    const durationMs = 1650
+    const start = performance.now()
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setRevealProgress(eased)
+      if (t < 1) {
+        rafId = requestAnimationFrame(step)
+      }
+    }
+    rafId = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(rafId)
+  }, [calmMotion])
+
+  const effectiveProgress = calmMotion ? 1 : revealProgress
+  const displayDepth = (6371.4 * effectiveProgress).toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  const displayTemp = Math.round(18 + 5382 * effectiveProgress).toLocaleString('en-US')
+  const displayPressure = (0.1 + 359.9 * Math.pow(effectiveProgress, 1.3)).toFixed(1)
+
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[45]">
+      <div className="attenuation-overlay" />
+      <div className="chromatic-stress relative flex h-full flex-col items-center justify-center px-6 text-center">
+        <div className="glitch-text font-mono text-[10px] tracking-[0.28em] text-[#ffb18a] sm:text-[11.5px]">
+          {TRUTH.tag} <span className="mx-2 text-white/25">//</span> DEPTH UNSEALED
+        </div>
+        <div className="hud-value mt-4 flex items-baseline gap-2 text-[#ffd0bd]">
+          <span className="text-[clamp(54px,10vw,104px)] font-light leading-none text-glow-ember">
+            {displayDepth}
+          </span>
+          <span className="text-[11px] tracking-[0.24em] text-white/45">{TRUTH.unit}</span>
+        </div>
+        <div className="mt-1 font-mono text-[10px] tracking-[0.34em] text-[#ff8f70]">{TRUTH.subtitle}</div>
+        <div className="mt-6 space-y-1.5">
+          {TRUTH.lines.map((line, index) => (
+            <p
+              key={line}
+              className="quote-line font-serif text-[15px] font-normal leading-[1.9] tracking-[0.08em] text-white/82"
+              style={{ animationDelay: `${0.12 + index * 0.2}s` }}
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <span className="rounded-full border border-[#ff795a]/35 bg-[#ff5a3c]/[0.08] px-3 py-1 font-mono text-[9.5px] tracking-[0.16em] text-[#ffad96]">
+            外部压强 {displayPressure} GPa · {displayTemp}°C // NEURAL OVERRIDE
+          </span>
+          <span className="font-mono text-[9.5px] tracking-[0.2em] text-white/38">{TRUTH.vessel}</span>
+        </div>
+        {onProceedDescent && (
+          <div className="pointer-events-auto mt-7 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={onProceedDescent}
+              className="btn-primary !border-ember/60 !bg-[#ff9468] !text-[#1a0a06]"
+            >
+              立即随信号下坠 ›
+            </button>
+            <span className="font-serif text-[11.5px] text-white/48">
+              等待旁白结束自动俯冲，或轻点提前穿透地核
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function NarrativeModals({
@@ -44,6 +130,7 @@ export function NarrativeModals({
   voiceState,
   lore,
   attenuating,
+  calmMotion = false,
   showVoiceControl = true,
   meadowShot,
   meadowNote,
@@ -53,6 +140,7 @@ export function NarrativeModals({
   onToggleQuoteCollapse,
   onPickChoice,
   onContinueQuote,
+  onProceedDescent,
   onCloseLore,
   onCloseMeadowShot,
   onMeadowNoteChange,
@@ -333,36 +421,7 @@ export function NarrativeModals({
       )}
 
       {attenuating && (
-        <div className="pointer-events-none fixed inset-0 z-[45]">
-          <div className="attenuation-overlay" />
-          <div className="chromatic-stress relative flex h-full flex-col items-center justify-center px-6 text-center">
-            <div className="glitch-text font-mono text-[10px] tracking-[0.28em] text-[#ffb18a] sm:text-[11.5px]">
-              {TRUTH.tag} <span className="mx-2 text-white/25">//</span> DEPTH UNSEALED
-            </div>
-            <div className="hud-value mt-4 flex items-baseline gap-2 text-[#ffd0bd]">
-              <span className="text-[clamp(54px,10vw,104px)] font-light leading-none text-glow-ember">{TRUTH.depth}</span>
-              <span className="text-[11px] tracking-[0.24em] text-white/45">{TRUTH.unit}</span>
-            </div>
-            <div className="mt-1 font-mono text-[10px] tracking-[0.34em] text-[#ff8f70]">{TRUTH.subtitle}</div>
-            <div className="mt-6 space-y-1.5">
-              {TRUTH.lines.map((line, index) => (
-                <p
-                  key={line}
-                  className="quote-line font-serif text-[15px] font-normal leading-[1.9] tracking-[0.08em] text-white/80"
-                  style={{ animationDelay: `${0.1 + index * 0.16}s` }}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
-            <div className="mt-6 flex flex-col items-center gap-2">
-              <span className="rounded-full border border-[#ff795a]/35 bg-[#ff5a3c]/[0.08] px-3 py-1 font-mono text-[9.5px] tracking-[0.16em] text-[#ffad96]">
-                {TRUTH.warning}
-              </span>
-              <span className="font-mono text-[9.5px] tracking-[0.2em] text-white/38">{TRUTH.vessel}</span>
-            </div>
-          </div>
-        </div>
+        <TruthRevealOverlay calmMotion={calmMotion} onProceedDescent={onProceedDescent} />
       )}
     </>
   )

@@ -257,7 +257,7 @@ export function PostVisionStudio({
   const livePacket = useMemo<VisionPacket>(
     () => ({
       id: packetId,
-      title: title.trim() || '未命名的视界',
+      title: title.trim() || '未命名的风信',
       sender: sender.trim() || '我',
       city: city.trim() || '地球某处',
       image,
@@ -313,6 +313,8 @@ export function PostVisionStudio({
     showToast('已装载纪念册卡片 · 请挑一枚当地邮票')
   }
 
+  const sampleIndexRef = useRef(0)
+
   const applyPreset = (preset: VisionPreset) => {
     setPresetId(preset.id)
     setCreatedAt(Date.now())
@@ -332,6 +334,25 @@ export function PostVisionStudio({
     setSoundOn(true)
     void mixer.ensure()
     showToast(`已切换画面 · ${preset.title}`)
+  }
+
+  const handleQuickFillSample = () => {
+    const idx = sampleIndexRef.current % DRIFT_INBOX_LETTERS.length
+    sampleIndexRef.current += 1
+    const sample = DRIFT_INBOX_LETTERS[idx]
+    const preset = VISION_PRESETS.find((p) => p.id === sample.presetId) ?? VISION_PRESETS[0]
+    applyPreset(preset)
+    setCity(sample.city)
+    setTempC(sample.tempC)
+    setLetterWeather(sample.weather)
+    setSelectedStampId(sample.stampId)
+    setSelectedSticker(sample.sticker)
+    setSelectedFrameId(CARD_FRAMES[idx % CARD_FRAMES.length].id)
+    setLetterBody(sample.letter)
+    setSender(sample.sender)
+    setCardView('letter')
+    setStep(3)
+    showToast(`已装好「${sample.city}」示例风信 · 可直接冲印或寄出`)
   }
 
   const handleFile = async (file: File) => {
@@ -649,6 +670,16 @@ export function PostVisionStudio({
                 </span>
               </button>
             </div>
+            {mailboxTab === 'compose' && (
+              <button
+                type="button"
+                onClick={handleQuickFillSample}
+                title="自动选好风景、写好短笺并贴上邮票，5 秒体验完整明信片"
+                className="rounded-full border border-signal/40 bg-signal/12 px-3 py-1.5 font-serif text-[12px] tracking-[0.04em] text-signal backdrop-blur-md transition hover:border-signal/70 hover:bg-signal/22"
+              >
+                🎲 随机装一封风信
+              </button>
+            )}
           </div>
           <div className="hidden font-serif text-[11.5px] tracking-[0.04em] text-white/55 sm:block">
             从纪念册挑风景 · 贴上当地邮票写信漂流 · 也能拆开真实电台与远方的明信片
@@ -1363,7 +1394,7 @@ export function PostVisionStudio({
                       maxLength={26}
                       onChange={(event) => setTitle(event.target.value)}
                       className={inputClass}
-                      placeholder="未命名的视界"
+                      placeholder="未命名的风信"
                     />
                   </label>
                   <label className="block">

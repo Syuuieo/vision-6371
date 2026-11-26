@@ -686,18 +686,19 @@ export class Soundscape {
   descentStart() {
     if (!this.ctx) return
     const t = this.now()
-    this.rumbleGain?.gain.setTargetAtTime(0.58, t, 1.1)
-    this.rumbleGain?.gain.setTargetAtTime(0.16, t + 3.2, 2.4)
-    this.rumbleGain?.gain.setTargetAtTime(0.0001, t + 8.4, 1.2)
-    this.pulseGain?.gain.setTargetAtTime(0.16, t, 2.2)
+    this.rumbleGain?.gain.setTargetAtTime(0.62, t, 0.95)
+    this.rumbleGain?.gain.setTargetAtTime(0.32, t + 5.2, 1.5)
+    this.rumbleGain?.gain.setTargetAtTime(0.0001, t + 10.6, 1.0)
+    this.pulseGain?.gain.setTargetAtTime(0.16, t, 2.0)
     this.windGain?.gain.setTargetAtTime(0.0001, t, 0.5)
     this.staticGain?.gain.setTargetAtTime(0.0001, t, 0.4)
     this.skimAmount = 0
     this.applySkim(0.35)
     this.playChime([196, 261.63, 329.63, 392], 0.07, 5.2)
     this.startBgm('descent')
-    this.later(() => this.startHeartbeat(), 3600)
-    this.later(() => this.staticBurst(), 2200)
+    this.later(() => this.startHeartbeat(), 3000)
+    this.later(() => this.staticBurst(), 2300)
+    this.later(() => this.staticBurst(), 5500)
   }
 
   arrive() {
@@ -707,70 +708,97 @@ export class Soundscape {
     this.startBgm('core')
   }
 
-  playPhoneRing() {
+  playCoreResonance() {
+    if (!this.ctx || this.muted || !this.active) return
+    const t = this.ctx.currentTime + 0.02
+    this.thump(t, 56, 0.24)
+    this.thump(t + 0.28, 68, 0.2)
+    this.playChime([196, 293.66, 392, 587.33, 783.99], 0.14, 5.4)
+  }
+
+  playCommsIncoming() {
     if (!this.ctx || !this.sfx || !this.reverbSend || this.muted || !this.active) return
     const ctx = this.ctx
+    const sfx = this.sfx
+    const reverbSend = this.reverbSend
     const base = ctx.currentTime + 0.02
-    const bursts = [0, 0.44]
-    for (const offset of bursts) {
+    const pulses: [number, number][] = [
+      [0, 659.25],
+      [0.24, 880],
+    ]
+    for (const [offset, freq] of pulses) {
       const start = base + offset
-      const dur = 0.28
-      const bandpass = ctx.createBiquadFilter()
-      bandpass.type = 'bandpass'
-      bandpass.frequency.value = 920
-      bandpass.Q.value = 1.6
+      const dur = 0.48
+      const lowpass = ctx.createBiquadFilter()
+      lowpass.type = 'lowpass'
+      lowpass.frequency.value = 1800
 
       const env = ctx.createGain()
       env.gain.setValueAtTime(0.0001, start)
-      env.gain.exponentialRampToValueAtTime(0.085, start + 0.02)
-      env.gain.setValueAtTime(0.085, start + dur - 0.04)
+      env.gain.exponentialRampToValueAtTime(0.055, start + 0.03)
       env.gain.exponentialRampToValueAtTime(0.0001, start + dur)
 
-      for (const freq of [440, 480]) {
-        const osc = ctx.createOscillator()
-        osc.type = 'triangle'
-        osc.frequency.setValueAtTime(freq, start)
-        osc.connect(bandpass)
-        osc.start(start)
-        osc.stop(start + dur + 0.03)
-      }
+      const tone = ctx.createOscillator()
+      tone.type = 'sine'
+      tone.frequency.setValueAtTime(freq, start)
 
-      bandpass.connect(env)
-      env.connect(this.sfx)
-      env.connect(this.reverbSend)
+      const shimmer = ctx.createOscillator()
+      shimmer.type = 'triangle'
+      shimmer.frequency.setValueAtTime(freq * 2.002, start)
+      const shimmerGain = ctx.createGain()
+      shimmerGain.gain.value = 0.14
+
+      tone.connect(lowpass)
+      shimmer.connect(shimmerGain).connect(lowpass)
+      lowpass.connect(env)
+      env.connect(sfx)
+      env.connect(reverbSend)
+
+      tone.start(start)
+      shimmer.start(start)
+      tone.stop(start + dur + 0.04)
+      shimmer.stop(start + dur + 0.04)
     }
   }
 
-  playPhonePickup() {
-    if (!this.ctx || !this.sfx || this.muted || !this.active) return
+  playCommsConnect() {
+    if (!this.ctx || !this.sfx || !this.reverbSend || this.muted || !this.active) return
     const ctx = this.ctx
     const t = ctx.currentTime
-    const click = ctx.createOscillator()
-    click.type = 'sine'
-    click.frequency.setValueAtTime(240, t)
-    click.frequency.exponentialRampToValueAtTime(95, t + 0.07)
-    const cg = ctx.createGain()
-    cg.gain.setValueAtTime(0.0001, t)
-    cg.gain.exponentialRampToValueAtTime(0.14, t + 0.006)
-    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
-    click.connect(cg).connect(this.sfx)
-    click.start(t)
-    click.stop(t + 0.11)
+    const notes: [number, number][] = [
+      [0, 523.25],
+      [0.09, 783.99],
+    ]
+    for (const [offset, freq] of notes) {
+      const start = t + offset
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, start)
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, start)
+      gain.gain.exponentialRampToValueAtTime(0.075, start + 0.015)
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.38)
+      osc.connect(gain)
+      gain.connect(this.sfx)
+      gain.connect(this.reverbSend)
+      osc.start(start)
+      osc.stop(start + 0.42)
+    }
 
     if (this.noise) {
       const burst = ctx.createBufferSource()
       burst.buffer = this.noise
       const hp = ctx.createBiquadFilter()
       hp.type = 'bandpass'
-      hp.frequency.value = 1800
-      hp.Q.value = 1.4
+      hp.frequency.value = 1950
+      hp.Q.value = 1.6
       const bg = ctx.createGain()
-      bg.gain.setValueAtTime(0.0001, t + 0.04)
-      bg.gain.exponentialRampToValueAtTime(0.055, t + 0.08)
-      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.24)
+      bg.gain.setValueAtTime(0.0001, t + 0.03)
+      bg.gain.exponentialRampToValueAtTime(0.035, t + 0.07)
+      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.22)
       burst.connect(hp).connect(bg).connect(this.sfx)
-      burst.start(t + 0.04)
-      burst.stop(t + 0.26)
+      burst.start(t + 0.03)
+      burst.stop(t + 0.25)
     }
   }
 

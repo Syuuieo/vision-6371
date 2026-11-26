@@ -239,7 +239,10 @@ async function fetchWithRetry(url, options, label) {
 
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      const res = await fetch(url, options)
+      const res = await fetch(url, {
+        ...options,
+        signal: options?.signal ?? AbortSignal.timeout(25000),
+      })
       if (res.status === 429 || res.status >= 500) {
         const errText = await res.text().catch(() => '')
         throw new Error(`HTTP ${res.status} on ${label}: ${errText.slice(0, 240)}`)
@@ -338,9 +341,9 @@ async function main() {
   const cityJobs = buildCityJobs(voicePlayerSrc, storyRelaySrc)
   const allJobs = [...prologueJobs, ...cityJobs]
 
-  if (prologueJobs.length !== 32 || cityJobs.length !== 14 || allJobs.length !== 46) {
+  if (prologueJobs.length !== 28 || cityJobs.length !== 20 || allJobs.length !== 48) {
     throw new Error(
-      `Expected 32 prologue + 14 city = 46 jobs, got ${prologueJobs.length} + ${cityJobs.length} = ${allJobs.length}`,
+      `Expected 28 prologue + 20 city = 48 jobs, got ${prologueJobs.length} + ${cityJobs.length} = ${allJobs.length}`,
     )
   }
 

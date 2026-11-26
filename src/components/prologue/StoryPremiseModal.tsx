@@ -75,7 +75,7 @@ export function StoryPremiseModal({
 
         <div className="mt-5 rounded-2xl border border-signal/25 bg-signal/[0.06] px-4 py-3 font-serif text-[12.5px] leading-[1.8] text-white/82">
           <span className="text-signal">游玩指引：</span>
-          睁眼后先走进闪烁微光的<strong>草原电话亭</strong>接起林微的电话，戴上传感脑机即可听声寻迹；随后轻触野花、湖风、晚雨与星空，揭开 6,371.4 公里深处的秘密。
+          睁眼置身清晨草坡，接通随身终端来自<strong>林微</strong>的加密呼叫，戴上传感脑机即可听声寻迹；随后轻触野花、湖风、晚雨与星空，直到夜色尽头——揭开耳机另一端真正的坐标。
         </div>
 
         <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5">
@@ -93,7 +93,7 @@ export function StoryPremiseModal({
                 onClick={onEnter}
                 className="btn-primary"
               >
-                读完了 · 进入草原接听电话
+                读完了 · 进入草原接通频段
               </button>
             </>
           ) : (
@@ -102,7 +102,7 @@ export function StoryPremiseModal({
                 返回封面
               </button>
               <button type="button" onClick={onEnter} className="btn-primary">
-                进入草原接听电话
+                进入草原 · 接通频段
               </button>
             </>
           )}

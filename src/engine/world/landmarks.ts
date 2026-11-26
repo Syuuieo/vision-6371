@@ -324,11 +324,6 @@ export class LandmarksWorld {
   private flowerTouchPhase = 0
   private readonly heroBloomEmissive: { value: number }[] = []
 
-  private phoneRinging = false
-  private phoneRingMesh: THREE.Mesh | null = null
-  private phoneLedMat: THREE.MeshBasicMaterial | null = null
-  private phoneBoothGlow: THREE.Sprite | null = null
-
   private sanctuaryRuneMat: THREE.MeshBasicMaterial | null = null
   private sanctuaryRuneLevel = 0
   private lakeBoat: THREE.Group | null = null
@@ -353,7 +348,6 @@ export class LandmarksWorld {
     glowTexture: THREE.Texture,
     lowDetail: boolean,
   ) {
-    this.buildPhoneBooth(surfaceGroup, pickables, glowTexture)
     this.buildHeroFlower(surfaceGroup, pickables, glowTexture)
     this.buildScenery(surfaceGroup, glowTexture, lowDetail)
     this.buildScatter(surfaceGroup, lowDetail)
@@ -364,8 +358,7 @@ export class LandmarksWorld {
     this.buildWalkMarker(surfaceGroup)
     this.buildCallWave(surfaceGroup)
 
-    // 注册全场景净空遮罩区域（电话亭、主花、木栈道全段与岸坡接驳、轻舟及所有地标投影）
-    this.clearZones.push({ x: 2.6, z: 4.2, radius: 1.9 })
+    // 注册全场景净空遮罩区域（主花、木栈道全段与岸坡接驳、轻舟及所有地标投影）
     this.clearZones.push({ x: -3.8, z: -8.5, radius: 2.2 })
     for (let s = 0; s <= 7; s += 1) {
       const t = s / 7
@@ -389,141 +382,6 @@ export class LandmarksWorld {
     for (const spec of this.shadowSpecs) {
       this.clearZones.push({ x: spec.x, z: spec.z, radius: Math.max(0.55, spec.radius * 0.72) })
     }
-  }
-
-  private buildPhoneBooth(
-    surfaceGroup: THREE.Group,
-    pickables: THREE.Object3D[],
-    glowTexture: THREE.Texture,
-  ) {
-    const bx = 2.6
-    const bz = 4.2
-    const by = heightAt(bx, bz)
-    const booth = new THREE.Group()
-    booth.position.set(bx, by - 0.04, bz)
-    booth.rotation.y = -0.34
-
-    const frameMat = makeStylizedMat({ color: '#1b2b3a', emissive: '#0c1926', emissiveStrength: 0.35 })
-    const roofMat = makeStylizedMat({ color: '#263a4d', emissive: '#162838', emissiveStrength: 0.4 })
-    const metalMat = makeStylizedMat({ color: '#8fa6bd', emissive: '#35506b', emissiveStrength: 0.35 })
-    this.materials.push(frameMat, roofMat, metalMat)
-
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.14, 1.18), frameMat)
-    plinth.position.y = 0.07
-    booth.add(plinth)
-
-    for (const [px, pz] of [
-      [-0.46, -0.46],
-      [0.46, -0.46],
-      [-0.46, 0.46],
-      [0.46, 0.46],
-    ]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.24, 0.08), frameMat)
-      post.position.set(px, 1.24, pz)
-      booth.add(post)
-    }
-
-    const glassMat = new THREE.MeshBasicMaterial({
-      color: '#7dd3fc',
-      transparent: true,
-      opacity: 0.14,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    })
-    this.materials.push(glassMat)
-    for (const [gx, gz, ry] of [
-      [0, -0.45, 0],
-      [-0.45, 0, Math.PI / 2],
-      [0.45, 0, Math.PI / 2],
-    ]) {
-      const pane = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 1.98), glassMat)
-      pane.position.set(gx, 1.25, gz)
-      pane.rotation.y = ry
-      booth.add(pane)
-    }
-
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.18, 1.26), roofMat)
-    roof.position.y = 2.42
-    booth.add(roof)
-
-    const lampMat = new THREE.MeshBasicMaterial({ color: '#ffd9a3' })
-    this.materials.push(lampMat)
-    const ceilingLamp = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.06, 0.42), lampMat)
-    ceilingLamp.position.y = 2.3
-    booth.add(ceilingLamp)
-
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.56, 6), metalMat)
-    mast.position.set(0, 2.78, 0)
-    booth.add(mast)
-
-    const phoneLedMat = new THREE.MeshBasicMaterial({
-      color: '#f2c28b',
-      transparent: true,
-      opacity: 0.85,
-    })
-    this.materials.push(phoneLedMat)
-    this.phoneLedMat = phoneLedMat
-    const beaconBulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), phoneLedMat)
-    beaconBulb.position.set(0, 3.06, 0)
-    booth.add(beaconBulb)
-
-    // 内部壁挂中微子直连电话机与听筒
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 0.1), metalMat)
-    body.position.set(0, 1.42, -0.35)
-    booth.add(body)
-    const handset = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.28, 0.08), frameMat)
-    handset.position.set(-0.08, 1.44, -0.28)
-    handset.rotation.z = 0.18
-    booth.add(handset)
-
-    const ringGeo = new THREE.RingGeometry(0.86, 1.06, 36)
-    ringGeo.rotateX(-Math.PI / 2)
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: '#ffd9a3',
-      transparent: true,
-      opacity: 0.45,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    })
-    this.materials.push(ringMat)
-    const ringMesh = new THREE.Mesh(ringGeo, ringMat)
-    ringMesh.position.set(0, 0.09, 0)
-    ringMesh.visible = false
-    booth.add(ringMesh)
-    this.phoneRingMesh = ringMesh
-
-    const boothGlow = new THREE.Sprite(
-      new THREE.SpriteMaterial({
-        map: glowTexture,
-        color: '#ffd69e',
-        transparent: true,
-        opacity: 0.35,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    )
-    boothGlow.scale.set(2.4, 2.4, 1)
-    boothGlow.position.set(0, 1.55, 0)
-    booth.add(boothGlow)
-    this.phoneBoothGlow = boothGlow
-
-    booth.traverse((object) => {
-      if ((object as THREE.Mesh).isMesh) object.userData.pick = 'phone'
-    })
-
-    const hit = new THREE.Mesh(
-      new THREE.BoxGeometry(1.75, 2.7, 1.75),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-    )
-    hit.position.y = 1.35
-    hit.userData.pick = 'phone'
-    booth.add(hit)
-    pickables.push(hit)
-
-    booth.name = 'spawn-phone-booth'
-    surfaceGroup.add(booth)
-    this.shadowSpecs.push({ x: bx, z: bz, radius: 1.55 })
   }
 
   private buildHeroFlower(
@@ -1632,13 +1490,6 @@ export class LandmarksWorld {
     this.flowerTouchPhase = 0
   }
 
-  setPhoneRinging(ringing: boolean) {
-    this.phoneRinging = ringing
-    if (this.phoneRingMesh) {
-      this.phoneRingMesh.visible = ringing
-    }
-  }
-
   pulseSanctuaryRune(level: number) {
     this.sanctuaryRuneLevel = Math.max(0, Math.min(3, level))
     if (this.sanctuaryRuneMat) {
@@ -1688,26 +1539,6 @@ export class LandmarksWorld {
   update(dt: number, elapsed: number, camPos?: THREE.Vector3) {
     const callBoost = this.callWave?.active ? Math.sin(Math.min(1, this.callWave.age / 2.4) * Math.PI) : 0
     const pulse = 0.55 + 0.45 * Math.sin(elapsed * 1.6)
-
-    if (this.phoneRingMesh) {
-      if (this.phoneRinging) {
-        const ringWave = (elapsed * 1.15) % 1
-        this.phoneRingMesh.visible = true
-        this.phoneRingMesh.scale.setScalar(0.92 + ringWave * 1.15)
-        ;(this.phoneRingMesh.material as THREE.MeshBasicMaterial).opacity = (1 - ringWave) * 0.65
-      } else {
-        this.phoneRingMesh.visible = false
-      }
-    }
-    if (this.phoneLedMat) {
-      this.phoneLedMat.opacity = this.phoneRinging
-        ? 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(elapsed * 7.5))
-        : 0.48 + 0.25 * Math.sin(elapsed * 2.2)
-    }
-    if (this.phoneBoothGlow) {
-      const targetOp = this.phoneRinging ? 0.55 + 0.2 * Math.sin(elapsed * 6.4) : 0.24
-      this.phoneBoothGlow.material.opacity = targetOp
-    }
 
     for (const [id, beacon] of Object.entries(this.beacons)) {
       if (!beacon) continue

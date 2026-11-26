@@ -288,10 +288,6 @@ export class PrologueScene {
     this.windFX?.triggerHeroPetals()
   }
 
-  setPhoneRinging(ringing: boolean) {
-    this.landmarks?.setPhoneRinging(ringing)
-  }
-
   captureGalaxy() {
     this.setStage(2)
     this.skyWorld?.boostGalaxy()
@@ -315,6 +311,10 @@ export class PrologueScene {
     this.landmarks?.hideForDescent()
     this.skyWorld?.setConstellationActive(false, this.camera, this.pickables)
     this.skyWorld?.setMeteorActive(false)
+  }
+
+  triggerCoreBurst() {
+    this.underground?.triggerCoreBurst()
   }
 
   setRoamEnabled(enabled: boolean) {
@@ -620,6 +620,7 @@ export class PrologueScene {
         this.controller.lookCurrent,
         (pos, look, fov) => this.controller?.applyCamera(pos, look, fov),
         (event) => this.options.onDescentEvent?.(event),
+        this.calmMotion,
       )
     }
   }

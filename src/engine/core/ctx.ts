@@ -669,14 +669,6 @@ export function getCameraPreset(target: FocusTarget) {
   const flowerBase = new THREE.Vector3(-3.8, heightAt(-3.8, -8.5), -8.5)
   const windBase = new THREE.Vector3(10, heightAt(10, -30), -30)
 
-  if (target === 'phone') {
-    const boothY = heightAt(2.6, 4.2)
-    return {
-      pos: new THREE.Vector3(1.15, boothY + 1.68, 7.1),
-      look: new THREE.Vector3(2.6, boothY + 1.48, 4.2),
-      fov: 46,
-    }
-  }
   if (target === 'flower') {
     return {
       pos: new THREE.Vector3(flowerBase.x + 0.5, flowerBase.y + 1.72, flowerBase.z + 1.25),

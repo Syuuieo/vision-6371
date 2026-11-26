@@ -311,6 +311,28 @@ export class DioramaWorld {
     return `指引：${nextGoal.title}（${nextGoal.hint}）`
   }
 
+  awakenAll(): string {
+    const meta = DIORAMA_SCENES.find((s) => s.id === this.sceneId) ?? DIORAMA_SCENES[0]
+    for (const g of meta.goals) {
+      this.completedGoals.add(g.id)
+    }
+    this.beaconLife = 0
+    if (this.goalBeacon) this.goalBeacon.visible = false
+    this.unlockedAwakened = true
+    this.finaleTrigger?.()
+    const snap = buildGoalSnapshot(this.sceneId, this.completedGoals)
+    this.onProgress?.(snap)
+    this.interactionCount += 1
+    const label = `◆ 奇境觉醒 · ${meta.stampTitle}`
+    this.onInteract?.({
+      label,
+      sfx: 'celebrate',
+      count: this.interactionCount,
+      awakened: true,
+    })
+    return label
+  }
+
   captureFrame(filter: DioramaFilter = 'none'): string | null {
     if (this.disposed) return null
     const captureW = 1280

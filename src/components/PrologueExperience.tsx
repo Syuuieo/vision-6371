@@ -200,7 +200,6 @@ const ACTIVE_TASK_BY_ACT: Record<ActId, CollectionId | null> = {
 }
 
 const PICK_LABELS: Record<PickId, string> = {
-  phone: '草原电话亭 · 接听林微来电',
   flower: '轻触会摇曳的野花',
   wind: '草原的风声',
   stars: '暮色星辰',
@@ -296,6 +295,9 @@ export function PrologueExperience({
 
   // Shared HUD / effects / reveal
   const [attenuating, setAttenuating] = useState(false)
+  const [descentStage, setDescentStage] = useState<0 | 1 | 2>(0)
+  const [coreBursting, setCoreBursting] = useState(false)
+  const truthProceededRef = useRef(false)
   const [flash, setFlash] = useState(false)
   const [depthKm, setDepthKm] = useState(0)
   const [depthRevealed, setDepthRevealed] = useState(false)
@@ -542,18 +544,19 @@ export function PrologueExperience({
         onContextLost: (lost) => setContextLost(lost),
       })
       scene.setDiscoveredIds(discoveriesRef.current)
-      scene.setActiveTask(phaseRef.current === 'phone_wait' ? 'phone' : 'flower')
-      scene.setRoamEnabled(phaseRef.current === 'phone_wait' || phaseRef.current === 'explore')
-      scene.setPhoneRinging(phaseRef.current === 'phone_wait')
+      scene.setActiveTask(phaseRef.current === 'incoming_call' ? null : 'flower')
+      scene.setRoamEnabled(phaseRef.current === 'incoming_call' || phaseRef.current === 'explore')
       scene.setStage(stageRef.current)
       if (pendingResumeActRef.current !== null) {
         const targetAct = pendingResumeActRef.current
         pendingResumeActRef.current = null
         jumpToActRef.current(targetAct)
-      } else if (phaseRef.current === 'ritual' || phaseRef.current === 'phone_wait') {
+      } else if (
+        phaseRef.current === 'ritual' ||
+        phaseRef.current === 'incoming_call' ||
+        phaseRef.current === 'intro_call'
+      ) {
         scene.focusTarget('home', 3.4)
-      } else if (phaseRef.current === 'intro_call') {
-        scene.focusTarget('phone', 2.2)
       }
       setSceneMounted(true)
       observer = new ResizeObserver(() => scene?.resize())
@@ -651,7 +654,7 @@ export function PrologueExperience({
   useEffect(() => {
     const enabled =
       active &&
-      (phase === 'explore' || phase === 'phone_wait') &&
+      (phase === 'explore' || phase === 'incoming_call') &&
       !lore &&
       !finalizing &&
       !meadowShot
@@ -659,20 +662,15 @@ export function PrologueExperience({
   }, [active, phase, lore, finalizing, meadowShot, sceneRequested])
 
   useEffect(() => {
-    if (!active || phase !== 'phone_wait') {
-      sceneRef.current?.setPhoneRinging(false)
-      return
-    }
-    sceneRef.current?.setPhoneRinging(true)
-    sound.playPhoneRing()
+    if (!active || phase !== 'incoming_call') return
+    sound.playCommsIncoming()
     const timer = window.setInterval(() => {
-      sound.playPhoneRing()
-    }, 3600)
+      sound.playCommsIncoming()
+    }, 4200)
     return () => {
       window.clearInterval(timer)
-      sceneRef.current?.setPhoneRinging(false)
     }
-  }, [active, phase, sceneMounted, sound])
+  }, [active, phase, sound])
 
   const handleMoveAxis = useCallback((x: number, y: number) => {
     sceneRef.current?.setMoveAxis(x, y)
@@ -886,11 +884,25 @@ export function PrologueExperience({
     showToast('ACT I · 已佩戴传感脑机 · 触碰并看清这朵逆风野花', 2800)
   }, [showToast, sound, triggerVisorPulse])
 
+  const answerIncomingCall = useCallback(() => {
+    if (phaseRef.current !== 'incoming_call') return
+    sound.playCommsConnect()
+    phaseRef.current = 'intro_call'
+    introBeatRef.current = 0
+    setPhase('intro_call')
+    setIntroBeat(0)
+  }, [sound])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
       const target = event.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      if (phaseRef.current === 'incoming_call' && event.code === 'Enter') {
+        event.preventDefault()
+        answerIncomingCall()
+        return
+      }
       if (phaseRef.current === 'intro_call' && (event.code === 'Space' || event.code === 'Enter')) {
         event.preventDefault()
         advanceIntroBeat()
@@ -950,7 +962,7 @@ export function PrologueExperience({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [active, advanceIntroBeat, cycleRoamMusic, handleBenchToggle, openMeadowCapture, triggerSkyCall])
+  }, [active, advanceIntroBeat, answerIncomingCall, cycleRoamMusic, handleBenchToggle, openMeadowCapture, triggerSkyCall])
 
   useEffect(() => {
     if (panel !== 'wind') return
@@ -964,7 +976,7 @@ export function PrologueExperience({
     return () => window.clearTimeout(timer)
   }, [panel])
 
-  const enterGrasslandAtBooth = useCallback(async () => {
+  const enterGrassland = useCallback(async () => {
     if (opening) return
     setPremiseMode(null)
     setOpening(true)
@@ -983,25 +995,14 @@ export function PrologueExperience({
       /* visuals continue even if audio is blocked */
     }
     later(() => {
-      phaseRef.current = 'phone_wait'
-      setPhase('phone_wait')
+      phaseRef.current = 'incoming_call'
+      setPhase('incoming_call')
       setOpening(false)
-      sceneRef.current?.setPhoneRinging(true)
+      sceneRef.current?.setActiveTask(null)
       sceneRef.current?.setRoamEnabled(true)
-      showToast('听，草原前方的玻璃电话亭正在响铃', 3000)
+      showToast('随身终端收到加密呼入 · 来自 SUNSET-06 林微', 3200)
     }, 2450)
   }, [later, opening, showToast, sound])
-
-  const answerPhoneBooth = useCallback(() => {
-    if (phaseRef.current !== 'phone_wait') return
-    sound.playPhonePickup()
-    sceneRef.current?.setPhoneRinging(false)
-    sceneRef.current?.focusTarget('phone', 1.4)
-    phaseRef.current = 'intro_call'
-    introBeatRef.current = 0
-    setPhase('intro_call')
-    setIntroBeat(0)
-  }, [sound])
 
   const begin = () => {
     if (opening) return
@@ -1009,7 +1010,7 @@ export function PrologueExperience({
       setPremiseMode('first_entry')
       return
     }
-    void enterGrasslandAtBooth()
+    void enterGrassland()
   }
 
   // Act I focus controls
@@ -1082,6 +1083,9 @@ export function PrologueExperience({
     setLore(null)
     loreRef.current = null
     setAttenuating(false)
+    truthProceededRef.current = false
+    setDescentStage(0)
+    setCoreBursting(false)
     setFlash(false)
     setFocusSnap(false)
     setPressureAlert(false)
@@ -1125,7 +1129,6 @@ export function PrologueExperience({
       window.clearTimeout(visorTimerRef.current)
       visorTimerRef.current = null
     }
-    sceneRef.current?.setPhoneRinging(false)
     sceneRef.current?.resetToSurface()
     sound.resetAtmosphere()
     sound.stopRain()
@@ -1412,6 +1415,7 @@ export function PrologueExperience({
     if (phaseRef.current !== 'explore') return
     phaseRef.current = 'descending'
     setPhase('descending')
+    setDescentStage(0)
     setAct(8)
     actRef.current = 8
     setActiveTask(null)
@@ -1427,14 +1431,25 @@ export function PrologueExperience({
     setWindHint(false)
     setConstellationHint(false)
     setAttenuating(false)
+    voicePlayer.stop()
     sceneRef.current?.stopRain()
     sceneRef.current?.setRoamEnabled(false)
     sceneRef.current?.triggerDescent()
     sound.descentStart()
   }, [sound])
 
+  const proceedFromTruthToDescent = useCallback(() => {
+    if (truthProceededRef.current) return
+    truthProceededRef.current = true
+    setAttenuating(false)
+    finalizingRef.current = false
+    setFinalizing(false)
+    startDescent()
+  }, [startDescent])
+
   const triggerFinalTruthPlunge = () => {
     if (finalizingRef.current) return
+    truthProceededRef.current = false
     finalizingRef.current = true
     setFinalizing(true)
     setAct(8)
@@ -1452,20 +1467,16 @@ export function PrologueExperience({
     sound.staticBurst()
     triggerVisorPulse('core', '地心信标过载 · 坐标锁定', '6,371.4 KM · SUNSET-06 OVERRIDE')
     later(() => setSignal(0.05), 1400)
-    later(() => {
-      setAttenuating(false)
-      finalizingRef.current = false
-      setFinalizing(false)
-      startDescent()
-    }, 4400)
+    later(() => proceedFromTruthToDescent(), 16500)
   }
 
   const respondCoreHeartbeat = () => {
-    if (phaseRef.current !== 'core_pulse') return
-    sound.playChime([196, 261.63, 392, 523.25, 659.25], 0.12, 4.5)
-    sound.pressureThud()
+    if (phaseRef.current !== 'core_pulse' || coreBursting) return
+    setCoreBursting(true)
+    sceneRef.current?.triggerCoreBurst()
+    sound.playCoreResonance()
     if (typeof window !== 'undefined') {
-      spawnRipple(window.innerWidth * 0.5, window.innerHeight * 0.72, '#f2c28b')
+      spawnRipple(window.innerWidth * 0.5, window.innerHeight * 0.66, '#f2c28b')
     }
     onRelayUpdate?.({
       completedPrologue: true,
@@ -1477,7 +1488,8 @@ export function PrologueExperience({
     later(() => {
       phaseRef.current = 'epilogue'
       setPhase('epilogue')
-    }, 850)
+      setCoreBursting(false)
+    }, 1550)
   }
 
   const advanceFromQuote = (key: QuoteKey) => {
@@ -1638,15 +1650,6 @@ export function PrologueExperience({
 
   const handlePick = (id: PickId) => {
     if (finalizingRef.current) return
-    if (id === 'phone') {
-      if (phaseRef.current === 'phone_wait') {
-        answerPhoneBooth()
-      } else if (phaseRef.current === 'explore') {
-        sound.playChime([587.33, 783.99], 0.04, 1.8)
-        showToast('草原入口那座透明电话亭，把地面微风与地心深处的她连在了一起', 2400)
-      }
-      return
-    }
     if (phaseRef.current !== 'explore') return
     if (id === 'lake') {
       sound.waterSplash(1)
@@ -1696,14 +1699,23 @@ export function PrologueExperience({
 
   const handleDescent = (event: DescentEvent) => {
     if (event.type === 'tick') {
-      const depthProgress = Math.max(0, Math.min(1, (event.progress - 0.27) / 0.73))
-      setDepthKm(Number((6371.4 * Math.pow(depthProgress, 1.2)).toFixed(1)))
+      const depthProgress = Math.max(0, Math.min(1, (event.progress - 0.19) / 0.81))
+      setDepthKm(Number((6371.4 * Math.pow(depthProgress, 1.18)).toFixed(1)))
       setSignal(Math.max(0.03, 0.34 - event.progress * 0.28))
       return
     }
     if (event.type === 'breach') {
+      setDescentStage(0)
       setFlash(true)
       later(() => setFlash(false), 1400)
+      return
+    }
+    if (event.type === 'mantle') {
+      setDescentStage(1)
+      return
+    }
+    if (event.type === 'core') {
+      setDescentStage(2)
       return
     }
     if (event.type === 'arrive') {
@@ -1714,7 +1726,7 @@ export function PrologueExperience({
       later(() => {
         phaseRef.current = 'core_pulse'
         setPhase('core_pulse')
-      }, 1250)
+      }, 1450)
     }
   }
 
@@ -1742,6 +1754,9 @@ export function PrologueExperience({
     setLore(null)
     loreRef.current = null
     setAttenuating(false)
+    truthProceededRef.current = false
+    setDescentStage(0)
+    setCoreBursting(false)
     setFlash(false)
     setFocusSnap(false)
     setPressureAlert(false)
@@ -1898,8 +1913,7 @@ export function PrologueExperience({
       setTuned(true)
       tunedRef.current = true
       setScent(1)
-      setDepthRevealed(true)
-      startDescent()
+      triggerFinalTruthPlunge()
     }
   }
 
@@ -2019,12 +2033,7 @@ export function PrologueExperience({
       : 0
 
   const currentIntroBeat = INTRO_CALL_BEATS[introBeat] ?? INTRO_CALL_BEATS[0]
-  const currentDescentCaption =
-    [...DESCENT_CAPTIONS].reverse().find((item) => depthKm >= item.thresholdKm) ?? DESCENT_CAPTIONS[0]
-  const descentLayerIndex = Math.max(
-    0,
-    DESCENT_CAPTIONS.findIndex((item) => item.layer === currentDescentCaption.layer),
-  )
+  const currentDescentCaption = DESCENT_CAPTIONS[descentStage] ?? DESCENT_CAPTIONS[0]
   const quoteKey = quote?.key ?? null
   const quoteChoices = quote?.data.choices
   const choiceId = selectedChoice?.id ?? null
@@ -2037,6 +2046,21 @@ export function PrologueExperience({
   }, [active])
 
   useEffect(() => () => voicePlayer.stop(), [])
+
+  useEffect(() => {
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'explore') return
+    const preloadMap: Record<number, string[]> = {
+      1: ['quote-flower'],
+      2: ['quote-wind'],
+      3: ['quote-dandelion'],
+      4: ['quote-ruin'],
+      5: ['quote-rain'],
+      6: ['quote-fireflies', 'quote-stars'],
+      7: ['quote-stars', 'truth'],
+    }
+    const targets = preloadMap[act]
+    targets?.forEach((id) => void voicePlayer.preload(id))
+  }, [active, phase, act])
 
   useEffect(() => {
     if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'intro_call') return
@@ -2065,23 +2089,19 @@ export function PrologueExperience({
   }, [active, loreId])
 
   useEffect(() => {
-    if (!PROLOGUE_VOICE_AUTOPLAY || !active || !attenuating) return
-    void voicePlayer.play('truth', 'clear')
-    void voicePlayer.preload('descent-0')
-  }, [active, attenuating])
-
-  useEffect(() => {
-    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'descending') return
-    void voicePlayer.play(`descent-${descentLayerIndex}`, 'deep')
-    if (descentLayerIndex + 1 < DESCENT_CAPTIONS.length) {
-      void voicePlayer.preload(`descent-${descentLayerIndex + 1}`)
+    if (!active || !attenuating) return
+    if (!PROLOGUE_VOICE_AUTOPLAY) {
+      later(() => proceedFromTruthToDescent(), 5200)
+      return
     }
-  }, [active, phase, descentLayerIndex])
-
-  useEffect(() => {
-    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'epilogue') return
-    void voicePlayer.play('epilogue-final', 'clear')
-  }, [active, phase])
+    void voicePlayer
+      .play('truth', 'clear', () => {
+        later(() => proceedFromTruthToDescent(), 900)
+      })
+      .then((ok) => {
+        if (!ok) later(() => proceedFromTruthToDescent(), 6200)
+      })
+  }, [active, attenuating, later, proceedFromTruthToDescent])
 
   return (
     <div
@@ -2197,7 +2217,7 @@ export function PrologueExperience({
         />
       )}
 
-      {(phase === 'explore' || phase === 'phone_wait') && hover && !quote && !lore && !attenuating && (
+      {phase === 'explore' && hover && !quote && !lore && !attenuating && (
         <div
           className="pointer-events-none fixed z-[39] hidden -translate-x-1/2 -translate-y-1/2 sm:block"
           style={{ left: `${hover.x}px`, top: `${hover.y}px` }}
@@ -2234,13 +2254,13 @@ export function PrologueExperience({
             void loadPrologueSceneModule()
           }}
           onEnter={begin}
+          onNavigate={onNavigate}
           resumeLabel={resumeLabel}
           onResume={resumeAct ? resumeFromCover : undefined}
           echo={echo}
           echoRead={journey.echoReadDay === echo?.day}
           flashSafe={flashSafe}
           onToggleFlashSafe={onToggleFlashSafe}
-          onOpenPremise={() => setPremiseMode('browse')}
           onListenEcho={(code) => {
             markEchoRead(echo?.day ?? todayKey())
             onListenEcho?.(code)
@@ -2248,19 +2268,19 @@ export function PrologueExperience({
         />
       )}
 
-      {phase === 'phone_wait' && (
+      {phase === 'incoming_call' && (
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[40] flex justify-center px-4 pb-[max(1.35rem,env(safe-area-inset-bottom))] sm:pb-7">
           <div className="cinema-surface pointer-events-auto animate-fade-up flex w-full max-w-[560px] flex-col gap-3 rounded-[26px] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div>
               <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] text-signal">
                 <span className="h-2 w-2 rounded-full bg-signal animate-[blinkDot_1.1s_ease-in-out_infinite]" />
-                <span>TELEPHONE BOOTH · 06:38</span>
+                <span>INCOMING ENCRYPTED LINK · SUNSET-06 · 06:38</span>
               </div>
               <div className="mt-1 font-serif text-[15px] text-[#fff8ee]">
-                草坡前方的电话亭正在响铃
+                随身终端收到「林微」的加密呼叫
               </div>
               <p className="mt-0.5 font-serif text-[12px] text-white/62">
-                可自由环顾或走近点击玻璃电话亭接听，或直接接起这通来电。
+                可自由环顾清晨草原，准备好了随时接通频段。
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -2273,10 +2293,19 @@ export function PrologueExperience({
               </button>
               <button
                 type="button"
-                onClick={answerPhoneBooth}
-                className="btn-primary !px-4 !py-2 !text-[12.5px]"
+                onClick={answerIncomingCall}
+                className="btn-primary !inline-flex !items-center !gap-2 !px-4 !py-2 !text-[12.5px]"
               >
-                ☎ 接起电话
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+                  <path
+                    d="M7.5 16.5a6.4 6.4 0 0 1 0-9M16.5 7.5a6.4 6.4 0 0 1 0 9M4.6 19.4a10.5 10.5 0 0 1 0-14.8M19.4 4.6a10.5 10.5 0 0 1 0 14.8"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span>接通加密频段</span>
               </button>
             </div>
           </div>
@@ -2289,11 +2318,11 @@ export function PrologueExperience({
         onClose={() => setPremiseMode(null)}
         onEnter={() => {
           markPremiseSeen()
-          void enterGrasslandAtBooth()
+          void enterGrassland()
         }}
         onSkipAndEnter={() => {
           markPremiseSeen()
-          void enterGrasslandAtBooth()
+          void enterGrassland()
         }}
       />
 
@@ -2340,25 +2369,44 @@ export function PrologueExperience({
           {STEPS.map((item) => {
             const activeAct = item.act === act
             const doneAct = item.act < act
+            const climaxAct = item.act >= 7
+            const tooltip =
+              item.act === 7
+                ? `第 ${item.index} 幕 · ${item.title}（地核真相）`
+                : item.act === 8
+                  ? `第 ${item.index} 幕 · ${item.title}（6371km 终局）`
+                  : `第 ${item.index} 幕 · ${item.title}`
             return (
               <button
                 key={item.act}
                 type="button"
                 onClick={() => handleActRow(item.act)}
-                title={`第 ${item.index} 幕 · ${item.title}`}
+                title={tooltip}
                 aria-label={`跳到第 ${item.index} 幕：${item.title}`}
                 className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 font-serif text-[11px] transition ${
                   activeAct
                     ? 'bg-signal text-[#170f07] font-medium shadow-[0_0_12px_rgba(242,194,139,0.7)]'
                     : doneAct
                       ? 'bg-signal/18 text-signal hover:bg-signal/30'
-                      : 'text-white/55 hover:bg-white/10 hover:text-white'
+                      : climaxAct
+                        ? 'text-signal/85 hover:bg-signal/18 hover:text-signal'
+                        : 'text-white/55 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 {item.index}
               </button>
             )
           })}
+          {act < 7 && (
+            <button
+              type="button"
+              onClick={() => handleActRow(7)}
+              title="直达第 VII 幕 · 揭晓 6,371.4km 地核真相"
+              className="rounded-full border border-signal/35 bg-signal/12 px-2 py-0.5 font-serif text-[10.5px] text-signal transition hover:border-signal/70 hover:bg-signal/22"
+            >
+              ✦ 地核高潮
+            </button>
+          )}
           <span className="mx-0.5 h-3.5 w-px bg-white/15" />
           <button
             type="button"
@@ -2645,9 +2693,13 @@ export function PrologueExperience({
                   key={item.act}
                   type="button"
                   onClick={() => handleActRow(item.act)}
-                  aria-label={`跳到第 ${item.index} 幕`}
+                  aria-label={`跳到第 ${item.index} 幕：${item.title}`}
                   className={`flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 font-serif text-[11px] transition ${
-                    activeAct ? 'bg-signal text-[#170f07] font-medium' : 'text-white/60'
+                    activeAct
+                      ? 'bg-signal text-[#170f07] font-medium'
+                      : item.act >= 7
+                        ? 'text-signal/85'
+                        : 'text-white/60'
                   }`}
                 >
                   {item.index}
@@ -2729,6 +2781,7 @@ export function PrologueExperience({
         voiceState={voiceState}
         lore={lore}
         attenuating={attenuating}
+        calmMotion={calmMotion}
         showVoiceControl={PROLOGUE_VOICE_AUTOPLAY}
         meadowShot={meadowShot}
         meadowNote={meadowNote}
@@ -2738,6 +2791,7 @@ export function PrologueExperience({
         onToggleQuoteCollapse={() => setQuoteCollapsed((v) => !v)}
         onPickChoice={pickDialogueChoice}
         onContinueQuote={continueQuote}
+        onProceedDescent={proceedFromTruthToDescent}
         onCloseLore={() => {
           voicePlayer.stop()
           setLore(null)
@@ -2767,6 +2821,8 @@ export function PrologueExperience({
         memories={memories}
         exportingRoll={exportingRoll}
         showVoiceControl={PROLOGUE_VOICE_AUTOPLAY}
+        coreBursting={coreBursting}
+        flashSafe={flashSafe}
         onAdvanceIntro={advanceIntroBeat}
         onSkipIntro={skipIntroToExplore}
         onExitToRitual={exitToRitual}
