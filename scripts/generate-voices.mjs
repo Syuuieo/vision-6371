@@ -16,8 +16,6 @@ import { Mp3Encoder } from '@breezystack/lamejs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = path.resolve(__dirname, '..')
 const GUIDE_PATH = path.join(ROOT_DIR, 'VOICE_SCRIPT_GUIDE.md')
-const STORY_RELAY_PATH = path.join(ROOT_DIR, 'src', 'utils', 'storyRelay.ts')
-const VOICE_PLAYER_PATH = path.join(ROOT_DIR, 'src', 'audio', 'voicePlayer.ts')
 const OUT_DIR = path.join(ROOT_DIR, 'public', 'voice')
 
 const DASHSCOPE_ENDPOINT =
@@ -26,9 +24,6 @@ const TTS_MODEL = 'qwen3-tts-flash'
 const MP3_KBPS = 96
 const MIN_MP3_BYTES = 4096
 const RETRY_DELAYS_MS = [1500, 3000, 6000, 12000]
-
-const CITY_WHISPER_INSTRUCTIONS =
-  '温柔怀念、轻声讲述，像远方电台里老朋友在耳边低语，语速舒缓自然。'
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -93,43 +88,6 @@ function parsePrologueScript(markdown) {
       voice: mapRoleToVoice(role),
       instructions,
       text,
-    })
-  }
-
-  return jobs
-}
-
-function parseObjectBlock(source, exportName) {
-  const pattern = new RegExp(`export const ${exportName}[^=]*=\\s*\\{([\\s\\S]*?)\\n\\}`)
-  const match = source.match(pattern)
-  if (!match) {
-    throw new Error(`Unable to locate ${exportName} in source file`)
-  }
-  const map = {}
-  const entryPattern = /^\s*([^\s:]+)\s*:\s*'([^']+)'\s*,?\s*$/gm
-  for (const entry of match[1].matchAll(entryPattern)) {
-    map[entry[1].trim()] = entry[2].trim()
-  }
-  return map
-}
-
-function buildCityJobs(voicePlayerSrc, storyRelaySrc) {
-  const citySlugs = parseObjectBlock(voicePlayerSrc, 'CITY_VOICE_SLUGS')
-  const cityWhispers = parseObjectBlock(storyRelaySrc, 'CITY_LINWEI_WHISPERS')
-  const jobs = []
-
-  for (const [city, slug] of Object.entries(citySlugs)) {
-    const rawLine = cityWhispers[city]
-    if (!rawLine) {
-      throw new Error(`Missing Lin Wei whisper line for domestic city: ${city}`)
-    }
-    const id = `city-${slug}`
-    jobs.push({
-      id,
-      outPath: path.join(OUT_DIR, `${id}.mp3`),
-      voice: 'Serena',
-      instructions: CITY_WHISPER_INSTRUCTIONS,
-      text: stripQuotesAndMarkdown(rawLine),
     })
   }
 
@@ -331,20 +289,12 @@ async function main() {
   }
 
   const { skipExisting, concurrency, only } = parseArgs(process.argv.slice(2))
-  const [guideMd, storyRelaySrc, voicePlayerSrc] = await Promise.all([
-    fs.readFile(GUIDE_PATH, 'utf8'),
-    fs.readFile(STORY_RELAY_PATH, 'utf8'),
-    fs.readFile(VOICE_PLAYER_PATH, 'utf8'),
-  ])
+  const guideMd = await fs.readFile(GUIDE_PATH, 'utf8')
 
-  const prologueJobs = parsePrologueScript(guideMd)
-  const cityJobs = buildCityJobs(voicePlayerSrc, storyRelaySrc)
-  const allJobs = [...prologueJobs, ...cityJobs]
+  const allJobs = parsePrologueScript(guideMd)
 
-  if (prologueJobs.length !== 28 || cityJobs.length !== 20 || allJobs.length !== 48) {
-    throw new Error(
-      `Expected 28 prologue + 20 city = 48 jobs, got ${prologueJobs.length} + ${cityJobs.length} = ${allJobs.length}`,
-    )
+  if (allJobs.length !== 28) {
+    throw new Error(`Expected 28 prologue voiceover jobs, got ${allJobs.length}`)
   }
 
   const selectedJobs = only ? allJobs.filter((job) => only.has(job.id)) : allJobs

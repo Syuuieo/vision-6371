@@ -1,8 +1,9 @@
-# 《风信 · Windpost》配音台词对照表（Qwen-TTS · 共 48 条活跃语音）
+# 《风信 · Windpost》配音台词对照表（Qwen-TTS · 共 28 条序章活跃语音）
 
 > **当前语音开关位置**：[`src/components/PrologueExperience.tsx`](src/components/PrologueExperience.tsx) 顶部常量 `PROLOGUE_VOICE_AUTOPLAY`  
-> 全量 **28 条序章语音 + 20 条全球城市电台低语**（共 48 条）已通过阿里云百炼 Qwen-TTS（`qwen3-tts-flash`，音色：`Serena` 林微 / `Kai` 旁白）合成并写入 `public/voice/`，`PROLOGUE_VOICE_AUTOPLAY` 已开启为 `true`。  
-> 第 VIII 幕地心穿越与终局画面刻意采用**沉默主角 + 纯音乐环境声**留白设计，不加第一人称男声独白，让林微的告别成为耳边最后的真人声音。  
+> 序章全量 **28 条主线与彩蛋语音**已通过阿里云百炼 Qwen-TTS（`qwen3-tts-flash`，音色：`Serena` 林微 / `Kai` 旁白）合成并写入 `public/voice/`，`PROLOGUE_VOICE_AUTOPLAY` 已开启为 `true`。  
+> 地球表面电台刻意保留各城市纯环境声景与用户自录原声，不再叠加女主配音，将林微的真人声音完整留给序章草原。  
+> 第 VIII 幕地心穿越与终局画面同样采用**沉默主角 + 纯音乐环境声**留白设计，不加第一人称男声独白。  
 > **如需单独重配某一条**：配置 `$env:DASHSCOPE_API_KEY="sk-..."` 后运行 `node scripts/generate-voices.mjs --only=quote-rain` 即可定向覆写。
 
 ---

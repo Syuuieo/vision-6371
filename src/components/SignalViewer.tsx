@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AmbientMixer } from '../audio/ambientMixer'
-import { getCityVoiceId, useVoiceState, voicePlayer } from '../audio/voicePlayer'
 import { signatureFor, type SignatureEffect } from '../data/citySignature'
 import { LOCAL_STAMPS } from '../data/mailboxData'
 import { countEcho, countHeartbeat } from '../services/journey'
@@ -112,12 +111,9 @@ export function SignalViewer({
     }
   }, [])
   const [postcardOpen, setPostcardOpen] = useState(false)
-  const voiceState = useVoiceState()
 
   const packet = signal.packet
-  const cityVoiceId = getCityVoiceId(packet.city)
   const whisperText = getCityWhisper(packet.city)
-  const whisperId = cityVoiceId ?? `whisper-${packet.city}`
   const wind = WIND_LABELS[Math.min(3, Math.max(0, Math.round(packet.windLevel)))]
   const signature = signatureFor(packet.city, packet.ambience)
   const weather = signature.weather || wind
@@ -193,7 +189,6 @@ export function SignalViewer({
 
   useEffect(() => {
     return () => {
-      voicePlayer.stop()
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current)
     }
   }, [])
@@ -201,20 +196,6 @@ export function SignalViewer({
   useEffect(() => {
     onCityResonate?.(signal.packet.city)
   }, [signal.code, signal.packet.city, onCityResonate])
-
-  useEffect(() => {
-    if (!cityVoiceId || muted || !soundOn || packet.voice) {
-      voicePlayer.stop()
-      return
-    }
-    const timer = window.setTimeout(() => {
-      void voicePlayer.unlock().then(() => voicePlayer.play(cityVoiceId, 'headset'))
-    }, 460)
-    return () => {
-      window.clearTimeout(timer)
-      voicePlayer.stop()
-    }
-  }, [signal.code, cityVoiceId, packet.voice, muted, soundOn])
 
   const applyResult = (nextHearts: number, nextEchoes: VisionEcho[]) => {
     const merged = mergeEchoes(echoesRef.current, nextEchoes)
@@ -259,7 +240,6 @@ export function SignalViewer({
       showToast('全局静音中 · 请先开启声音')
       return
     }
-    voicePlayer.stop()
     setSoundOn(true)
     const ok = await mixer.playVoice(packet.voice)
     showToast(ok ? '正在回放现场原声…' : '原声暂时无法解码')
@@ -564,43 +544,7 @@ export function SignalViewer({
                 </span>
               </button>
               <div className="mt-3 rounded-2xl border border-signal/25 bg-signal/[0.06] px-3.5 py-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="font-serif text-[11px] tracking-[0.06em] text-signal">来自地心的回响 · 林微</div>
-                  <button
-                    type="button"
-                    title={cityVoiceId ? '播放预录林微城市语音' : '通过语音合成朗读林微城市低语'}
-                    onClick={async () => {
-                      if (muted) {
-                        showToast('全局静音中 · 请先开启声音')
-                        return
-                      }
-                      mixer.stopVoice()
-                      await voicePlayer.unlock()
-                      const ok = await voicePlayer.toggleWhisper(whisperId, whisperText, cityVoiceId, 'headset')
-                      if (!cityVoiceId && !ok && voicePlayer.getSnapshot().playingId !== whisperId) {
-                        showToast('已收到林微文字回响 · 当前浏览器未启用语音合成')
-                      }
-                    }}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-serif text-[11px] transition ${
-                      voiceState.playingId === whisperId || voiceState.loadingId === whisperId
-                        ? 'border-signal/60 bg-signal/20 text-signal'
-                        : 'border-signal/35 bg-signal/10 text-signal/90 hover:border-signal/65 hover:bg-signal/18'
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                        voiceState.playingId === whisperId ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]' : 'opacity-70'
-                      }`}
-                    />
-                    <span>
-                      {voiceState.playingId === whisperId
-                        ? '正在低语 · 暂停'
-                        : voiceState.loadingId === whisperId
-                          ? '载入中…'
-                          : '听她低语'}
-                    </span>
-                  </button>
-                </div>
+                <div className="font-serif text-[11px] tracking-[0.06em] text-signal">来自地心的回响 · 林微</div>
                 <p className="mt-1.5 font-serif text-[12.5px] leading-[1.75] text-[#fff2dc]/92">
                   {whisperText}
                 </p>

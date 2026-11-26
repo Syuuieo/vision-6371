@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
+import { getSettings, prefersReducedMotion, subscribeSettings } from '../services/settings'
 import type { DailyEcho } from '../services/journey'
 import type { ModuleId } from '../types/sensor'
+import { CoverHorizonCanvas } from './prologue/CoverHorizonCanvas'
 
 const PORTAL_CARDS: {
   id: ModuleId
@@ -8,7 +11,7 @@ const PORTAL_CARDS: {
   sub: string
 }[] = [
   { id: 'prologue', index: '01', title: '草原序章', sub: '8 幕剧情 · 地心反转' },
-  { id: 'radio', index: '02', title: '全球电台', sub: '3D 地球 · 20 城原声' },
+  { id: 'radio', index: '02', title: '全球电台', sub: '3D 地球 · 全球声景' },
   { id: 'post', index: '03', title: '视野信箱', sub: '漂流邮局 · 明信片' },
   { id: 'diorama', index: '04', title: '立体纪念册', sub: '6 城微缩 3D 奇观' },
 ]
@@ -42,47 +45,57 @@ export function IntroRitual({
   onPreloadScene,
   sceneMounted = false,
 }: IntroRitualProps) {
+  const [reducedMotion, setReducedMotion] = useState(
+    () => getSettings().reducedMotion || prefersReducedMotion(),
+  )
+
+  useEffect(
+    () =>
+      subscribeSettings(() => {
+        setReducedMotion(getSettings().reducedMotion || prefersReducedMotion())
+      }),
+    [],
+  )
+
   return (
     <div className={`fixed inset-0 z-40 overflow-hidden ${opening ? 'pointer-events-none' : ''}`}>
-      {/* 按需挂载 3D 前，用极轻 CSS + SVG 黎明地平线承载封面氛围，零 GPU 负载 */}
+      {/* 按需挂载 3D 前，用轻量 Canvas 2D「双界地平线」承载黎明草原与地底脉冲暗喻，零 Three.js 负载 */}
       <div
         aria-hidden="true"
         className={`pointer-events-none absolute inset-0 transition-opacity duration-700 ${
           sceneMounted ? 'opacity-0' : 'opacity-100'
         }`}
-        style={{
-          background:
-            'radial-gradient(85% 55% at 50% 62%, rgba(242, 194, 139, 0.22), rgba(28, 48, 86, 0.36) 48%, rgba(6, 11, 24, 0.96) 100%), linear-gradient(180deg, #060b18 0%, #0f1d3a 54%, #1a2844 100%)',
-        }}
       >
-        <svg
-          viewBox="0 0 1440 320"
-          preserveAspectRatio="none"
-          className="absolute inset-x-0 bottom-0 h-[36vh] w-full opacity-55"
-        >
-          <path
-            d="M0,224 C220,178 410,248 640,214 C860,180 1120,136 1440,196 L1440,320 L0,320 Z"
-            fill="rgba(7, 13, 28, 0.85)"
-          />
-          <path
-            d="M0,256 C280,228 540,276 880,240 C1140,212 1300,236 1440,248 L1440,320 L0,320 Z"
-            fill="rgba(5, 9, 20, 0.96)"
-          />
-        </svg>
-        <div
-          className="absolute left-1/2 top-[58%] h-44 w-[76vw] max-w-[780px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-50 blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(242, 194, 139, 0.32), transparent 72%)' }}
-        />
+        <CoverHorizonCanvas paused={sceneMounted || opening} calm={flashSafe || reducedMotion} />
       </div>
 
-      {/* 极轻的径向电影暗角：让 3D 晨雾、体积云与花海完整呼吸 */}
+      {/* 光学取景四角框与地平线刻度（桌面端轻量点缀，不剧透深度数字） */}
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 hidden transition-opacity duration-700 sm:block ${
+          opening || sceneMounted ? 'opacity-0' : 'opacity-100'
+        }`}
+      >
+        <span className="absolute left-7 top-20 h-4 w-4 border-l border-t border-signal/25" />
+        <span className="absolute right-7 top-20 h-4 w-4 border-r border-t border-signal/25" />
+        <span className="absolute bottom-7 left-7 h-4 w-4 border-b border-l border-signal/20" />
+        <span className="absolute bottom-7 right-7 h-4 w-4 border-b border-r border-signal/20" />
+        <span className="absolute bottom-8 left-12 font-mono text-[9.5px] tracking-[0.26em] text-white/30">
+          06:38 · SURFACE MEADOW
+        </span>
+        <span className="absolute bottom-8 right-12 font-mono text-[9.5px] tracking-[0.26em] text-signal/38">
+          SUNSET-06 · LINK STANDBY
+        </span>
+      </div>
+
+      {/* 轻柔电影暗角：保留星野与地平线通透度，同时托住中心排版对比 */}
       <div
         className={`pointer-events-none absolute inset-0 transition-opacity duration-1000 ${
           opening ? 'opacity-0' : 'opacity-100'
         }`}
         style={{
           background:
-            'radial-gradient(92% 78% at 50% 46%, rgba(5, 10, 22, 0.16) 0%, rgba(5, 10, 22, 0.42) 62%, rgba(4, 8, 18, 0.72) 100%)',
+            'radial-gradient(90% 76% at 50% 44%, rgba(4, 8, 18, 0.12) 0%, rgba(4, 8, 18, 0.34) 64%, rgba(4, 8, 18, 0.62) 100%)',
         }}
       />
 
