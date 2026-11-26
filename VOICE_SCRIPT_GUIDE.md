@@ -1,8 +1,8 @@
 # 《风信 · Windpost》序章配音台词对照表（可直接批量导出替换 `public/voice/`）
 
 > **当前语音开关位置**：[`src/components/PrologueExperience.tsx`](src/components/PrologueExperience.tsx) 顶部常量 `PROLOGUE_VOICE_AUTOPLAY`  
-> 当前已设为 `false`（纯电影字幕 + 电话铃/无线电电流/心跳环境音效），避免旧版冷冰冰的 AI 配音与新版情感剧情冲突。  
-> **如何上线新配音**：用你选定的新配音平台按下面「目标文件名」逐条导出 `.mp3` 覆盖放入 `public/voice/` 目录，再把 `PROLOGUE_VOICE_AUTOPLAY` 改为 `true` 即可全自动丝滑衔接！
+> 全量 **32 条序章剧情 + 14 条国内城市电台回响** 已通过阿里云百炼 Qwen-TTS（`qwen3-tts-flash`，音色：`Serena` 林微 / `Ethan` 陈舟 / `Kai` 旁白）合成并写入 `public/voice/`，`PROLOGUE_VOICE_AUTOPLAY` 已开启为 `true`。  
+> **如需单独重配某一条**：配置 `$env:DASHSCOPE_API_KEY="sk-..."` 后运行 `node scripts/generate-voices.mjs --only=quote-rain` 即可定向覆写。
 
 ---
 

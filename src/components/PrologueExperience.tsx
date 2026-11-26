@@ -101,8 +101,8 @@ const LINGER_SECONDS = 15
 const DISCOVERIES_KEY = 'vision6371_discoveries_v1'
 const ROAM_MUSIC_KEY = 'vision6371_roam_music_v1'
 const PREMISE_SEEN_KEY = 'vision6371_premise_seen_v1'
-/** 替换为新配音平台录制的 MP3 放入 public/voice/ 后，将此处改为 true 即可开启序章语音自动播放 */
-const PROLOGUE_VOICE_AUTOPLAY = false
+/** 已通过阿里云百炼 Qwen-TTS（Serena / Ethan / Kai）合成全部新版情感台词，开启序章语音自动播放 */
+const PROLOGUE_VOICE_AUTOPLAY = true
 
 function hasSeenPremise(): boolean {
   if (typeof window === 'undefined') return false

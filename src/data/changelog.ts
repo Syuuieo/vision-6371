@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.9.0'
+export const APP_VERSION = '3.9.1'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.9.1',
+    date: '2026-11-26',
+    title: '全量 Qwen-TTS 情感配音重制与序章语音自动上线',
+    items: [
+      '采用阿里云百炼 Qwen-TTS（`qwen3-tts-flash`）重新合成全部 32 条新版序章对白与 14 条国内城市电台低语（共 46 条）：林微（`Serena`）、陈舟（`Ethan`）、旁白档案（`Kai`），彻底告别平直机械语音。',
+      '同步重新开启序章 `PROLOGUE_VOICE_AUTOPLAY` 语音自动播报开关，并在工程中内置 `scripts/generate-voices.mjs` 以便后续按条定向精修配音。',
+    ],
+  },
   {
     version: '3.9.0',
     date: '2026-11-26',

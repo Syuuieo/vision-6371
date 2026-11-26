@@ -1,7 +1,7 @@
 {
   "name": "vision-6371",
   "private": true,
-  "version": "3.9.0",
+  "version": "3.9.1",
   "description": "风信 · Windpost — 3D 沉浸式感官序章、地球表面电台与漂流邮局",
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
