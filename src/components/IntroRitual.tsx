@@ -10,6 +10,7 @@ interface IntroRitualProps {
   onListenEcho?: (code: string) => void
   flashSafe?: boolean
   onToggleFlashSafe?: () => void
+  onOpenPremise?: () => void
   onPreloadScene?: () => void
   sceneMounted?: boolean
 }
@@ -24,6 +25,7 @@ export function IntroRitual({
   onListenEcho,
   flashSafe = false,
   onToggleFlashSafe,
+  onOpenPremise,
   onPreloadScene,
   sceneMounted = false,
 }: IntroRitualProps) {
@@ -144,6 +146,16 @@ export function IntroRitual({
                   className="cinema-surface-soft relative rounded-full border-signal/38 px-5 py-3.5 font-serif text-[13.5px] tracking-[0.06em] text-signal transition hover:border-signal/75 hover:bg-signal/14 active:scale-[0.98] disabled:cursor-wait"
                 >
                   {resumeLabel}
+                </button>
+              )}
+              {onOpenPremise && (
+                <button
+                  type="button"
+                  onClick={onOpenPremise}
+                  disabled={opening}
+                  className="cinema-surface-soft relative rounded-full border-white/18 px-5 py-3.5 font-serif text-[13.5px] tracking-[0.06em] text-white/85 transition hover:border-signal/55 hover:text-signal active:scale-[0.98]"
+                >
+                  故事前情
                 </button>
               )}
             </div>

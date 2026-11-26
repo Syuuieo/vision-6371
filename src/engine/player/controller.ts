@@ -399,13 +399,13 @@ export class PlayerController {
       }
 
       if (this.lookAxis.x !== 0 || this.lookAxis.y !== 0) {
-        // 细腻非线性曲线，轻微推动摇杆时缓慢平稳转动，避免「雷霆转视角」
+        // 细腻非线性曲线，大幅降低转角灵敏度，确保漫游环顾从容不眩晕
         const curveX = Math.sign(this.lookAxis.x) * Math.pow(Math.abs(this.lookAxis.x), 1.45)
         const curveY = Math.sign(this.lookAxis.y) * Math.pow(Math.abs(this.lookAxis.y), 1.45)
-        this.targetYaw += curveX * dt * 0.95
-        this.targetPitch = clamp(this.targetPitch + curveY * dt * 0.68, -1.15, 1.28)
+        this.targetYaw += curveX * dt * 0.62
+        this.targetPitch = clamp(this.targetPitch + curveY * dt * 0.45, -1.15, 1.28)
       }
-      const damp = 1 - Math.exp(-dt * 6.8)
+      const damp = 1 - Math.exp(-dt * 4.8)
       this.yaw += (this.targetYaw - this.yaw) * damp
       this.pitch += (this.targetPitch - this.pitch) * damp
 
@@ -634,14 +634,14 @@ export class PlayerController {
 
   private onPointerMove = (event: PointerEvent) => {
     if (this.pointer.down && !this.flight) {
-      const dx = clamp(event.clientX - this.pointer.lastX, -52, 52)
-      const dy = clamp(event.clientY - this.pointer.lastY, -52, 52)
+      const dx = clamp(event.clientX - this.pointer.lastX, -36, 36)
+      const dy = clamp(event.clientY - this.pointer.lastY, -36, 36)
       this.pointer.lastX = event.clientX
       this.pointer.lastY = event.clientY
       this.pointer.drag += Math.abs(dx) + Math.abs(dy)
       const isTouch = event.pointerType === 'touch'
-      const yawSens = isTouch ? 0.0018 : 0.0022
-      const pitchSens = isTouch ? 0.00145 : 0.0018
+      const yawSens = isTouch ? 0.00115 : 0.00135
+      const pitchSens = isTouch ? 0.00095 : 0.0011
       this.targetYaw -= dx * yawSens
       this.targetPitch = clamp(this.targetPitch + dy * pitchSens, -1.15, 1.28)
       return

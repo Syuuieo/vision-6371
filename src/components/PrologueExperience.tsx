@@ -63,6 +63,8 @@ import { IntroRitual } from './IntroRitual'
 import { ActInteractivePanels } from './prologue/ActInteractivePanels'
 import { EndingSequenceOverlay } from './prologue/EndingSequenceOverlay'
 import { NarrativeModals } from './prologue/NarrativeModals'
+import { NeuralVisorOverlay, type VisorPulse } from './prologue/NeuralVisorOverlay'
+import { StoryPremiseModal } from './prologue/StoryPremiseModal'
 import { SensorHud } from './SensorHud'
 
 interface PrologueExperienceProps {
@@ -98,6 +100,27 @@ const TUNE_WINDOW = 0.055
 const LINGER_SECONDS = 15
 const DISCOVERIES_KEY = 'vision6371_discoveries_v1'
 const ROAM_MUSIC_KEY = 'vision6371_roam_music_v1'
+const PREMISE_SEEN_KEY = 'vision6371_premise_seen_v1'
+/** 替换为新配音平台录制的 MP3 放入 public/voice/ 后，将此处改为 true 即可开启序章语音自动播放 */
+const PROLOGUE_VOICE_AUTOPLAY = false
+
+function hasSeenPremise(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(PREMISE_SEEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markPremiseSeen() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(PREMISE_SEEN_KEY, '1')
+  } catch {
+    /* ignore */
+  }
+}
 
 function loadRoamMusicPref(): RoamMusicPreference {
   if (typeof window === 'undefined') return 'auto'
@@ -177,7 +200,8 @@ const ACTIVE_TASK_BY_ACT: Record<ActId, CollectionId | null> = {
 }
 
 const PICK_LABELS: Record<PickId, string> = {
-  flower: '逆风的野花',
+  phone: '草原电话亭 · 接听林微来电',
+  flower: '轻触会摇曳的野花',
   wind: '草原的风声',
   stars: '暮色星辰',
   lake: '微光湖面',
@@ -224,6 +248,9 @@ export function PrologueExperience({
   const [phase, setPhase] = useState<Phase>('ritual')
   const [sceneRequested, setSceneRequested] = useState(false)
   const [sceneMounted, setSceneMounted] = useState(false)
+  const [premiseMode, setPremiseMode] = useState<'browse' | 'first_entry' | null>(null)
+  const [visorPulse, setVisorPulse] = useState<VisorPulse | null>(null)
+  const visorTimerRef = useRef<number | null>(null)
   const pendingResumeActRef = useRef<ActId | null>(null)
   const jumpToActRef = useRef<(target: ActId) => void>(() => {})
   const activeRef = useRef(active)
@@ -350,6 +377,23 @@ export function PrologueExperience({
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
     toastTimerRef.current = window.setTimeout(() => setToast(null), ms)
   }, [])
+
+  const triggerVisorPulse = useCallback(
+    (kind: 'boot' | 'scan' | 'core', title: string, subtitle: string, hint?: string) => {
+      if (visorTimerRef.current) {
+        window.clearTimeout(visorTimerRef.current)
+        visorTimerRef.current = null
+      }
+      const id = fxIdRef.current++
+      setVisorPulse({ id, kind, title, subtitle, hint })
+      sound.playVisorBoot(kind)
+      visorTimerRef.current = window.setTimeout(() => {
+        setVisorPulse((prev) => (prev?.id === id ? null : prev))
+        visorTimerRef.current = null
+      }, 2600)
+    },
+    [sound],
+  )
 
   const spawnRipple = useCallback(
     (x: number, y: number, color = '#f2c28b') => {
@@ -498,15 +542,18 @@ export function PrologueExperience({
         onContextLost: (lost) => setContextLost(lost),
       })
       scene.setDiscoveredIds(discoveriesRef.current)
-      scene.setActiveTask('flower')
-      scene.setRoamEnabled(false)
+      scene.setActiveTask(phaseRef.current === 'phone_wait' ? 'phone' : 'flower')
+      scene.setRoamEnabled(phaseRef.current === 'phone_wait' || phaseRef.current === 'explore')
+      scene.setPhoneRinging(phaseRef.current === 'phone_wait')
       scene.setStage(stageRef.current)
       if (pendingResumeActRef.current !== null) {
         const targetAct = pendingResumeActRef.current
         pendingResumeActRef.current = null
         jumpToActRef.current(targetAct)
-      } else if (phaseRef.current === 'ritual' || phaseRef.current === 'intro_call') {
+      } else if (phaseRef.current === 'ritual' || phaseRef.current === 'phone_wait') {
         scene.focusTarget('home', 3.4)
+      } else if (phaseRef.current === 'intro_call') {
+        scene.focusTarget('phone', 2.2)
       }
       setSceneMounted(true)
       observer = new ResizeObserver(() => scene?.resize())
@@ -602,9 +649,30 @@ export function PrologueExperience({
   }, [activeTask, sceneRequested])
 
   useEffect(() => {
-    const enabled = active && phase === 'explore' && !lore && !finalizing && !meadowShot
+    const enabled =
+      active &&
+      (phase === 'explore' || phase === 'phone_wait') &&
+      !lore &&
+      !finalizing &&
+      !meadowShot
     sceneRef.current?.setRoamEnabled(enabled)
   }, [active, phase, lore, finalizing, meadowShot, sceneRequested])
+
+  useEffect(() => {
+    if (!active || phase !== 'phone_wait') {
+      sceneRef.current?.setPhoneRinging(false)
+      return
+    }
+    sceneRef.current?.setPhoneRinging(true)
+    sound.playPhoneRing()
+    const timer = window.setInterval(() => {
+      sound.playPhoneRing()
+    }, 3600)
+    return () => {
+      window.clearInterval(timer)
+      sceneRef.current?.setPhoneRinging(false)
+    }
+  }, [active, phase, sceneMounted, sound])
 
   const handleMoveAxis = useCallback((x: number, y: number) => {
     sceneRef.current?.setMoveAxis(x, y)
@@ -695,7 +763,8 @@ export function PrologueExperience({
     }
     sceneRef.current?.emitSkyCall(discoveriesRef.current)
     sound.skyCall()
-  }, [active, sound, triggerRuinPulse])
+    triggerVisorPulse('scan', '超感声波追踪已激活', 'NEURAL SCAN · RESONANCE LOCK')
+  }, [active, sound, triggerRuinPulse, triggerVisorPulse])
 
   const toggleFreeRoam = useCallback(() => {
     const next = !freeRoam
@@ -807,9 +876,15 @@ export function PrologueExperience({
     setFocusProgress(0.14)
     focusRef.current = 0.14
     sceneRef.current?.focusTarget('flower', 2.4)
-    sound.playChime([523.25, 659.25], 0.06, 2.5)
-    showToast('ACT I · 拖动对焦环，替她拨开清晨大雾', 2600)
-  }, [showToast, sound])
+    sceneRef.current?.emitSkyCall(discoveriesRef.current)
+    triggerVisorPulse(
+      'boot',
+      '超感程序已启动',
+      'NEURAL VISOR ONLINE · SUNSET-06',
+      '声波指引已锁定草坡野花 · 可调焦或直接轻触花瓣',
+    )
+    showToast('ACT I · 已佩戴传感脑机 · 触碰并看清这朵逆风野花', 2800)
+  }, [showToast, sound, triggerVisorPulse])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -889,28 +964,52 @@ export function PrologueExperience({
     return () => window.clearTimeout(timer)
   }, [panel])
 
-  const begin = async () => {
+  const enterGrasslandAtBooth = useCallback(async () => {
     if (opening) return
+    setPremiseMode(null)
     setOpening(true)
     setSceneRequested(true)
     sceneRef.current?.setStage(0)
     sceneRef.current?.focusTarget('home', 3.4)
-    void voicePlayer.preload('intro-0')
-    void voicePlayer.preload('intro-1')
+    if (PROLOGUE_VOICE_AUTOPLAY) {
+      void voicePlayer.preload('intro-0')
+      void voicePlayer.preload('intro-1')
+    }
     try {
       await sound.unlock()
-      await voicePlayer.unlock()
+      if (PROLOGUE_VOICE_AUTOPLAY) await voicePlayer.unlock()
       sound.enterGrassland()
     } catch {
       /* visuals continue even if audio is blocked */
     }
     later(() => {
-      phaseRef.current = 'intro_call'
-      introBeatRef.current = 0
-      setPhase('intro_call')
-      setIntroBeat(0)
+      phaseRef.current = 'phone_wait'
+      setPhase('phone_wait')
       setOpening(false)
+      sceneRef.current?.setPhoneRinging(true)
+      sceneRef.current?.setRoamEnabled(true)
+      showToast('听，草原前方的玻璃电话亭正在响铃', 3000)
     }, 2450)
+  }, [later, opening, showToast, sound])
+
+  const answerPhoneBooth = useCallback(() => {
+    if (phaseRef.current !== 'phone_wait') return
+    sound.playPhonePickup()
+    sceneRef.current?.setPhoneRinging(false)
+    sceneRef.current?.focusTarget('phone', 1.4)
+    phaseRef.current = 'intro_call'
+    introBeatRef.current = 0
+    setPhase('intro_call')
+    setIntroBeat(0)
+  }, [sound])
+
+  const begin = () => {
+    if (opening) return
+    if (!hasSeenPremise()) {
+      setPremiseMode('first_entry')
+      return
+    }
+    void enterGrasslandAtBooth()
   }
 
   // Act I focus controls
@@ -1020,6 +1119,13 @@ export function PrologueExperience({
     setSelectedChoice(null)
     setToast(null)
     setOpening(false)
+    setPremiseMode(null)
+    setVisorPulse(null)
+    if (visorTimerRef.current) {
+      window.clearTimeout(visorTimerRef.current)
+      visorTimerRef.current = null
+    }
+    sceneRef.current?.setPhoneRinging(false)
     sceneRef.current?.resetToSurface()
     sound.resetAtmosphere()
     sound.stopRain()
@@ -1054,8 +1160,14 @@ export function PrologueExperience({
     setFocusProgress(0.14)
     focusRef.current = 0.14
     sceneRef.current?.focusTarget('flower', 2.4)
-    sound.playChime([523.25, 659.25], 0.06, 2.5)
-    showToast('ACT I · 拖动对焦环，替她拨开清晨大雾', 2600)
+    sceneRef.current?.emitSkyCall(discoveriesRef.current)
+    triggerVisorPulse(
+      'boot',
+      '超感程序已启动',
+      'NEURAL VISOR ONLINE · SUNSET-06',
+      '声波指引已锁定草坡野花 · 可调焦或直接轻触花瓣',
+    )
+    showToast('ACT I · 已佩戴传感脑机 · 触碰并看清这朵逆风野花', 2800)
   }
 
   const pickDialogueChoice = (choice: DialogueChoice) => {
@@ -1338,6 +1450,7 @@ export function PrologueExperience({
     setDepthKm(6371.4)
     setSignal(0.08)
     sound.staticBurst()
+    triggerVisorPulse('core', '地心信标过载 · 坐标锁定', '6,371.4 KM · SUNSET-06 OVERRIDE')
     later(() => setSignal(0.05), 1400)
     later(() => {
       setAttenuating(false)
@@ -1524,7 +1637,17 @@ export function PrologueExperience({
   }, [tuning, panel, phase, tuned, later, openQuote, showToast, sound])
 
   const handlePick = (id: PickId) => {
-    if (phaseRef.current !== 'explore' || finalizingRef.current) return
+    if (finalizingRef.current) return
+    if (id === 'phone') {
+      if (phaseRef.current === 'phone_wait') {
+        answerPhoneBooth()
+      } else if (phaseRef.current === 'explore') {
+        sound.playChime([587.33, 783.99], 0.04, 1.8)
+        showToast('草原入口那座透明电话亭，把地面微风与地心深处的她连在了一起', 2400)
+      }
+      return
+    }
+    if (phaseRef.current !== 'explore') return
     if (id === 'lake') {
       sound.waterSplash(1)
       if (actRef.current === 2 && panelRef.current === 'none') {
@@ -1546,11 +1669,13 @@ export function PrologueExperience({
 
     const currentAct = actRef.current
     if (id === 'flower') {
+      sceneRef.current?.touchHeroFlower()
       if (currentAct === 1) {
         activateFlower()
       } else {
         sceneRef.current?.focusTarget('flower', 2.2)
-        showToast('清晨那朵逆风的野花，已存入记忆胶片', 2000)
+        sound.playChime([659.25, 880], 0.045, 2.0)
+        showToast('指尖轻触花茎，露水与花瓣在阳光里摇晃了两下', 2200)
       }
       return
     }
@@ -1914,7 +2039,7 @@ export function PrologueExperience({
   useEffect(() => () => voicePlayer.stop(), [])
 
   useEffect(() => {
-    if (!active || phase !== 'intro_call') return
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'intro_call') return
     void voicePlayer.play(`intro-${introBeat}`, introBeat === 0 ? 'clear' : 'headset')
     if (introBeat + 1 < INTRO_CALL_BEATS.length) {
       void voicePlayer.preload(`intro-${introBeat + 1}`)
@@ -1922,7 +2047,7 @@ export function PrologueExperience({
   }, [active, phase, introBeat])
 
   useEffect(() => {
-    if (!active || phase !== 'explore' || !quoteKey) return
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'explore' || !quoteKey) return
     const mode: VoiceMode = quoteKey === 'stars' ? 'deep' : 'headset'
     if (choiceId) {
       void voicePlayer.play(`choice-${choiceId}`, mode)
@@ -1935,18 +2060,18 @@ export function PrologueExperience({
   }, [active, phase, quoteKey, choiceId, quoteChoices])
 
   useEffect(() => {
-    if (!active || !loreId) return
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || !loreId) return
     void voicePlayer.play(`egg-${loreId}`, loreId === 'tablet' ? 'clear' : 'headset')
   }, [active, loreId])
 
   useEffect(() => {
-    if (!active || !attenuating) return
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || !attenuating) return
     void voicePlayer.play('truth', 'clear')
     void voicePlayer.preload('descent-0')
   }, [active, attenuating])
 
   useEffect(() => {
-    if (!active || phase !== 'descending') return
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'descending') return
     void voicePlayer.play(`descent-${descentLayerIndex}`, 'deep')
     if (descentLayerIndex + 1 < DESCENT_CAPTIONS.length) {
       void voicePlayer.preload(`descent-${descentLayerIndex + 1}`)
@@ -1954,7 +2079,7 @@ export function PrologueExperience({
   }, [active, phase, descentLayerIndex])
 
   useEffect(() => {
-    if (!active || phase !== 'epilogue') return
+    if (!PROLOGUE_VOICE_AUTOPLAY || !active || phase !== 'epilogue') return
     void voicePlayer.play('epilogue-final', 'clear')
   }, [active, phase])
 
@@ -2072,7 +2197,7 @@ export function PrologueExperience({
         />
       )}
 
-      {phase === 'explore' && hover && !quote && !lore && !attenuating && (
+      {(phase === 'explore' || phase === 'phone_wait') && hover && !quote && !lore && !attenuating && (
         <div
           className="pointer-events-none fixed z-[39] hidden -translate-x-1/2 -translate-y-1/2 sm:block"
           style={{ left: `${hover.x}px`, top: `${hover.y}px` }}
@@ -2115,12 +2240,64 @@ export function PrologueExperience({
           echoRead={journey.echoReadDay === echo?.day}
           flashSafe={flashSafe}
           onToggleFlashSafe={onToggleFlashSafe}
+          onOpenPremise={() => setPremiseMode('browse')}
           onListenEcho={(code) => {
             markEchoRead(echo?.day ?? todayKey())
             onListenEcho?.(code)
           }}
         />
       )}
+
+      {phase === 'phone_wait' && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[40] flex justify-center px-4 pb-[max(1.35rem,env(safe-area-inset-bottom))] sm:pb-7">
+          <div className="cinema-surface pointer-events-auto animate-fade-up flex w-full max-w-[560px] flex-col gap-3 rounded-[26px] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[0.18em] text-signal">
+                <span className="h-2 w-2 rounded-full bg-signal animate-[blinkDot_1.1s_ease-in-out_infinite]" />
+                <span>TELEPHONE BOOTH · 06:38</span>
+              </div>
+              <div className="mt-1 font-serif text-[15px] text-[#fff8ee]">
+                草坡前方的电话亭正在响铃
+              </div>
+              <p className="mt-0.5 font-serif text-[12px] text-white/62">
+                可自由环顾或走近点击玻璃电话亭接听，或直接接起这通来电。
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={exitToRitual}
+                className="btn-ghost !px-3.5 !py-2 !text-[12px]"
+              >
+                回封面
+              </button>
+              <button
+                type="button"
+                onClick={answerPhoneBooth}
+                className="btn-primary !px-4 !py-2 !text-[12.5px]"
+              >
+                ☎ 接起电话
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <StoryPremiseModal
+        open={premiseMode !== null}
+        mode={premiseMode ?? 'browse'}
+        onClose={() => setPremiseMode(null)}
+        onEnter={() => {
+          markPremiseSeen()
+          void enterGrasslandAtBooth()
+        }}
+        onSkipAndEnter={() => {
+          markPremiseSeen()
+          void enterGrasslandAtBooth()
+        }}
+      />
+
+      <NeuralVisorOverlay pulse={visorPulse} />
 
       <FieldJournalModal
         open={phase === 'explore' && journalOpen}
@@ -2547,11 +2724,12 @@ export function PrologueExperience({
         quote={quote}
         quoteCollapsed={quoteCollapsed}
         selectedChoice={selectedChoice}
-        activeQuoteVoiceId={activeQuoteVoiceId}
+        activeQuoteVoiceId={PROLOGUE_VOICE_AUTOPLAY ? activeQuoteVoiceId : null}
         activeQuoteVoiceMode={activeQuoteVoiceMode}
         voiceState={voiceState}
         lore={lore}
         attenuating={attenuating}
+        showVoiceControl={PROLOGUE_VOICE_AUTOPLAY}
         meadowShot={meadowShot}
         meadowNote={meadowNote}
         meadowSaved={meadowSaved}
@@ -2588,6 +2766,7 @@ export function PrologueExperience({
         wishNote={wishNote}
         memories={memories}
         exportingRoll={exportingRoll}
+        showVoiceControl={PROLOGUE_VOICE_AUTOPLAY}
         onAdvanceIntro={advanceIntroBeat}
         onSkipIntro={skipIntroToExplore}
         onExitToRitual={exitToRitual}

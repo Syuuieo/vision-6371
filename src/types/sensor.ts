@@ -10,6 +10,7 @@ export type CollectionId = 'flower' | 'wind' | 'stars'
 
 export type Phase =
   | 'ritual'
+  | 'phone_wait'
   | 'intro_call'
   | 'explore'
   | 'descending'
@@ -18,6 +19,7 @@ export type Phase =
 
 export type FocusTarget =
   | 'home'
+  | 'phone'
   | 'flower'
   | 'wind'
   | 'sky'
@@ -29,7 +31,7 @@ export type FocusTarget =
   | 'ruin'
   | 'boat'
 
-export type PickId = CollectionId | 'lake' | 'star1' | 'star2' | 'star3' | EggId
+export type PickId = CollectionId | 'phone' | 'lake' | 'star1' | 'star2' | 'star3' | EggId
 
 export type QuoteKey =
   | 'flower'

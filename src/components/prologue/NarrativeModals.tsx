@@ -18,6 +18,7 @@ interface NarrativeModalsProps {
   voiceState: VoiceSnapshot
   lore: EasterEggMeta | null
   attenuating: boolean
+  showVoiceControl?: boolean
   meadowShot: { image: string; placeName: string; hour: number } | null
   meadowNote: string
   meadowSaved: boolean
@@ -43,6 +44,7 @@ export function NarrativeModals({
   voiceState,
   lore,
   attenuating,
+  showVoiceControl = true,
   meadowShot,
   meadowNote,
   meadowSaved,
@@ -306,16 +308,18 @@ export function NarrativeModals({
             </div>
             <div className="mt-4 font-mono text-[10px] tracking-[0.18em] text-white/38">{lore.signature}</div>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => {
-                  void voicePlayer.unlock()
-                  void voicePlayer.toggle(`egg-${lore.id}`, lore.id === 'tablet' ? 'clear' : 'headset')
-                }}
-              >
-                {voiceState.playingId === `egg-${lore.id}` ? '暂停语音' : '重听回声'}
-              </button>
+              {showVoiceControl && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    void voicePlayer.unlock()
+                    void voicePlayer.toggle(`egg-${lore.id}`, lore.id === 'tablet' ? 'clear' : 'headset')
+                  }}
+                >
+                  {voiceState.playingId === `egg-${lore.id}` ? '暂停语音' : '重听回声'}
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-ghost"

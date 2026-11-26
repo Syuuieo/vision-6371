@@ -1,4 +1,4 @@
-export const APP_VERSION = '3.8.1'
+export const APP_VERSION = '3.9.0'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '3.9.0',
+    date: '2026-11-26',
+    title: '序章大改版：故事前情、草原电话亭、瞬态脑机扫描与情感剧情重铸',
+    items: [
+      '新增可选择性阅读与首次进场跳过的「故事前情」导览弹窗（封面随时可点「故事前情」，读过原著可一键跳过直接入场）。',
+      '序章落地新增 3D「草原响铃电话亭」：进入草坡先听电话亭铃声指引并走近接起林微的来电，告别突兀开场弹窗。',
+      '参考脑机传感视界，在戴上眼镜瞬间、按下 `[Space]` 声波扫描与地核反转时加入酷炫瞬态赛博扫描 HUD（`NeuralVisorOverlay`）与脑机开机/拨号音效；同步把鼠标与触屏视角转速调得更从容柔和。',
+      '将第 I 幕草原野花升级为靠近微颤、轻触可弹性摇曳并泛出暖光的交互植物，并重写全部 8 幕剧情对话（含第 V 幕“替我摸一摸雨水”与第 VII→VIII 幕地心反转立誓，终局直达地球表面电台）。',
+      '暂停冷硬旧版 AI 语音自动播报并改为纯电影字幕 + 环境/无线电音效，同步生成 `VOICE_SCRIPT_GUIDE.md` 新版情感台词配音表，换平台录好 MP3 放入 `public/voice/` 并开启开关即可生效。',
+    ],
+  },
   {
     version: '3.8.1',
     date: '2026-11-25',

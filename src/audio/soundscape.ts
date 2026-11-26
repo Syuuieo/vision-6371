@@ -707,6 +707,119 @@ export class Soundscape {
     this.startBgm('core')
   }
 
+  playPhoneRing() {
+    if (!this.ctx || !this.sfx || !this.reverbSend || this.muted || !this.active) return
+    const ctx = this.ctx
+    const base = ctx.currentTime + 0.02
+    const bursts = [0, 0.44]
+    for (const offset of bursts) {
+      const start = base + offset
+      const dur = 0.28
+      const bandpass = ctx.createBiquadFilter()
+      bandpass.type = 'bandpass'
+      bandpass.frequency.value = 920
+      bandpass.Q.value = 1.6
+
+      const env = ctx.createGain()
+      env.gain.setValueAtTime(0.0001, start)
+      env.gain.exponentialRampToValueAtTime(0.085, start + 0.02)
+      env.gain.setValueAtTime(0.085, start + dur - 0.04)
+      env.gain.exponentialRampToValueAtTime(0.0001, start + dur)
+
+      for (const freq of [440, 480]) {
+        const osc = ctx.createOscillator()
+        osc.type = 'triangle'
+        osc.frequency.setValueAtTime(freq, start)
+        osc.connect(bandpass)
+        osc.start(start)
+        osc.stop(start + dur + 0.03)
+      }
+
+      bandpass.connect(env)
+      env.connect(this.sfx)
+      env.connect(this.reverbSend)
+    }
+  }
+
+  playPhonePickup() {
+    if (!this.ctx || !this.sfx || this.muted || !this.active) return
+    const ctx = this.ctx
+    const t = ctx.currentTime
+    const click = ctx.createOscillator()
+    click.type = 'sine'
+    click.frequency.setValueAtTime(240, t)
+    click.frequency.exponentialRampToValueAtTime(95, t + 0.07)
+    const cg = ctx.createGain()
+    cg.gain.setValueAtTime(0.0001, t)
+    cg.gain.exponentialRampToValueAtTime(0.14, t + 0.006)
+    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
+    click.connect(cg).connect(this.sfx)
+    click.start(t)
+    click.stop(t + 0.11)
+
+    if (this.noise) {
+      const burst = ctx.createBufferSource()
+      burst.buffer = this.noise
+      const hp = ctx.createBiquadFilter()
+      hp.type = 'bandpass'
+      hp.frequency.value = 1800
+      hp.Q.value = 1.4
+      const bg = ctx.createGain()
+      bg.gain.setValueAtTime(0.0001, t + 0.04)
+      bg.gain.exponentialRampToValueAtTime(0.055, t + 0.08)
+      bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.24)
+      burst.connect(hp).connect(bg).connect(this.sfx)
+      burst.start(t + 0.04)
+      burst.stop(t + 0.26)
+    }
+  }
+
+  playVisorBoot(kind: 'boot' | 'scan' | 'core' = 'boot') {
+    const sfx = this.sfx
+    const reverbSend = this.reverbSend
+    if (!this.ctx || !sfx || !reverbSend || this.muted || !this.active) return
+    const ctx = this.ctx
+    const t = ctx.currentTime
+    const sweep = ctx.createOscillator()
+    sweep.type = kind === 'core' ? 'sawtooth' : 'sine'
+    const startFreq = kind === 'core' ? 190 : kind === 'scan' ? 420 : 320
+    const endFreq = kind === 'core' ? 76 : kind === 'scan' ? 1180 : 960
+    sweep.frequency.setValueAtTime(startFreq, t)
+    sweep.frequency.exponentialRampToValueAtTime(endFreq, t + 0.42)
+
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = kind === 'core' ? 680 : 2200
+
+    const sg = ctx.createGain()
+    sg.gain.setValueAtTime(0.0001, t)
+    sg.gain.exponentialRampToValueAtTime(kind === 'scan' ? 0.065 : 0.09, t + 0.05)
+    sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.48)
+
+    sweep.connect(filter).connect(sg)
+    sg.connect(sfx)
+    sg.connect(reverbSend)
+    sweep.start(t)
+    sweep.stop(t + 0.52)
+
+    const notes = kind === 'core' ? [220, 164.81] : [783.99, 1046.5]
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator()
+      osc.type = 'triangle'
+      const nt = t + 0.18 + idx * 0.09
+      osc.frequency.setValueAtTime(freq, nt)
+      const ng = ctx.createGain()
+      ng.gain.setValueAtTime(0.0001, nt)
+      ng.gain.exponentialRampToValueAtTime(0.055, nt + 0.02)
+      ng.gain.exponentialRampToValueAtTime(0.0001, nt + 0.55)
+      osc.connect(ng)
+      ng.connect(sfx)
+      ng.connect(reverbSend)
+      osc.start(nt)
+      osc.stop(nt + 0.6)
+    })
+  }
+
   resetAtmosphere() {
     if (!this.ctx) return
     const t = this.now()

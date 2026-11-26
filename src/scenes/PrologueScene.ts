@@ -283,6 +283,15 @@ export class PrologueScene {
     this.windFX?.triggerHeroPetals()
   }
 
+  touchHeroFlower() {
+    this.landmarks?.touchHeroFlower()
+    this.windFX?.triggerHeroPetals()
+  }
+
+  setPhoneRinging(ringing: boolean) {
+    this.landmarks?.setPhoneRinging(ringing)
+  }
+
   captureGalaxy() {
     this.setStage(2)
     this.skyWorld?.boostGalaxy()
@@ -598,7 +607,7 @@ export class PrologueScene {
       this.look.galaxy,
       this.controller?.speedNorm ?? 0,
     )
-    this.landmarks?.update(dt, this.elapsed)
+    this.landmarks?.update(dt, this.elapsed, this.camera.position)
 
     if (this.underground && this.skyWorld && this.controller) {
       this.underground.update(

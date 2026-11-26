@@ -24,6 +24,7 @@ interface EndingSequenceOverlayProps {
   wishNote: string | null
   memories: MemoryFrame[]
   exportingRoll: boolean
+  showVoiceControl?: boolean
   onAdvanceIntro: () => void
   onSkipIntro: () => void
   onExitToRitual: () => void
@@ -46,6 +47,7 @@ export function EndingSequenceOverlay({
   wishNote,
   memories,
   exportingRoll,
+  showVoiceControl = true,
   onAdvanceIntro,
   onSkipIntro,
   onExitToRitual,
@@ -71,31 +73,33 @@ export function EndingSequenceOverlay({
                 <span>{currentIntroBeat.speaker}</span>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    void voicePlayer.unlock()
-                    void voicePlayer.toggle(`intro-${introBeat}`, introBeat === 0 ? 'clear' : 'headset')
-                  }}
-                  aria-label="播音或重听开场语音"
-                  className="flex items-center gap-1.5 rounded-full border border-signal/30 bg-signal/[0.08] px-2.5 py-0.5 font-serif text-[11px] text-signal transition hover:border-signal/60 hover:bg-signal/[0.15]"
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                      voiceState.playingId === `intro-${introBeat}` || voiceState.loadingId === `intro-${introBeat}`
-                        ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
-                        : 'opacity-55'
-                    }`}
-                  />
-                  <span>
-                    {voiceState.playingId === `intro-${introBeat}`
-                      ? '播音中 · 暂停'
-                      : voiceState.loadingId === `intro-${introBeat}`
-                        ? '载入中'
-                        : '重听语音'}
-                  </span>
-                </button>
+                {showVoiceControl && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void voicePlayer.unlock()
+                      void voicePlayer.toggle(`intro-${introBeat}`, introBeat === 0 ? 'clear' : 'headset')
+                    }}
+                    aria-label="播音或重听开场语音"
+                    className="flex items-center gap-1.5 rounded-full border border-signal/30 bg-signal/[0.08] px-2.5 py-0.5 font-serif text-[11px] text-signal transition hover:border-signal/60 hover:bg-signal/[0.15]"
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full bg-signal ${
+                        voiceState.playingId === `intro-${introBeat}` || voiceState.loadingId === `intro-${introBeat}`
+                          ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
+                          : 'opacity-55'
+                      }`}
+                    />
+                    <span>
+                      {voiceState.playingId === `intro-${introBeat}`
+                        ? '播音中 · 暂停'
+                        : voiceState.loadingId === `intro-${introBeat}`
+                          ? '载入中'
+                          : '重听语音'}
+                    </span>
+                  </button>
+                )}
                 <span className="font-mono text-[10.5px] text-white/45">
                   {currentIntroBeat.timeLabel} · {introBeat + 1}/{introBeatsTotal}
                 </span>
@@ -202,27 +206,29 @@ export function EndingSequenceOverlay({
         <div className="pointer-events-none fixed inset-0 z-[46] flex flex-col justify-end">
           <div className="absolute inset-0 bg-gradient-to-t from-[#091122] via-[#091122]/80 to-transparent" />
           <div className="ending-rise no-scrollbar relative mx-auto max-h-dvh w-full max-w-[780px] overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-20 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                void voicePlayer.unlock()
-                void voicePlayer.toggle('epilogue-final', 'clear')
-              }}
-              className="pointer-events-auto mx-auto mb-4 flex w-max items-center gap-2 rounded-full border border-signal/35 bg-signal/10 px-3.5 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-signal transition hover:border-signal/65 hover:bg-signal/18"
-            >
-              <span
-                className={`h-1.5 w-1.5 rounded-full bg-signal ${
-                  voiceState.playingId === 'epilogue-final'
-                    ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
-                    : 'animate-[blinkDot_2s_ease-in-out_infinite]'
-                }`}
-              />
-              <span>
-                {voiceState.playingId === 'epilogue-final'
-                  ? '地心深处 · 落日六号正在回应 · 暂停'
-                  : '地心深处 · 落日六号仍在回应 · 重听'}
-              </span>
-            </button>
+            {showVoiceControl && (
+              <button
+                type="button"
+                onClick={() => {
+                  void voicePlayer.unlock()
+                  void voicePlayer.toggle('epilogue-final', 'clear')
+                }}
+                className="pointer-events-auto mx-auto mb-4 flex w-max items-center gap-2 rounded-full border border-signal/35 bg-signal/10 px-3.5 py-1.5 font-serif text-[11.5px] tracking-[0.08em] text-signal transition hover:border-signal/65 hover:bg-signal/18"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full bg-signal ${
+                    voiceState.playingId === 'epilogue-final'
+                      ? 'animate-[blinkDot_1.2s_ease-in-out_infinite]'
+                      : 'animate-[blinkDot_2s_ease-in-out_infinite]'
+                  }`}
+                />
+                <span>
+                  {voiceState.playingId === 'epilogue-final'
+                    ? '地心深处 · 落日六号正在回应 · 暂停'
+                    : '地心深处 · 落日六号仍在回应 · 重听'}
+                </span>
+              </button>
+            )}
             <div className="hud-value text-[clamp(48px,8.5vw,92px)] font-light leading-none tracking-[0.04em] text-[#fff8ee]">
               {TRUTH.depth}
               <span className="ml-2 font-mono text-[12px] tracking-[0.22em] text-white/55">{TRUTH.unit}</span>
@@ -273,14 +279,14 @@ export function EndingSequenceOverlay({
             )}
 
             <div className="pointer-events-auto mt-5 flex flex-wrap items-center justify-center gap-2.5">
-              <button type="button" className="btn-primary" onClick={() => onNavigate('post')}>
-                带着记忆胶片，去第 03 章寄回视野
+              <button type="button" className="btn-primary" onClick={() => onNavigate('radio')}>
+                带上她的眼睛 · 进入地球表面电台
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
-              <button type="button" className="btn-ghost" onClick={() => onNavigate('radio')}>
-                前往 02 · 为她点亮城市电台
+              <button type="button" className="btn-ghost" onClick={() => onNavigate('post')}>
+                去第 03 章 · 寄回一片风景
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
