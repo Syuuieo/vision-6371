@@ -43,6 +43,11 @@ function mergeEchoes(base: VisionEcho[], incoming: VisionEcho[]) {
 
 function liveStoryForInteract(city: string, kind: 'lamp' | 'star' | 'ripple' | 'snow'): string {
   const c = city.trim()
+  if (c.includes('洛杉矶') || c.includes('格里菲斯')) {
+    return kind === 'star'
+      ? '格里菲斯天文台实况：三座铜绿穹顶映着紫金晚霞，天顶刚刚亮起《爱乐之城》第一批星子。'
+      : '好莱坞山实况：复古路灯下爵士钢琴声顺着山坡流下去，山下百万点洛杉矶灯海正在苏醒。'
+  }
   if (c.includes('悉尼')) {
     return kind === 'ripple'
       ? '悉尼港实况：海湾正有渡轮与帆船穿过，28°C 的海风推开一层层白浪。'

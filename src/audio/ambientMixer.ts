@@ -55,7 +55,7 @@ const STATIONS: Record<string, Station> = {
   西安: stationOf(146.83, DORIAN, 68, 'triangle', 1600),
   杭州: stationOf(110, MINOR_PENTA, 72, 'sine', 1900),
   复活节岛: stationOf(130.81, DORIAN, 60, 'sine', 2100),
-  悉尼: stationOf(196.0, MAJOR_PENTA, 94, 'triangle', 2700),
+  洛杉矶: stationOf(146.83, DORIAN, 76, 'triangle', 2250),
   吉萨: stationOf(164.81, DORIAN, 68, 'triangle', 1900),
   雷克雅未克: stationOf(146.83, DORIAN, 58, 'sine', 2900),
   开普敦: stationOf(164.81, MAJOR_PENTA, 88, 'triangle', 2400),

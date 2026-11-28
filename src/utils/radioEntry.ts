@@ -5,6 +5,7 @@ export const WALKABLE_CITY_SCENE: Record<string, DioramaSceneId> = {
   阿格拉: 'agra',
   格鲁吉亚: 'georgia',
   复活节岛: 'rapanui',
+  洛杉矶: 'griffith',
   吉萨: 'giza',
   罗马: 'rome',
   京都: 'kyoto',

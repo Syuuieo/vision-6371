@@ -23,13 +23,13 @@ const DEFAULT_SEED_CODES = [
   'VRDL05',
   'VRHR04',
   'VRGE12',
-  'VRSY13',
+  'VRLA13',
   'VRGZ14',
   'VRIS15',
   'VRKY17',
   'VRPR18',
 ]
-const DEFAULT_SEED_CITIES = ['阿格拉', '复活节岛', '罗马', '大理', '哈尔滨', '格鲁吉亚', '悉尼', '吉萨', '雷克雅未克', '京都', '巴黎']
+const DEFAULT_SEED_CITIES = ['阿格拉', '复活节岛', '罗马', '大理', '哈尔滨', '格鲁吉亚', '洛杉矶', '吉萨', '雷克雅未克', '京都', '巴黎']
 const LEGACY_SEED_CODES = ['VRHZ01', 'VRQD02', 'VRCD03', 'VRBJ09', 'VRXA10', 'VRSY11', 'VRCT16']
 
 const EMPTY_JOURNEY: JourneyState = {

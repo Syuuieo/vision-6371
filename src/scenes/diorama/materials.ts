@@ -1402,7 +1402,7 @@ export function buildHorizonRing(
         rotation: rand() * Math.PI,
       }
     })
-  } else if (variant === 'sydney') {
+  } else if (variant === 'griffith') {
     addInstances(new THREE.ConeGeometry(1, 1, 7), midMat, 11, (i) => {
       const a = (i / 11) * Math.PI * 2 + 0.2
       const r = 27 + rand() * 2

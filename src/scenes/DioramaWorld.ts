@@ -15,8 +15,8 @@ import { buildKyotoCity } from './diorama/cities/kyoto'
 import { buildGeorgiaCity } from './diorama/cities/georgia'
 import { buildRapanuiCity } from './diorama/cities/rapanui'
 import { buildGizaCity } from './diorama/cities/giza'
+import { buildGriffithCity } from './diorama/cities/griffith'
 import { buildCore } from './diorama/buildersC'
-import { buildSydney } from './diorama/buildersA'
 import { buildRome } from './diorama/buildersD'
 import {
   createCinemaGodRayPass,
@@ -112,7 +112,7 @@ interface WindStreakSlot {
 const WIND_STREAK_TINT: Record<DioramaSceneId, string> = {
   agra: '#ffe2c6',
   rapanui: '#ffd8a8',
-  sydney: '#a8ecff',
+  griffith: '#e2afff',
   giza: '#f5cc82',
   harbin: '#d8eeff',
   georgia: '#ffd6c4',
@@ -128,6 +128,7 @@ const BLOOM_BOOST_SCENES = new Set<DioramaSceneId>(['iceland', 'georgia', 'core'
 const NATIVE_1TO1_SCENES = new Set<DioramaSceneId>([
   'agra',
   'rapanui',
+  'griffith',
   'giza',
   'paris',
   'iceland',
@@ -1001,7 +1002,7 @@ export class DioramaWorld {
       const justAwakened = !wasAwakened && this.unlockedAwakened
       const meta = DIORAMA_SCENES.find((s) => s.id === this.sceneId) ?? DIORAMA_SCENES[0]
       this.onInteract?.({
-        label: justAwakened ? `◆ 奇境觉醒 · ${meta.stampTitle}` : lastResult.label,
+        label: justAwakened ? `奇境觉醒 · ${meta.stampTitle}` : lastResult.label,
         sfx: justAwakened ? 'celebrate' : lastResult.sfx,
         count: this.interactionCount,
         awakened: justAwakened,
@@ -1022,7 +1023,7 @@ export class DioramaWorld {
     const snap = buildEncounterSnapshot(this.sceneId, this.discoveredEncounters)
     this.onProgress?.(snap)
     this.interactionCount += 1
-    const label = `◆ 奇境觉醒 · ${meta.stampTitle}`
+    const label = `奇境觉醒 · ${meta.stampTitle}`
     this.onInteract?.({
       label,
       sfx: 'celebrate',
@@ -1231,8 +1232,8 @@ export class DioramaWorld {
       case 'rapanui':
         buildRapanuiCity(ctx)
         break
-      case 'sydney':
-        buildSydney(ctx)
+      case 'griffith':
+        buildGriffithCity(ctx)
         break
       case 'giza':
         buildGizaCity(ctx)
@@ -1409,48 +1410,48 @@ export class DioramaWorld {
           sunDir: [-0.25, 0.5, -0.8],
         },
       },
-      sydney: {
+      griffith: {
         dawn: {
-          zenith: '#1f64a8',
-          mid: '#5ea8dc',
-          horizon: '#fff0cc',
-          sun: '#fff2cf',
-          key: '#fff0ca',
-          fill: '#a4dcff',
-          hemiTop: '#e6f6ff',
-          hemiBot: '#366886',
-          keyInt: 2.55,
-          hemiInt: 1.28,
+          zenith: '#38588c',
+          mid: '#9aaac8',
+          horizon: '#ffe5c4',
+          sun: '#fff0d2',
+          key: '#ffeac2',
+          fill: '#9cc2f2',
+          hemiTop: '#f0f2ff',
+          hemiBot: '#4e425c',
+          keyInt: 2.35,
+          hemiInt: 1.15,
           stars: 0,
-          sunDir: [0.6, 0.42, -0.68],
+          sunDir: [0.64, 0.36, -0.68],
         },
         dusk: {
-          zenith: '#1a4270',
-          mid: '#3e7ca4',
-          horizon: '#f4c094',
-          sun: '#ffe2ad',
-          key: '#ffe2ac',
-          fill: '#90c8fa',
-          hemiTop: '#d8f2ff',
-          hemiBot: '#295778',
-          keyInt: 2.25,
-          hemiInt: 1.12,
-          stars: 0.14,
-          sunDir: [-0.46, 0.28, -0.84],
+          zenith: '#2c1c56',
+          mid: '#763b78',
+          horizon: '#ff9c6e',
+          sun: '#ffd496',
+          key: '#ffc69c',
+          fill: '#a292f4',
+          hemiTop: '#e0b8ff',
+          hemiBot: '#38244a',
+          keyInt: 2.35,
+          hemiInt: 1.05,
+          stars: 0.36,
+          sunDir: [-0.66, 0.24, -0.71],
         },
         night: {
-          zenith: '#071426',
-          mid: '#122c4a',
-          horizon: '#244a6e',
-          sun: '#a8d4ff',
-          key: '#9ecbff',
-          fill: '#558ac4',
-          hemiTop: '#96c6f8',
-          hemiBot: '#1c3852',
+          zenith: '#070a1c',
+          mid: '#181844',
+          horizon: '#3c2a60',
+          sun: '#b8d4ff',
+          key: '#a6c6ff',
+          fill: '#6c74cc',
+          hemiTop: '#96b4ff',
+          hemiBot: '#241b36',
           keyInt: 1.32,
           hemiInt: 0.86,
-          stars: 0.9,
-          sunDir: [-0.3, 0.5, -0.8],
+          stars: 0.96,
+          sunDir: [0.3, 0.52, -0.8],
         },
       },
       giza: {
@@ -1479,7 +1480,7 @@ export class DioramaWorld {
           hemiBot: '#4a3424',
           keyInt: 2.65,
           hemiInt: 0.96,
-          stars: 0.03,
+          stars: 0.01,
           sunDir: [-0.74, 0.26, -0.62],
         },
         night: {
@@ -1937,6 +1938,7 @@ export class DioramaWorld {
       case 'georgia':
       case 'rapanui':
       case 'giza':
+      case 'griffith':
         return '/hdri/belfast_sunset_puresky_2k.hdr'
       case 'iceland':
       case 'dali':
@@ -2151,7 +2153,7 @@ export class DioramaWorld {
         const justAwakened = !wasAwakened && this.unlockedAwakened
         const meta = DIORAMA_SCENES.find((s) => s.id === this.sceneId) ?? DIORAMA_SCENES[0]
         this.onInteract?.({
-          label: justAwakened ? `◆ 奇境觉醒 · ${meta.stampTitle}` : res.label,
+          label: justAwakened ? `奇境觉醒 · ${meta.stampTitle}` : res.label,
           sfx: justAwakened ? 'celebrate' : res.sfx,
           count: this.interactionCount,
           awakened: justAwakened,

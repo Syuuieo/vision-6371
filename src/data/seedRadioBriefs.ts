@@ -12,7 +12,7 @@ export const SEED_RADIO_BRIEFS: readonly SeedRadioBrief[] = [
   { code: 'VRDL05', city: '大理', title: '大理 · 洱海晚风', sender: '阿遥' },
   { code: 'VRHR04', city: '哈尔滨', title: '哈尔滨 · 初雪操场', sender: '宋野' },
   { code: 'VRGE12', city: '格鲁吉亚', title: '格鲁吉亚 · 圣剑双峰', sender: '高加索牧风人' },
-  { code: 'VRSY13', city: '悉尼', title: '悉尼 · 南半球盛夏海港', sender: '南风渡客' },
+  { code: 'VRLA13', city: '洛杉矶', title: '洛杉矶 · 格里菲斯天文台', sender: '爱乐夜行者' },
   { code: 'VRGZ14', city: '吉萨', title: '吉萨 · 金字塔与狮身人面像', sender: '尼罗河行者' },
   { code: 'VRIS15', city: '雷克雅未克', title: '雷克雅未克 · 极光冰湾', sender: '北纬六十四' },
   { code: 'VRKY17', city: '京都', title: '京都 · 鸭川暮色风铃', sender: '木廊听风' },

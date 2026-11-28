@@ -14,7 +14,7 @@ const CITIES = [
   '西安',
   '杭州',
   '复活节岛',
-  '悉尼',
+  '洛杉矶',
   '吉萨',
   '雷克雅未克',
   '开普敦',
@@ -59,6 +59,6 @@ describe('citySignature', () => {
   it('prefers the city table over the ambience fallback', () => {
     expect(signatureFor('复活节岛', 'wind').effect).toBe('ripple')
     expect(signatureFor('三亚', 'wind').weather).toBe('闷热无风')
-    expect(signatureFor('悉尼', 'wind').weather).toBe('南半球盛夏')
+    expect(signatureFor('洛杉矶', 'wind').weather).toBe('紫金暮光')
   })
 })

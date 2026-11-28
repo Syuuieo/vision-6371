@@ -4,7 +4,7 @@ import type { DioramaSceneId } from '../../services/albumStorage'
 import { buildGizaCity } from './cities/giza'
 import { buildGeorgiaCity } from './cities/georgia'
 import { buildCore, buildKyoto } from './buildersC'
-import { buildSydney } from './buildersA'
+import { buildGriffithCity } from './cities/griffith'
 import { buildAgraCity } from './cities/agra'
 import { buildRapanuiCity } from './cities/rapanui'
 import { buildParisCity } from './cities/paris'
@@ -25,7 +25,7 @@ import { DIORAMA_SCENES, type DioramaBuilderCtx, type DioramaHorizonStyle } from
 const builders: Record<DioramaSceneId, (ctx: DioramaBuilderCtx) => void> = {
   agra: buildAgraCity,
   rapanui: buildRapanuiCity,
-  sydney: buildSydney,
+  griffith: buildGriffithCity,
   giza: buildGizaCity,
   harbin: buildHarbinCity,
   georgia: buildGeorgiaCity,
@@ -138,7 +138,7 @@ describe('open horizon worlds', () => {
     const expected: Record<DioramaSceneId, DioramaHorizonStyle> = {
       agra: 'skyline',
       rapanui: 'mountains',
-      sydney: 'skyline',
+      griffith: 'skyline',
       giza: 'mountains',
       harbin: 'snowhills',
       georgia: 'mountains',
@@ -206,7 +206,7 @@ describe('open horizon worlds', () => {
     const [px, py, pz] = meta.walkView.pos
     const [, ly] = meta.walkView.look
     const elevated = meta.id === 'core'
-    const nativeScene = ['agra', 'georgia', 'rapanui', 'giza', 'rome', 'kyoto', 'paris', 'iceland', 'dali', 'harbin'].includes(meta.id)
+    const nativeScene = ['agra', 'georgia', 'rapanui', 'griffith', 'giza', 'rome', 'kyoto', 'paris', 'iceland', 'dali', 'harbin'].includes(meta.id)
     if (nativeScene) {
       expect(meta.encounters).toHaveLength(3)
       expect(meta.defaultHour).toBeDefined()

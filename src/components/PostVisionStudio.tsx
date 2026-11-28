@@ -138,6 +138,7 @@ export function PostVisionStudio({
   const [tempC, setTempC] = useState(() => {
     if (!initialAlbumEntry) return firstPreset.tempC
     if (initialAlbumEntry.city.includes('哈尔滨')) return -7
+    if (initialAlbumEntry.city.includes('洛杉矶')) return 21
     if (initialAlbumEntry.city.includes('悉尼')) return 28
     if (initialAlbumEntry.city.includes('夏威夷')) return 27
     return 18

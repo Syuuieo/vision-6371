@@ -169,15 +169,15 @@ export function createGizaPalette(textures: DioramaTextures): GizaPalette {
       bumpMap: masonryTex,
       bumpScale: 0.09,
     }),
-    smoothCasing: createMat('#ecdfc7', {
-      roughness: 0.46,
+    smoothCasing: createMat('#e6d2b0', {
+      roughness: 0.48,
       metalness: 0.03,
       bumpMap: textures.plasterBump,
       bumpScale: 0.015,
     }),
     sandstone: applyPbrSet(
-      createMat('#c59862', { roughness: 0.91, bumpMap: textures.darkStoneTex, bumpScale: 0.045 }),
-      'cobble',
+      createMat('#d4aa70', { roughness: 0.9, bumpMap: textures.darkStoneTex, bumpScale: 0.04 }),
+      'limestone',
       3,
       3,
     ),
@@ -402,25 +402,19 @@ export function createEgyptianObelisk(palette: GizaPalette, glowTex: THREE.Textu
   baseUpper.position.y = 1.275
 
   const shaftH = height - 2.9
-  const shaftGeo = new THREE.CylinderGeometry(0.46, 0.86, shaftH, 4)
+  const shaftGeo = new THREE.CylinderGeometry(0.42, 0.82, shaftH, 4)
   shaftGeo.rotateY(Math.PI / 4)
   const shaft = new THREE.Mesh(shaftGeo, palette.granite)
   shaft.position.y = 1.6 + shaftH * 0.5
 
-  // Subtle inset gold-trimmed central relief bead (stays understated warm bronze at dusk)
-  const inlayA = new THREE.Mesh(new THREE.BoxGeometry(0.14, shaftH * 0.72, 1.06), palette.runeGlow)
-  inlayA.position.y = 1.6 + shaftH * 0.5
-  const inlayB = new THREE.Mesh(new THREE.BoxGeometry(1.06, shaftH * 0.72, 0.14), palette.runeGlow)
-  inlayB.position.y = 1.6 + shaftH * 0.5
-
-  const tipGeo = new THREE.ConeGeometry(0.46, 1.35, 4)
+  const tipGeo = new THREE.ConeGeometry(0.42, 1.35, 4)
   tipGeo.rotateY(Math.PI / 4)
   const tip = new THREE.Mesh(tipGeo, palette.gold)
   tip.position.y = height - 0.65
 
   const halo = makeGlowSprite(glowTex, '#ffd588', 2.8, 0.0)
   halo.position.y = height - 0.2
-  ob.add(baseLower, baseUpper, shaft, inlayA, inlayB, tip, halo)
+  ob.add(baseLower, baseUpper, shaft, tip, halo)
 
   return { obelisk: ob, halo }
 }

@@ -28,6 +28,7 @@ describe('resolveRadioEntry', () => {
       阿格拉: 'agra',
       格鲁吉亚: 'georgia',
       复活节岛: 'rapanui',
+      洛杉矶: 'griffith',
       吉萨: 'giza',
       罗马: 'rome',
       京都: 'kyoto',
@@ -43,7 +44,7 @@ describe('resolveRadioEntry', () => {
 
   it('keeps real cloud and local photo posts in SignalViewer', () => {
     expect(resolveRadioEntry(preview('阿格拉', 'cloud'))).toEqual({ kind: 'signal' })
-    expect(resolveRadioEntry(preview('悉尼', 'local'))).toEqual({ kind: 'signal' })
+    expect(resolveRadioEntry(preview('洛杉矶', 'local'))).toEqual({ kind: 'signal' })
   })
 
   it('keeps legacy preset cities without a 3D world in SignalViewer', () => {

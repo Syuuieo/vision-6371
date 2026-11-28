@@ -76,16 +76,16 @@ describe('albumStorage', () => {
   it('supports dawn mood, awakened seal metadata, and diorama stamps', () => {
     const entry: AlbumEntry = {
       ...makeEntry('dawn-1', '晨光里的风帆与海豚'),
-      sceneId: 'sydney',
+      sceneId: 'griffith',
       mood: 'dawn',
       awakened: true,
-      stampTitle: '盛夏扬帆印记',
+      stampTitle: '星夜双人舞印记',
     }
     saveAlbumEntry(entry)
     const [saved] = loadAlbum()
     expect(saved.mood).toBe('dawn')
     expect(saved.awakened).toBe(true)
-    expect(saved.stampTitle).toBe('盛夏扬帆印记')
+    expect(saved.stampTitle).toBe('星夜双人舞印记')
 
     expect(loadDioramaStamps()).toEqual([])
     expect(markDioramaStamp('agra')).toEqual(['agra'])
@@ -103,7 +103,8 @@ describe('albumStorage', () => {
   it('infers accurate album categories from city or preset', () => {
     expect(inferAlbumSceneId('阿格拉')).toBe('agra')
     expect(inferAlbumSceneId('泰姬陵', 'agra')).toBe('agra')
-    expect(inferAlbumSceneId('悉尼')).toBe('sydney')
+    expect(inferAlbumSceneId('洛杉矶 · 格里菲斯天文台')).toBe('griffith')
+    expect(inferAlbumSceneId('悉尼')).toBe('griffith')
     expect(inferAlbumSceneId('格鲁吉亚 · 圣剑双峰', 'georgia')).toBe('georgia')
     expect(inferAlbumSceneId('哈尔滨')).toBe('harbin')
     expect(inferAlbumSceneId('雷克雅未克')).toBe('iceland')

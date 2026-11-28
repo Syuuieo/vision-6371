@@ -30,9 +30,9 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
 
   const TERRACE_Y = 0.55
   const CAUSEWAY_Y = 0.38
-  const WATER_Y = 0.12
-  const POOL_X = -15.5
-  const POOL_Z = -6.5
+  const WATER_Y = 0.24
+  const POOL_X = -14.2
+  const POOL_Z = -4.5
 
   const cityMaterials = createCityPbrMaterials(ctx.textures)
   cityMaterials.addWeatherHook(ctx)
@@ -47,10 +47,10 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
     bumpScale: 0.04,
   })
   const causewayMat = applyPbrSet(
-    createMat('#c69b64', { roughness: 0.88, bumpMap: ctx.textures.darkStoneTex, bumpScale: 0.045 }),
-    'cobble',
-    18,
-    12,
+    createMat('#dab57e', { roughness: 0.88, bumpMap: ctx.textures.darkStoneTex, bumpScale: 0.035 }),
+    'limestone',
+    14,
+    10,
   )
 
   const openGround = new THREE.Mesh(new THREE.PlaneGeometry(420, 420), desertSandMat)
@@ -80,7 +80,7 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
     const waveA = Math.sin(wx * 0.032 + wz * 0.024) * 7.2 + Math.cos(wx * 0.019 - wz * 0.038) * 5.8
     const waveB = Math.abs(Math.sin(wx * 0.062 - 0.7)) * 4.8
     const leftViewDune = Math.exp(-Math.pow((wx + 54) / 28, 2) - Math.pow((wz + 26) / 36, 2)) * 12.5
-    const h = Math.max(0, (waveA + waveB + 4.8) * zoneMask * edgeFade + leftViewDune * edgeFade) - (1 - edgeFade) * 0.6
+    const h = Math.max(0, (waveA + waveB + 4.8 + leftViewDune) * zoneMask * edgeFade) - (1 - edgeFade) * 0.6
     dPos.setY(i, h)
     cTmp.copy(sandLow).lerp(sandCrest, Math.min(1, Math.max(0, h / 16)))
     dCol[i * 3] = cTmp.r
@@ -118,27 +118,29 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
   g.add(causeway)
 
   // Low bevelled sandstone terrace edge & spaced lotus-capital columns (keeps sacred pool view wide open)
-  for (const px of [-20.0, 20.0]) {
-    const curb = new THREE.Mesh(new THREE.BoxGeometry(15.0, 0.22, 0.65), palette.sandstone)
-    curb.position.set(px, TERRACE_Y + 0.11, 8.35)
+  for (const px of [-19.5, 19.5]) {
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(15.5, 0.2, 0.65), palette.sandstone)
+    curb.position.set(px, TERRACE_Y + 0.1, 8.35)
     g.add(curb)
   }
   const lotusCoords: [number, number][] = [
-    [-25.5, 8.35], [-7.2, 8.35],
-    [7.2, 8.35], [25.5, 8.35],
+    [-22.5, 8.35], [-5.2, 8.35],
+    [5.2, 8.35], [22.5, 8.35],
   ]
   for (const [cx, cz] of lotusCoords) {
     const isOuter = Math.abs(cx) > 12
-    const pillar = createLotusPillar(palette, isOuter ? 3.2 : 1.75)
-    pillar.position.set(cx, TERRACE_Y, cz)
-    g.add(pillar)
-
-    if (!isOuter) {
-      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.24, 0.36, 10), palette.lapis)
-      bowl.position.set(cx, TERRACE_Y + 1.92, cz)
-      const flame = new THREE.Mesh(new THREE.DodecahedronGeometry(0.24, 0), palette.ember)
-      flame.position.set(cx, TERRACE_Y + 2.22, cz)
-      g.add(bowl, flame)
+    if (isOuter) {
+      const pillar = createLotusPillar(palette, 3.2)
+      pillar.position.set(cx, TERRACE_Y, cz)
+      g.add(pillar)
+    } else {
+      const pedestal = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.65, 0.95), palette.sandstone)
+      pedestal.position.set(cx, TERRACE_Y + 0.325, cz)
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.22, 0.3, 10), palette.lapis)
+      bowl.position.set(cx, TERRACE_Y + 0.8, cz)
+      const flame = new THREE.Mesh(new THREE.DodecahedronGeometry(0.2, 0), palette.ember)
+      flame.position.set(cx, TERRACE_Y + 1.06, cz)
+      g.add(pedestal, bowl, flame)
     }
   }
 
@@ -147,11 +149,11 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
   bench.rotation.y = Math.PI
   g.add(bench)
 
-  // Twin Aswan Granite Obelisks framing the mid-ground causeway portal (no longer blocking foreground camera)
+  // Twin Aswan Granite Obelisks further down the causeway portal so they frame Khufu without overlapping Sphinx
   const obeliskHalos: THREE.Sprite[] = []
-  for (const ox of [-9.4, 9.4]) {
-    const { obelisk, halo } = createEgyptianObelisk(palette, ctx.textures.glowHalo, 10.6)
-    obelisk.position.set(ox, CAUSEWAY_Y, -3.5)
+  for (const ox of [-6.2, 6.2]) {
+    const { obelisk, halo } = createEgyptianObelisk(palette, ctx.textures.glowHalo, 10.2)
+    obelisk.position.set(ox, CAUSEWAY_Y, -32.0)
     g.add(obelisk)
     obeliskHalos.push(halo)
   }
@@ -159,15 +161,15 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
   // -------------------------------------------------------------------------
   // 2. 谷庙神圣镜面倒影池（Reflector）+ 尼罗河椰枣树 & 纸莎草丛
   // -------------------------------------------------------------------------
-  const poolW = 21
-  const poolD = 13
+  const poolW = 17
+  const poolD = 12
   for (const rz of [POOL_Z - poolD * 0.5, POOL_Z + poolD * 0.5]) {
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(poolW + 1.2, 0.24, 0.65), palette.sandstone)
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(poolW + 1.2, 0.22, 0.65), palette.sandstone)
     rim.position.set(POOL_X, WATER_Y + 0.04, rz)
     g.add(rim)
   }
   for (const rx of [POOL_X - poolW * 0.5, POOL_X + poolW * 0.5]) {
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.24, poolD + 0.65), palette.sandstone)
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.22, poolD + 0.65), palette.sandstone)
     rim.position.set(rx, WATER_Y + 0.04, POOL_Z)
     g.add(rim)
   }
@@ -194,19 +196,19 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
     },
   )
 
-  for (const [rx, rz] of [[-24.2, -11.4], [-7.5, -11.2], [-24.2, -1.6], [-7.2, -1.6]] as [number, number][]) {
+  for (const [rx, rz] of [[-21.8, -9.6], [-6.6, -9.5], [-21.8, 0.6], [-6.5, 0.6]] as [number, number][]) {
     const papyrus = createShoreReedClump()
-    papyrus.scale.setScalar(1.25)
+    papyrus.scale.setScalar(1.22)
     papyrus.position.set(rx, WATER_Y + 0.06, rz)
     g.add(papyrus)
   }
 
-  // Date palms flanking the far/left bank of the Valley Temple oasis
+  // Date palms flanking the back/left edge of the Valley Temple oasis (framed cleanly inside viewport)
   const palmSpecs: [number, number, number, number][] = [
-    [-28.5, -13.5, 8.2, 0.16],
-    [-27.0, -2.5, 6.8, -0.14],
-    [-19.5, -15.5, 7.5, 0.1],
-    [29.5, -12.0, 7.6, -0.12],
+    [-21.5, -13.5, 7.6, 0.16],
+    [-16.2, -16.5, 6.8, -0.12],
+    [-23.5, -5.5, 7.2, 0.14],
+    [25.5, -18.0, 7.4, -0.12],
   ]
   for (const [px, pz, ph, lean] of palmSpecs) {
     const palm = createDatePalm(palette, ph, lean)
@@ -220,23 +222,23 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
   const pyramidsGroup = new THREE.Group()
   pyramidsGroup.name = 'giza-three-pyramids'
 
-  const { pyramid: khufu, halo: khufuHalo } = createSteppedPyramid(palette, ctx.textures.glowHalo, 58, 42, false)
-  khufu.position.set(-14, 0, -78)
+  const { pyramid: khufu, halo: khufuHalo } = createSteppedPyramid(palette, ctx.textures.glowHalo, 56, 41, false)
+  khufu.position.set(-11, 0, -78)
   khufu.rotation.y = 0.26
 
-  const { pyramid: khafre, halo: khafreHalo } = createSteppedPyramid(palette, ctx.textures.glowHalo, 52, 39, true)
-  khafre.position.set(30, 0, -106)
+  const { pyramid: khafre, halo: khafreHalo } = createSteppedPyramid(palette, ctx.textures.glowHalo, 50, 37, true)
+  khafre.position.set(29, 0, -102)
   khafre.rotation.y = 0.26
 
-  const { pyramid: menkaure, halo: menkaureHalo } = createSteppedPyramid(palette, ctx.textures.glowHalo, 34, 24, false)
-  menkaure.position.set(-56, 0, -112)
+  const { pyramid: menkaure, halo: menkaureHalo } = createSteppedPyramid(palette, ctx.textures.glowHalo, 33, 23, false)
+  menkaure.position.set(-45, 0, -106)
   menkaure.rotation.y = 0.26
 
   pyramidsGroup.add(khufu, khafre, menkaure)
 
   // Two Queen's small companion pyramids on the far left of Khufu
-  for (const [qx, qz] of [[-50, -68], [-58, -82]] as [number, number][]) {
-    const { pyramid: queenP } = createSteppedPyramid(palette, ctx.textures.glowHalo, 14, 10, false)
+  for (const [qx, qz] of [[-46, -68], [-55, -80]] as [number, number][]) {
+    const { pyramid: queenP } = createSteppedPyramid(palette, ctx.textures.glowHalo, 13, 9.5, false)
     queenP.position.set(qx, 0, qz)
     queenP.rotation.y = 0.26
     pyramidsGroup.add(queenP)
@@ -247,17 +249,18 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
     palette,
     ctx.textures.glowHalo,
   )
-  // Angled in heroic 3/4 view so crouching lion body, haunches, tail, outstretched paws & face are all readable
-  sphinx.position.set(17.8, CAUSEWAY_Y - 0.15, -18.5)
-  sphinx.rotation.y = -0.82
+  // Angled in heroic 3/4 view & inset so lion body, haunches, tail, outstretched paws & face fit cleanly inside frame
+  sphinx.position.set(14.5, CAUSEWAY_Y - 0.15, -20.5)
+  sphinx.scale.setScalar(0.88)
+  sphinx.rotation.y = -0.68
   g.add(sphinx)
 
   // Three Orion's Belt alignment stars above the three pyramid apexes (dim at dusk, emerge in night sky)
   const orionStars: THREE.Sprite[] = []
   for (const [sx, sy, sz] of [
-    [-14, 52, -78],
-    [30, 49, -106],
-    [-56, 33, -112],
+    [-11, 51, -78],
+    [29, 47, -102],
+    [-45, 32, -106],
   ] as [number, number, number][]) {
     const star = makeGlowSprite(ctx.textures.glowHalo, '#fff0c8', 8.5, 0.04)
     star.position.set(sx, sy, sz)
@@ -324,12 +327,12 @@ export function buildGizaCity(ctx: DioramaBuilderCtx) {
 
   ctx.registerInteractive(pyramidsGroup, {
     encounterId: 'pyramid',
-    focusPoint: new THREE.Vector3(-14, 24, -78),
+    focusPoint: new THREE.Vector3(-11, 24, -78),
     onClick: awakenPyramids,
   })
   ctx.registerInteractive(sphinx, {
     encounterId: 'sphinx',
-    focusPoint: new THREE.Vector3(17.8, 5.5, -18.5),
+    focusPoint: new THREE.Vector3(13.5, 5.2, -22.5),
     onClick: awakenSphinx,
   })
   ctx.registerInteractive(sacredPool.mesh, {

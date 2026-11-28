@@ -82,11 +82,11 @@ export const CITY_SIGNATURES: Record<string, CitySignature> = {
     reply: '白珊瑚圣眸亮起那一刻，她说南太平洋的潮汐替两千公里外的巨石像一直守着黎明。',
     effect: 'ripple',
   },
-  悉尼: {
-    weather: '南半球盛夏',
-    verb: '听一声港湾汽笛',
-    reply: '北半球正在过冬，可这里的海风还是热的。她说原来地球另一边一直藏着夏天。',
-    effect: 'ripple',
+  洛杉矶: {
+    weather: '紫金暮光',
+    verb: '听一段爵士琴声',
+    reply: '山坡路灯亮起那刻，她说格里菲斯山风里飘来的钢琴尾音，把洛杉矶整片星海都晃亮了。',
+    effect: 'starlight',
   },
   吉萨: {
     weather: '撒哈拉金晖',

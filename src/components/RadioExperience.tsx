@@ -29,8 +29,8 @@ interface RadioExperienceProps {
 type SortMode = 'new' | 'hot'
 type RegionFilter = 'all' | 'china' | 'south' | 'global'
 
-const SOUTH_CITIES = new Set(['悉尼', '开普敦'])
-const GLOBAL_CITIES = new Set(['悉尼', '吉萨', '雷克雅未克', '开普敦', '京都', '巴黎', '罗马', '阿格拉', '格鲁吉亚', '复活节岛'])
+const SOUTH_CITIES = new Set(['复活节岛', '开普敦'])
+const GLOBAL_CITIES = new Set(['洛杉矶', '吉萨', '雷克雅未克', '开普敦', '京都', '巴黎', '罗马', '阿格拉', '格鲁吉亚', '复活节岛'])
 
 const ORIGIN_RANK: Record<VisionOrigin, number> = { cloud: 3, local: 2, seed: 1 }
 
@@ -705,7 +705,7 @@ export function RadioExperience({
                 ['all', `全部 ${SEED_RADIO_BRIEFS.length} 城`, null],
                 ['china', '中国城市', '大理'],
                 ['global', '异域极境', '雷克雅未克'],
-                ['south', '南半球盛夏', '悉尼'],
+                ['south', '南半球极境', '复活节岛'],
               ] as const).map(([id, label, focusTarget]) => {
                 const active = region === id
                 return (

@@ -1,4 +1,4 @@
-export const APP_VERSION = '5.0.0'
+export const APP_VERSION = '5.1.0'
 
 export interface ChangelogEntry {
   version: string
@@ -8,6 +8,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: '5.1.0',
+    date: '2026-11-29',
+    title: '5.1 世界奇观全量 1:1 实尺度合龙 · 十二座文明奇境与电影致敬重铸',
+    items: [
+      '全部 12 座星际电台奇境正式升级为 1:1 实尺度原生漫步世界（全面接管 Walk/Fly、PolyHaven 2K HDRI、PBR 地表纹理与三国语言外全球地貌）。',
+      '新添/重塑六大文明奇境：阿格拉「泰姬陵破晓与水面倒影庭院」（`VRAG06`）、罗马「双环古罗马斗兽场与提图斯凯旋门」（`VRRM08`）、格鲁吉亚「大高加索雪山与十五柄迪德戈里圣剑碑」（`VRGE12`）、复活节岛「九尊摩艾巨像阵与南太平洋海崖」（`VRRI07`）、吉萨「斜棱砌石三大金字塔、狮身人面像与圣池」（`VRGZ14`）。',
+      '重磅上线《爱乐之城 (La La Land)》致敬专场——洛杉矶「格里菲斯天文台 × 星夜双人舞」（`VRLA13`）：Art Deco 三座铜绿天文穹顶、*A Lovely Night* 复古路灯与明黄礼服双人舞剪影、黑漆大三角钢琴、山脊 `HOLLYWOOD` 标牌与百万点洛杉矶紫金霓虹盆地。',
+      '全站细节抛光：修复觉醒提示重复菱形前缀、重构吉萨/京都/泰姬陵/格里菲斯多处地形接缝与光影构图，并通过全量单元测试与实机 WebGL 视觉验收。',
+    ],
+  },
   {
     version: '5.0.0',
     date: '2026-11-28',

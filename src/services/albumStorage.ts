@@ -3,7 +3,7 @@ import { deleteMedia, deleteMediaByPrefix, getMedia, putMedia } from './mediaDb'
 export type DioramaSceneId =
   | 'agra'
   | 'rapanui'
-  | 'sydney'
+  | 'griffith'
   | 'giza'
   | 'harbin'
   | 'georgia'
@@ -41,7 +41,7 @@ const VALID_MOODS: readonly AlbumMood[] = ['dawn', 'dusk', 'night']
 const VALID_STAMP_SCENES: readonly DioramaSceneId[] = [
   'agra',
   'rapanui',
-  'sydney',
+  'griffith',
   'giza',
   'harbin',
   'georgia',
@@ -108,7 +108,17 @@ export function inferAlbumSceneId(city: string, presetId?: string): AlbumSceneId
   }
   if (text.includes('大理') || text.includes('洱海') || text.includes('苍山') || text.includes('dali')) return 'dali'
   if (text.includes('巴黎') || text.includes('塞纳') || text.includes('铁塔') || text.includes('paris')) return 'paris'
-  if (text.includes('悉尼') || text.includes('sydney')) return 'sydney'
+  if (
+    text.includes('洛杉矶') ||
+    text.includes('格里菲斯') ||
+    text.includes('爱乐之城') ||
+    text.includes('griffith') ||
+    text.includes('lalaland') ||
+    text.includes('悉尼') ||
+    text.includes('sydney')
+  ) {
+    return 'griffith'
+  }
   if (
     text.includes('吉萨') ||
     text.includes('金字塔') ||
