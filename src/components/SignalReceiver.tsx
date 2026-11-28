@@ -111,7 +111,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
             <p className="mt-3 font-serif text-[13.5px] leading-[1.9] text-white/70">
               分享链接可能不完整，或这帧风景只保留在了原设备。
               <br />
-              地球表面电台里还有很多双眼睛，正在等另一位旅人借用。
+              行星电台里还有很多双眼睛，正在等另一位旅人借用。
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <button
@@ -119,7 +119,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
                 className="rounded-full bg-signal px-6 py-2.5 font-serif text-[13px] font-medium text-[#170f07] transition hover:brightness-105"
                 onClick={() => onEnterRadio()}
               >
-                去地球表面电台
+                去行星电台
               </button>
               <button
                 type="button"
@@ -228,7 +228,7 @@ export function SignalReceiver({ code, muted, onEnterRadio, onEnterPost, onRecor
                   className="rounded-full border border-white/18 bg-white/[0.04] px-4 py-2 font-serif text-[12.5px] text-white/85 transition hover:border-signal/55"
                   onClick={() => onEnterRadio(signal.code)}
                 >
-                  去地球表面电台
+                  去行星电台
                 </button>
                 <button
                   type="button"

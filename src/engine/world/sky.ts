@@ -34,9 +34,15 @@ export class SkyWorld {
   private constellationPicked = 0
   private constellationOrder: number[] = []
 
+  private meteorHead: THREE.Sprite | null = null
+  private meteorCore: THREE.Sprite | null = null
   private meteorTail: THREE.Line | null = null
+  private meteorStreak: THREE.Mesh | null = null
+  private meteorStreakMat: THREE.ShaderMaterial | null = null
   private meteorActive = false
   meteorRunning = false
+  private meteorIsWish = false
+  private meteorDuration = 1.5
   private meteorCooldown = 7
   private meteorProgress = 0
   private readonly meteorStart = new THREE.Vector3()
@@ -226,6 +232,21 @@ export class SkyWorld {
     )
     head.scale.setScalar(4.4)
     this.meteorGroup.add(head)
+    this.meteorHead = head
+
+    const core = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: this.glowTexture,
+        color: '#ffffff',
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    )
+    core.scale.setScalar(2.0)
+    this.meteorGroup.add(core)
+    this.meteorCore = core
 
     const tailGeometry = new THREE.BufferGeometry()
     tailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3))
@@ -240,6 +261,43 @@ export class SkyWorld {
       }),
     )
     this.meteorGroup.add(tail)
+
+    const streakGeo = new THREE.ConeGeometry(1, 1, 8, 1, true)
+    streakGeo.translate(0, 0.5, 0)
+    const streakMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new THREE.Color('#cfe0ff') },
+        uOpacity: { value: 0.45 },
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying vec2 vUv;
+        void main() {
+          float fade = pow(1.0 - vUv.y, 1.85);
+          vec3 col = mix(vec3(1.0, 0.99, 0.95), uColor, clamp(vUv.y * 1.4, 0.0, 1.0));
+          float alpha = fade * uOpacity;
+          if (alpha < 0.004) discard;
+          gl_FragColor = vec4(col, alpha);
+        }
+      `,
+    })
+    const streak = new THREE.Mesh(streakGeo, streakMat)
+    streak.frustumCulled = false
+    this.meteorGroup.add(streak)
+    this.meteorStreak = streak
+    this.meteorStreakMat = streakMat
 
     const hit = new THREE.Mesh(
       new THREE.SphereGeometry(9.5, 8, 8),
@@ -259,13 +317,98 @@ export class SkyWorld {
 
   setMeteorActive(active: boolean) {
     this.meteorActive = active
-    if (!active) this.hideMeteor()
+    if (!active && !this.meteorIsWish) this.hideMeteor()
   }
 
   hideMeteor() {
     this.meteorRunning = false
+    this.meteorIsWish = false
     this.meteorGroup.visible = false
     this.meteorCooldown = 9 + Math.random() * 8
+  }
+
+  launchWishMeteor(camera: THREE.PerspectiveCamera) {
+    camera.updateMatrixWorld()
+    const forward = new THREE.Vector3()
+    camera.getWorldDirection(forward)
+    const right = new THREE.Vector3().crossVectors(forward, camera.up)
+    if (right.lengthSq() < 0.0001) right.set(1, 0, 0)
+    else right.normalize()
+    const up = new THREE.Vector3().crossVectors(right, forward).normalize()
+
+    const side = Math.random() > 0.5 ? 1 : -1
+    const start = camera.position
+      .clone()
+      .addScaledVector(forward, 190)
+      .addScaledVector(right, -side * (38 + Math.random() * 18))
+      .addScaledVector(up, 34 + Math.random() * 16)
+    start.y = Math.max(start.y, camera.position.y + 24)
+
+    const end = start
+      .clone()
+      .addScaledVector(right, side * (95 + Math.random() * 35))
+      .addScaledVector(up, -22 - Math.random() * 14)
+
+    this.meteorStart.copy(start)
+    this.meteorEnd.copy(end)
+    this.meteorProgress = 0
+    this.meteorDuration = 1.6
+    this.meteorIsWish = true
+    this.meteorRunning = true
+    this.meteorGroup.visible = true
+    this.meteorGroup.position.copy(start)
+
+    this.configureMeteorVisuals(start, end, true)
+    this.applyMeteorEnvelope(0.2)
+
+    SHARED_UNIFORMS.uGalaxyBoost.value = Math.max(SHARED_UNIFORMS.uGalaxyBoost.value, 0.45)
+    this.starBoost.value = Math.max(this.starBoost.value, 1.38)
+  }
+
+  private configureMeteorVisuals(start: THREE.Vector3, end: THREE.Vector3, isWish: boolean) {
+    const tailDirection = start.clone().sub(end).normalize()
+    const tailLen = isWish ? 36 : 26
+
+    if (this.meteorHead) {
+      const mat = this.meteorHead.material as THREE.SpriteMaterial
+      mat.color.set(isWish ? '#fff2cc' : '#dce9ff')
+      this.meteorHead.scale.setScalar(isWish ? 7.8 : 4.4)
+    }
+    if (this.meteorCore) {
+      const mat = this.meteorCore.material as THREE.SpriteMaterial
+      mat.color.set('#ffffff')
+      this.meteorCore.scale.setScalar(isWish ? 3.4 : 2.0)
+    }
+    if (this.meteorTail) {
+      const mat = this.meteorTail.material as THREE.LineBasicMaterial
+      mat.color.set(isWish ? '#ffe9b5' : '#cfe0ff')
+      const attribute = this.meteorTail.geometry.attributes.position as THREE.BufferAttribute
+      attribute.setXYZ(0, 0, 0, 0)
+      attribute.setXYZ(1, tailDirection.x * tailLen, tailDirection.y * tailLen, tailDirection.z * tailLen)
+      attribute.needsUpdate = true
+    }
+    if (this.meteorStreak && this.meteorStreakMat) {
+      this.meteorStreakMat.uniforms.uColor.value.set(isWish ? '#ffe3a3' : '#cfe0ff')
+      const radius = isWish ? 1.15 : 0.55
+      this.meteorStreak.scale.set(radius, tailLen * 1.06, radius)
+      this.meteorStreak.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tailDirection)
+    }
+  }
+
+  private applyMeteorEnvelope(env: number) {
+    const isWish = this.meteorIsWish
+    if (this.meteorHead) {
+      ;(this.meteorHead.material as THREE.SpriteMaterial).opacity = (isWish ? 1.0 : 0.95) * env
+    }
+    if (this.meteorCore) {
+      ;(this.meteorCore.material as THREE.SpriteMaterial).opacity = (isWish ? 1.0 : 0.85) * env
+    }
+    if (this.meteorTail) {
+      ;(this.meteorTail.material as THREE.LineBasicMaterial).opacity = (isWish ? 0.95 : 0.65) * env
+    }
+    if (this.meteorStreakMat) {
+      this.meteorStreakMat.uniforms.uOpacity.value = (isWish ? 0.86 : 0.45) * env
+    }
   }
 
   boostGalaxy() {
@@ -438,19 +581,22 @@ export class SkyWorld {
       }
     }
 
-    if (this.meteorActive) {
-      if (!this.meteorRunning) {
-        this.meteorCooldown -= dt
-        if (this.meteorCooldown <= 0) this.launchMeteor(camera)
-      } else {
-        this.meteorProgress = Math.min(1, this.meteorProgress + dt / 1.5)
-        this.meteorGroup.position.copy(this.meteorStart).lerp(this.meteorEnd, this.meteorProgress)
-        if (this.meteorProgress >= 1) this.hideMeteor()
-      }
+    if (this.meteorRunning) {
+      this.meteorProgress = Math.min(1, this.meteorProgress + dt / this.meteorDuration)
+      const p = this.meteorProgress
+      this.meteorGroup.position.copy(this.meteorStart).lerp(this.meteorEnd, p)
+      const fadeIn = Math.min(1, p / 0.12)
+      const fadeOut = 1 - Math.max(0, (p - 0.72) / 0.28)
+      this.applyMeteorEnvelope(fadeIn * fadeOut)
+      if (this.meteorProgress >= 1) this.hideMeteor()
+    } else if (this.meteorActive) {
+      this.meteorCooldown -= dt
+      if (this.meteorCooldown <= 0) this.launchMeteor(camera)
     }
   }
 
   private launchMeteor(camera: THREE.PerspectiveCamera) {
+    camera.updateMatrixWorld()
     const forward = new THREE.Vector3()
     camera.getWorldDirection(forward)
     const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize()
@@ -468,16 +614,13 @@ export class SkyWorld {
     this.meteorStart.copy(start)
     this.meteorEnd.copy(end)
     this.meteorProgress = 0
+    this.meteorDuration = 1.5
+    this.meteorIsWish = false
     this.meteorRunning = true
     this.meteorGroup.visible = true
     this.meteorGroup.position.copy(start)
-    const tailDirection = start.clone().sub(end).normalize()
-    if (this.meteorTail) {
-      const attribute = this.meteorTail.geometry.attributes.position as THREE.BufferAttribute
-      attribute.setXYZ(0, 0, 0, 0)
-      attribute.setXYZ(1, tailDirection.x * 26, tailDirection.y * 26, tailDirection.z * 26)
-      attribute.needsUpdate = true
-    }
+    this.configureMeteorVisuals(start, end, false)
+    this.applyMeteorEnvelope(0.2)
   }
 
   resetToSurface(pickables: THREE.Object3D[]) {
@@ -493,6 +636,7 @@ export class SkyWorld {
   dispose() {
     this.skyMaterial.dispose()
     this.starMaterial.dispose()
+    this.meteorStreakMat?.dispose()
   }
 }
 

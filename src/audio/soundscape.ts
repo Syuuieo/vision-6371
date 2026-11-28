@@ -313,6 +313,185 @@ export class Soundscape {
     this.playChime([783.99, 1046.5, 1318.51, 1567.98], 0.06, 3.2)
   }
 
+  playChimeNote(freq: number, timbre: 'bell' | 'piano' = 'bell') {
+    if (!this.ctx || !this.sfx || !this.reverbSend || this.muted || !this.active) return
+    if (!Number.isFinite(freq) || freq <= 0) return
+    const ctx = this.ctx
+    const sfx = this.sfx
+    const reverbSend = this.reverbSend
+    const t = ctx.currentTime + 0.008
+    const isPiano = timbre === 'piano'
+    const duration = isPiano ? 1.85 : 2.6
+
+    const env = ctx.createGain()
+    env.gain.setValueAtTime(0.0001, t)
+    if (isPiano) {
+      env.gain.exponentialRampToValueAtTime(0.125, t + 0.012)
+      env.gain.exponentialRampToValueAtTime(0.052, t + 0.24)
+      env.gain.exponentialRampToValueAtTime(0.0001, t + duration)
+    } else {
+      env.gain.exponentialRampToValueAtTime(0.115, t + 0.018)
+      env.gain.exponentialRampToValueAtTime(0.0001, t + duration)
+    }
+
+    const fundamental = ctx.createOscillator()
+    fundamental.type = 'sine'
+    fundamental.frequency.setValueAtTime(freq, t)
+
+    const overtone = ctx.createOscillator()
+    overtone.type = 'triangle'
+    overtone.frequency.setValueAtTime(freq * (isPiano ? 2.001 : 2.004), t)
+    const overtoneGain = ctx.createGain()
+    overtoneGain.gain.value = (isPiano ? 0.18 : 0.24) * clamp(720 / freq, 0.24, 1)
+
+    const lowpass = ctx.createBiquadFilter()
+    lowpass.type = 'lowpass'
+    lowpass.Q.value = isPiano ? 0.65 : 0.85
+    const startCutoff = Math.min(isPiano ? 2900 : 4200, freq * (isPiano ? 3.2 : 4.2))
+    const endCutoff = Math.min(isPiano ? 1350 : 2500, freq * (isPiano ? 1.65 : 2.5))
+    lowpass.frequency.setValueAtTime(startCutoff, t)
+    lowpass.frequency.exponentialRampToValueAtTime(Math.max(240, endCutoff), t + duration * 0.7)
+
+    fundamental.connect(env)
+    overtone.connect(overtoneGain).connect(env)
+    env.connect(lowpass)
+    lowpass.connect(sfx)
+    lowpass.connect(reverbSend)
+
+    fundamental.start(t)
+    overtone.start(t)
+    fundamental.stop(t + duration + 0.08)
+    overtone.stop(t + duration + 0.08)
+
+    if (!isPiano) {
+      const sparkle = ctx.createOscillator()
+      sparkle.type = 'sine'
+      sparkle.frequency.setValueAtTime(freq * 3.008, t)
+      const sparkleEnv = ctx.createGain()
+      sparkleEnv.gain.setValueAtTime(0.0001, t)
+      sparkleEnv.gain.exponentialRampToValueAtTime(0.024 * clamp(780 / freq, 0.2, 1), t + 0.015)
+      sparkleEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.55)
+      sparkle.connect(sparkleEnv).connect(lowpass)
+      sparkle.start(t)
+      sparkle.stop(t + 0.6)
+    }
+  }
+
+  playGlideWhoosh(entering: boolean) {
+    if (!this.ctx || !this.sfx || !this.reverbSend || this.muted || !this.active) return
+    const ctx = this.ctx
+    const sfx = this.sfx
+    const reverbSend = this.reverbSend
+    const t = ctx.currentTime + 0.01
+
+    if (this.noise) {
+      const source = ctx.createBufferSource()
+      source.buffer = this.noise
+      source.loop = true
+
+      const filter = ctx.createBiquadFilter()
+      filter.type = 'bandpass'
+      filter.Q.value = 1.4
+      if (entering) {
+        filter.frequency.setValueAtTime(380, t)
+        filter.frequency.exponentialRampToValueAtTime(1450, t + 0.58)
+      } else {
+        filter.frequency.setValueAtTime(1100, t)
+        filter.frequency.exponentialRampToValueAtTime(320, t + 0.52)
+      }
+
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(0.14, t + 0.14)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.72)
+
+      source.connect(filter).connect(gain)
+      gain.connect(sfx)
+      gain.connect(reverbSend)
+      source.start(t)
+      source.stop(t + 0.78)
+    }
+
+    const notes = entering ? [523.25, 783.99] : [659.25, 493.88]
+    notes.forEach((freq, idx) => {
+      const start = t + idx * 0.11
+      const dur = entering ? 0.95 : 0.82
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, start)
+
+      const shimmer = ctx.createOscillator()
+      shimmer.type = 'triangle'
+      shimmer.frequency.setValueAtTime(freq * 2.003, start)
+      const shimmerGain = ctx.createGain()
+      shimmerGain.gain.value = 0.15
+
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = 2200
+
+      const ng = ctx.createGain()
+      ng.gain.setValueAtTime(0.0001, start)
+      ng.gain.exponentialRampToValueAtTime(entering ? 0.062 : 0.05, start + 0.04)
+      ng.gain.exponentialRampToValueAtTime(0.0001, start + dur)
+
+      osc.connect(lp)
+      shimmer.connect(shimmerGain).connect(lp)
+      lp.connect(ng)
+      ng.connect(sfx)
+      ng.connect(reverbSend)
+
+      osc.start(start)
+      shimmer.start(start)
+      osc.stop(start + dur + 0.06)
+      shimmer.stop(start + dur + 0.06)
+    })
+  }
+
+  playWishMeteor() {
+    if (!this.ctx || !this.sfx || !this.reverbSend || this.muted || !this.active) return
+    const ctx = this.ctx
+    const sfx = this.sfx
+    const reverbSend = this.reverbSend
+    const t0 = ctx.currentTime + 0.015
+    const notes = [1567.98, 1318.51, 1046.5, 783.99]
+
+    notes.forEach((freq, idx) => {
+      const start = t0 + idx * 0.068
+      const dur = 2.6 - idx * 0.12
+
+      const tone = ctx.createOscillator()
+      tone.type = 'sine'
+      tone.frequency.setValueAtTime(freq, start)
+
+      const overtone = ctx.createOscillator()
+      overtone.type = 'triangle'
+      overtone.frequency.setValueAtTime(freq * 2.004, start)
+      const overtoneGain = ctx.createGain()
+      overtoneGain.gain.value = 0.2 * clamp(900 / freq, 0.22, 0.85)
+
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = Math.min(4600, freq * 3.2)
+
+      const env = ctx.createGain()
+      env.gain.setValueAtTime(0.0001, start)
+      env.gain.exponentialRampToValueAtTime(0.085 / (1 + idx * 0.18), start + 0.02)
+      env.gain.exponentialRampToValueAtTime(0.0001, start + dur)
+
+      tone.connect(lp)
+      overtone.connect(overtoneGain).connect(lp)
+      lp.connect(env)
+      env.connect(sfx)
+      env.connect(reverbSend)
+
+      tone.start(start)
+      overtone.start(start)
+      tone.stop(start + dur + 0.08)
+      overtone.stop(start + dur + 0.08)
+    })
+  }
+
   pressureThud() {
     if (!this.ctx) return
     const t = this.ctx.currentTime + 0.02

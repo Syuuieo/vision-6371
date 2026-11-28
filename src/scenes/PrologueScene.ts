@@ -13,6 +13,14 @@ import { CinemaPipeline } from '../engine/core/pipeline'
 import { WakeField } from '../engine/fx/wake'
 import { WindFX } from '../engine/fx/windfx'
 import {
+  buildFlowFieldSky,
+  buildStarHaloTexture,
+  buildStarHalos,
+  createPainterlyTextures,
+  type FlowFieldSkyHandle,
+  type StarHalosHandle,
+} from './diorama/painterlyEngine'
+import {
   PlayerController,
   type HoverTargetInfo,
   type PlayerTelemetry,
@@ -108,6 +116,9 @@ export class PrologueScene {
   private windTarget = 0.55
   private look = makeLook(0)
   private lookTarget = makeLook(0)
+  private painterlySky: FlowFieldSkyHandle | null = null
+  private painterlyHalos: StarHalosHandle | null = null
+  private painterlyTexDispose: (() => void) | null = null
 
   private handleContextLost = (event: Event) => {
     event.preventDefault()
@@ -181,6 +192,34 @@ export class PrologueScene {
 
     this.cloudBaker = new CloudBaker(renderer, this.lowDetail)
     this.skyWorld = new SkyWorld(this.surfaceGroup, this.pickables, this.glowTex, this.lowDetail, dpr)
+    // 画面升级：叠加流场油画天穹与年轮星晕（随 look.stars 昼夜淡入淡出，低配跳过）
+    if (!this.lowDetail) {
+      const pTex = createPainterlyTextures()
+      const haloTex = buildStarHaloTexture()
+      this.painterlyTexDispose = () => {
+        pTex.dispose()
+        haloTex.dispose()
+      }
+      this.painterlySky = buildFlowFieldSky(this.surfaceGroup, pTex.brushStrokeTex, {
+        count: 1500,
+        radius: 155,
+        swirlCenters: [
+          [-55, 62, -130],
+          [40, 70, -120],
+          [8, 48, -140],
+        ],
+        palette: ['#0a1030', '#16264f', '#234074', '#3a6398', '#6f96c4', '#ffe9b0'],
+        highlightRatio: 0.08,
+      })
+      this.painterlySky.setNightFactor(0.75)
+      this.painterlyHalos = buildStarHalos(this.surfaceGroup, haloTex, this.glowTex, [
+        { pos: [-52, 58, -128], scale: 11, rings: 2, color: '#e8e8f4' },
+        { pos: [34, 64, -122], scale: 12, rings: 3, color: '#eef0fa' },
+        { pos: [66, 46, -118], scale: 9.5, rings: 2, color: '#e4ecf8' },
+        { pos: [-70, 44, -120], scale: 9, rings: 2, color: '#e6f0fa' },
+        { pos: [6, 72, -124], scale: 10, rings: 3, color: '#f4ecd8' },
+      ])
+    }
     this.terrainWorld = new TerrainWorld(this.surfaceGroup, this.roamRadius, this.lowDetail)
     this.landmarks = new LandmarksWorld(this.surfaceGroup, this.pickables, this.glowTex, this.lowDetail)
     this.terrainWorld.bakeFields(this.landmarks.clearZones, this.lowDetail)
@@ -297,6 +336,34 @@ export class PrologueScene {
     this.controller?.focusTarget(target, duration)
   }
 
+  setCoverOrbit(enabled: boolean) {
+    if (enabled && this.underground?.active) return
+    this.controller?.setCoverOrbit(enabled)
+  }
+
+  toggleGlide(): boolean {
+    if (!this.controller || this.underground?.active) return false
+    return this.controller.toggleGlide()
+  }
+
+  setGlideEnabled(enabled: boolean) {
+    if (enabled && this.underground?.active) return
+    this.controller?.setGlideEnabled(enabled)
+  }
+
+  launchWishMeteor() {
+    if (this.underground?.active) return
+    this.skyWorld?.launchWishMeteor(this.camera)
+  }
+
+  spawnChimeNote(noteIndex: number, hueHex: string) {
+    if (!this.windFX || this.underground?.active) return
+    this.camera.updateMatrixWorld()
+    const forward = new THREE.Vector3()
+    this.camera.getWorldDirection(forward)
+    this.windFX.spawnNotePillar(this.camera.position, forward, noteIndex, hueHex)
+  }
+
   triggerDescent() {
     if (!this.underground || !this.controller || this.underground.active) return
     this.underground.triggerDescent(
@@ -311,6 +378,7 @@ export class PrologueScene {
     this.landmarks?.hideForDescent()
     this.skyWorld?.setConstellationActive(false, this.camera, this.pickables)
     this.skyWorld?.setMeteorActive(false)
+    this.skyWorld?.hideMeteor()
   }
 
   triggerCoreBurst() {
@@ -473,6 +541,10 @@ export class PrologueScene {
     this.pipeline?.dispose()
     this.noiseTex?.dispose()
     this.glowTex?.dispose()
+    this.painterlyTexDispose?.()
+    this.painterlyTexDispose = null
+    this.painterlySky = null
+    this.painterlyHalos = null
     if (this.canvas) {
       this.canvas.removeEventListener('webglcontextlost', this.handleContextLost)
       this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored)
@@ -577,6 +649,14 @@ export class PrologueScene {
 
     this.cloudBaker?.update(dt)
     this.skyWorld?.update(dt, this.elapsed, this.camera)
+
+    // 流场油画天穹随昼夜呼吸（stars→夜，galaxy→漩涡加速）
+    if (this.painterlySky && this.painterlyHalos) {
+      const nightFactor = clamp(this.look.stars * 0.94 + this.look.galaxy * 0.22, 0, 1)
+      this.painterlySky.update(this.elapsed, dt, clamp(this.look.galaxy * 0.85, 0, 1))
+      this.painterlySky.setNightFactor(nightFactor)
+      this.painterlyHalos.update(this.elapsed, dt, nightFactor)
+    }
 
     const wakeActive =
       !this.lowDetail &&

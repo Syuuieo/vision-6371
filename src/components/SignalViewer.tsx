@@ -591,7 +591,7 @@ export function SignalViewer({
                 ))}
               </div>
 
-              <div className="mt-auto pt-5">
+              <div className="mt-auto pt-5 pb-16">
                 <label className="font-serif text-[12.5px] text-white/72" htmlFor="echo-message">
                   写一句回声
                 </label>

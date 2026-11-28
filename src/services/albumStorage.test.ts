@@ -32,10 +32,10 @@ function createMemoryStorage() {
 function makeEntry(id: string, note = '留给此刻的留言'): AlbumEntry {
   return {
     id,
-    sceneId: 'shanghai',
-    sceneTitle: '上海外滩 · 黄浦暮色',
-    city: '上海',
-    mood: 'dusk',
+    sceneId: 'agra',
+    sceneTitle: '阿格拉 · 泰姬陵破晓',
+    city: '阿格拉',
+    mood: 'dawn',
     image: 'data:image/jpeg;base64,/9j/4AAQ',
     note,
     interactions: 3,
@@ -88,18 +88,37 @@ describe('albumStorage', () => {
     expect(saved.stampTitle).toBe('盛夏扬帆印记')
 
     expect(loadDioramaStamps()).toEqual([])
-    expect(markDioramaStamp('shanghai')).toEqual(['shanghai'])
-    expect(markDioramaStamp('shanghai')).toEqual(['shanghai'])
-    expect(markDioramaStamp('observatory')).toEqual(['shanghai', 'observatory'])
+    expect(markDioramaStamp('agra')).toEqual(['agra'])
+    expect(markDioramaStamp('agra')).toEqual(['agra'])
+    expect(markDioramaStamp('georgia')).toEqual(['agra', 'georgia'])
+    expect(markDioramaStamp('iceland')).toEqual(['agra', 'georgia', 'iceland'])
+    expect(markDioramaStamp('kyoto')).toEqual(['agra', 'georgia', 'iceland', 'kyoto'])
+    expect(markDioramaStamp('core')).toEqual(['agra', 'georgia', 'iceland', 'kyoto', 'core'])
+    expect(markDioramaStamp('rome')).toEqual(['agra', 'georgia', 'iceland', 'kyoto', 'core', 'rome'])
+    expect(markDioramaStamp('paris')).toEqual(['agra', 'georgia', 'iceland', 'kyoto', 'core', 'rome', 'paris'])
+    expect(markDioramaStamp('dali')).toEqual(['agra', 'georgia', 'iceland', 'kyoto', 'core', 'rome', 'paris', 'dali'])
+    expect(loadDioramaStamps()).toEqual(['agra', 'georgia', 'iceland', 'kyoto', 'core', 'rome', 'paris', 'dali'])
   })
 
   it('infers accurate album categories from city or preset', () => {
-    expect(inferAlbumSceneId('上海')).toBe('shanghai')
+    expect(inferAlbumSceneId('阿格拉')).toBe('agra')
+    expect(inferAlbumSceneId('泰姬陵', 'agra')).toBe('agra')
     expect(inferAlbumSceneId('悉尼')).toBe('sydney')
-    expect(inferAlbumSceneId('拉萨 · 高原', 'observatory')).toBe('observatory')
+    expect(inferAlbumSceneId('格鲁吉亚 · 圣剑双峰', 'georgia')).toBe('georgia')
     expect(inferAlbumSceneId('哈尔滨')).toBe('harbin')
+    expect(inferAlbumSceneId('雷克雅未克')).toBe('iceland')
+    expect(inferAlbumSceneId('冰岛 · 极光峡湾')).toBe('iceland')
+    expect(inferAlbumSceneId('京都')).toBe('kyoto')
+    expect(inferAlbumSceneId('罗马 · 斗兽场')).toBe('rome')
+    expect(inferAlbumSceneId('斗兽场', 'rome')).toBe('rome')
+    expect(inferAlbumSceneId('巴黎 · 塞纳河')).toBe('paris')
+    expect(inferAlbumSceneId('埃菲尔铁塔', 'paris')).toBe('paris')
+    expect(inferAlbumSceneId('大理 · 洱海苍山')).toBe('dali')
+    expect(inferAlbumSceneId('洱海', 'dali')).toBe('dali')
+    expect(inferAlbumSceneId('落日六号')).toBe('core')
+    expect(inferAlbumSceneId('地心深处', 'sunset')).toBe('core')
     expect(inferAlbumSceneId('大草原', 'meadow')).toBe('meadow')
-    expect(inferAlbumSceneId('雷克雅未克')).toBe('postcard')
+    expect(inferAlbumSceneId('开普敦')).toBe('postcard')
   })
 
   it('preserves album entries by offloading large images when inline budget is exceeded', () => {

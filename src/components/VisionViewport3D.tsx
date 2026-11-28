@@ -348,7 +348,7 @@ export function VisionViewport3D({
     }
     let beaconNodes: BeaconNode[] = []
 
-    const clockObj = new THREE.Clock()
+    const timer = new THREE.Timer()
     const raycaster = new THREE.Raycaster()
     const pointerNdc = new THREE.Vector2()
 
@@ -592,7 +592,7 @@ export function VisionViewport3D({
       if (next || contextLostLive) {
         renderer.setAnimationLoop(null)
       } else {
-        clockObj.getDelta()
+        timer.update()
         renderer.setAnimationLoop(animation)
       }
     }
@@ -707,7 +707,7 @@ export function VisionViewport3D({
       contextLostLive = false
       if (!disposed) setContextLost(false)
       if (!disposed && !pausedLive) {
-        clockObj.getDelta()
+        timer.update()
         renderer.setAnimationLoop(animation)
       }
     }
@@ -729,7 +729,8 @@ export function VisionViewport3D({
     }
 
     const animation = () => {
-      const delta = clockObj.getDelta()
+      timer.update()
+      const delta = timer.getDelta()
       elapsed += delta
 
       const gyro = gyroDeltaRef.current

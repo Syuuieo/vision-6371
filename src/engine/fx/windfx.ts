@@ -23,6 +23,20 @@ interface WindRibbon {
   speed: number
 }
 
+interface NotePillar {
+  group: THREE.Group
+  beam: THREE.Mesh
+  beamMat: THREE.ShaderMaterial
+  ring: THREE.Mesh
+  ringMat: THREE.MeshBasicMaterial
+  active: boolean
+  age: number
+  duration: number
+  maxHeight: number
+}
+
+const NOTE_PILLAR_POOL_SIZE = 16
+
 /**
  * 动态风带、飘浮花瓣花粉、蒲公英、晚雨、流萤、飞鸟与指针游离微光（借鉴 Petalwake `fx/windfx.js`）。
  */
@@ -35,7 +49,7 @@ export class WindFX {
   private readonly ribbonMat: THREE.ShaderMaterial
 
   private readonly pollenMat: THREE.ShaderMaterial
-  private readonly pollenOpacity = { value: 0.75 }
+  private readonly pollenOpacity = { value: 0.42 }
   private readonly petalMat: THREE.ShaderMaterial
   private readonly petalOpacity = { value: 0 }
   private readonly petalBurst = { value: 0 }
@@ -71,6 +85,10 @@ export class WindFX {
   }
 
   private readonly skyBirds: SkyBird[] = []
+  private readonly notePillars: NotePillar[] = []
+  private notePillarCursor = 0
+  private readonly noteBeamGeo: THREE.CylinderGeometry
+  private readonly noteRingGeo: THREE.RingGeometry
   private calmMotion = false
 
   constructor(
@@ -93,6 +111,12 @@ export class WindFX {
     this.rainMat = this.buildRain(surfaceGroup, lowDetail)
     this.hoverMotes = this.buildHoverMotes(surfaceGroup)
     this.buildBirds(surfaceGroup, glowTexture)
+
+    this.noteBeamGeo = new THREE.CylinderGeometry(0.018, 0.045, 1, 8, 1, true)
+    this.noteBeamGeo.translate(0, 0.5, 0)
+    this.noteRingGeo = new THREE.RingGeometry(0.38, 0.395, 48)
+    this.noteRingGeo.rotateX(-Math.PI / 2)
+    this.buildNotePillars(surfaceGroup)
   }
 
   setPixelRatio(pixelRatio: number) {
@@ -226,7 +250,7 @@ export class WindFX {
   }
 
   private buildPollen(surfaceGroup: THREE.Group, lowDetail: boolean) {
-    const count = lowDetail ? 160 : 320
+    const count = lowDetail ? 72 : 144
     const positions = new Float32Array(count * 3)
     const colors = new Float32Array(count * 3)
     const seeds = new Float32Array(count)
@@ -247,7 +271,7 @@ export class WindFX {
       colors[i * 3 + 1] = c.g
       colors[i * 3 + 2] = c.b
       seeds[i] = Math.random()
-      sizes[i] = 0.75 + Math.random() * 1.9
+      sizes[i] = 0.55 + Math.random() * 1.25
     }
 
     const geometry = new THREE.BufferGeometry()
@@ -280,7 +304,7 @@ export class WindFX {
           p.z += cos(t * 1.1 + aSeed * 21.0) * 0.9;
           p.y += sin(t * 1.8 + aSeed * 41.0) * 0.55;
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          gl_PointSize = min(aSize * uPixel * (95.0 / max(1.0, -mv.z)), 7.0 * uPixel);
+          gl_PointSize = min(aSize * uPixel * (75.0 / max(1.0, -mv.z)), 5.0 * uPixel);
           vAlpha = 0.25 + 0.55 * (0.5 + 0.5 * sin(uTime * (0.7 + aSeed) + aSeed * 50.0));
           vColor = aColor;
           gl_Position = projectionMatrix * mv;
@@ -729,11 +753,124 @@ export class WindFX {
     if (level > 0) this.fireflies.points.visible = true
   }
 
+  private buildNotePillars(surfaceGroup: THREE.Group) {
+    for (let i = 0; i < NOTE_PILLAR_POOL_SIZE; i += 1) {
+      const group = new THREE.Group()
+      group.visible = false
+
+      const beamMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: SHARED_UNIFORMS.uTime,
+          uColor: { value: new THREE.Color('#ffe2bd') },
+          uOpacity: { value: 0 },
+        },
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        vertexShader: /* glsl */ `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          uniform float uTime;
+          uniform vec3 uColor;
+          uniform float uOpacity;
+          varying vec2 vUv;
+          void main() {
+            float baseFade = smoothstep(0.0, 0.14, vUv.y);
+            float topFade = pow(1.0 - vUv.y, 1.35);
+            float shimmer = 0.86 + 0.14 * sin(vUv.y * 14.0 - uTime * 5.2);
+            float alpha = baseFade * topFade * shimmer * uOpacity;
+            if (alpha < 0.004) discard;
+            vec3 col = mix(uColor, vec3(1.0, 0.98, 0.94), 0.34 * (1.0 - vUv.y));
+            gl_FragColor = vec4(col, alpha);
+          }
+        `,
+      })
+      const beam = new THREE.Mesh(this.noteBeamGeo, beamMat)
+      beam.frustumCulled = false
+      beam.renderOrder = 4
+
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: '#ffe2bd',
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+      const ring = new THREE.Mesh(this.noteRingGeo, ringMat)
+      ring.frustumCulled = false
+      ring.renderOrder = 4
+
+      group.add(beam, ring)
+      surfaceGroup.add(group)
+      this.notePillars.push({
+        group,
+        beam,
+        beamMat,
+        ring,
+        ringMat,
+        active: false,
+        age: 0,
+        duration: 2.4,
+        maxHeight: 16,
+      })
+    }
+  }
+
+  spawnNotePillar(origin: THREE.Vector3, forward: THREE.Vector3, noteIndex: number, hueHex: string) {
+    if (this.notePillars.length === 0) return
+    let slot = this.notePillars.find((p) => !p.active)
+    if (!slot) {
+      slot = this.notePillars[this.notePillarCursor % this.notePillars.length]
+      this.notePillarCursor = (this.notePillarCursor + 1) % this.notePillars.length
+    }
+
+    const fwd = new THREE.Vector3(forward.x, 0, forward.z)
+    if (fwd.lengthSq() < 0.0001) fwd.set(0, 0, -1)
+    else fwd.normalize()
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x)
+
+    const dist = 12 + 1.5 + Math.random() * 6.5
+    const lateral = (noteIndex - 7) * 1.4
+    const x = origin.x + fwd.x * dist + right.x * lateral
+    const z = origin.z + fwd.z * dist + right.z * lateral
+    const baseY = Math.max(heightAt(x, z), LAKE.y) + 0.08
+
+    const color = new THREE.Color(hueHex || '#ffe2bd')
+    slot.group.position.set(x, baseY, z)
+    slot.group.visible = true
+    slot.active = true
+    slot.age = 0
+    slot.duration = 3.2
+    slot.maxHeight = 9 + (clamp(noteIndex, 0, 14) / 14) * 8
+
+    slot.beamMat.uniforms.uColor.value.copy(color)
+    slot.beamMat.uniforms.uOpacity.value = 0
+    slot.beam.scale.set(1, 0.8, 1)
+
+    slot.ringMat.color.copy(color)
+    slot.ringMat.opacity = 0
+    slot.ring.position.set(0, 0.12, 0)
+    slot.ring.scale.setScalar(0.4)
+
+    this.spawnHoverMotes(new THREE.Vector3(x, baseY + 0.35, z), 3)
+  }
+
   hideForDescent() {
     this.rainTarget = 0
     this.setFireflyLevel(0)
     this.dandelion.active = false
     this.dandelion.points.visible = false
+    for (const pillar of this.notePillars) {
+      pillar.active = false
+      pillar.group.visible = false
+    }
   }
 
   update(
@@ -773,7 +910,7 @@ export class WindFX {
     }
 
     // 2. 花粉与第一幕花瓣
-    this.pollenOpacity.value = (0.4 + windLevel * 0.16) * (1 - galaxy * 0.72)
+    this.pollenOpacity.value = clamp(0.42 + (windLevel - 0.5) * 0.12, 0.32, 0.5) * (1 - galaxy * 0.72)
     this.petalOpacity.value = Math.min(1, this.petalOpacity.value + dt * 0.15 * this.petalBurst.value)
 
     // 3. 高空飞鸟
@@ -846,6 +983,31 @@ export class WindFX {
       geo.attributes.position.needsUpdate = true
       geo.attributes.aAlpha.needsUpdate = true
     }
+
+    // 8. 草原风铃琴天际音符光柱
+    for (const pillar of this.notePillars) {
+      if (!pillar.active) continue
+      pillar.age += dt
+      const t = pillar.age / pillar.duration
+      if (t >= 1) {
+        pillar.active = false
+        pillar.group.visible = false
+        continue
+      }
+      const fadeIn = Math.min(1, t / 0.1)
+      const fadeOut = Math.pow(1 - t, 1.55)
+      const env = fadeIn * fadeOut
+      const rise = 1 - Math.pow(1 - t, 3)
+      const height = 1.2 + rise * pillar.maxHeight
+      const width = 0.72 + t * 0.28
+
+      pillar.beam.scale.set(width, height, width)
+      pillar.beamMat.uniforms.uOpacity.value = env * 0.34
+
+      pillar.ring.scale.setScalar(0.4 + rise * 2.2)
+      pillar.ring.position.y = 0.12 + rise * 0.55
+      pillar.ringMat.opacity = env * 0.24
+    }
   }
 
   resetToSurface() {
@@ -866,6 +1028,10 @@ export class WindFX {
     this.fireflies.points.visible = false
     this.petalOpacity.value = 0
     this.petalBurst.value = 0
+    for (const pillar of this.notePillars) {
+      pillar.active = false
+      pillar.group.visible = false
+    }
   }
 
   dispose() {
@@ -876,5 +1042,11 @@ export class WindFX {
     this.fireflies.mat.dispose()
     this.rainMat.dispose()
     this.hoverMotes.mat.dispose()
+    this.noteBeamGeo.dispose()
+    this.noteRingGeo.dispose()
+    for (const pillar of this.notePillars) {
+      pillar.beamMat.dispose()
+      pillar.ringMat.dispose()
+    }
   }
 }

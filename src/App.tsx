@@ -1,8 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { Soundscape } from './audio/soundscape'
 import { voicePlayer } from './audio/voicePlayer'
+import { CloudDiveOverlay, type CloudDiveMode } from './components/CloudDiveOverlay'
 import { TopNav } from './components/TopNav'
-import type { AlbumEntry } from './services/albumStorage'
+import type { AlbumEntry, DioramaSceneId } from './services/albumStorage'
 import { markVisitDay } from './services/journey'
 import {
   prefersReducedMotion,
@@ -11,7 +12,7 @@ import {
   useSettings,
 } from './services/settings'
 import type { ModuleId, Phase } from './types/sensor'
-import { parseModuleFromHash, syncModuleHash, isAdminHash } from './utils/hashRoute'
+import { parseModuleFromHash, syncModuleHash, isAdminHash, isLegacyDioramaHash } from './utils/hashRoute'
 import {
   getCityWhisper,
   loadStoryRelay,
@@ -40,6 +41,42 @@ const SettingsDrawer = lazy(() =>
 const AdminConsole = lazy(() =>
   import('./components/AdminConsole').then((m) => ({ default: m.AdminConsole })),
 )
+const SensoryLensModal = lazy(() =>
+  import('./components/SensoryLensModal').then((m) => ({ default: m.SensoryLensModal })),
+)
+
+interface PendingDiorama {
+  sceneId: DioramaSceneId
+  autoWalkMode: boolean
+  nonce: number
+  radioCode?: string | null
+  albumPreview?: boolean
+  initialAlbumOpen?: boolean
+}
+
+interface DiveState {
+  active: boolean
+  mode: CloudDiveMode
+  sceneId: DioramaSceneId
+  targetTitle: string
+  targetSub: string
+  radioCode?: string | null
+}
+
+function makeAlbumPreview(): PendingDiorama {
+  return {
+    sceneId: 'agra',
+    autoWalkMode: false,
+    nonce: Date.now(),
+    albumPreview: true,
+    initialAlbumOpen: true,
+  }
+}
+
+function readInitialDiorama(): PendingDiorama | null {
+  if (typeof window === 'undefined' || readSignalCode()) return null
+  return isLegacyDioramaHash(window.location.hash) ? makeAlbumPreview() : null
+}
 
 function ChannelLoading() {
   return (
@@ -92,10 +129,80 @@ export default function App() {
   const [relay, setRelay] = useState<StoryRelayState>(() => loadStoryRelay())
   const [pendingPostEntry, setPendingPostEntry] = useState<AlbumEntry | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [lensOpen, setLensOpen] = useState(false)
+  const [cinemaHidden, setCinemaHidden] = useState(false)
+  const [pendingDiorama, setPendingDiorama] = useState<PendingDiorama | null>(readInitialDiorama)
+  const [diveState, setDiveState] = useState<DiveState | null>(null)
   const [adminMode, setAdminMode] = useState(
     () => typeof window !== 'undefined' && isAdminHash(window.location.hash),
   )
   const [systemReducedMotion, setSystemReducedMotion] = useState(prefersReducedMotion)
+
+  const toggleCinema = useCallback(() => {
+    setCinemaHidden((prev) => !prev)
+  }, [])
+
+  const openSensoryLens = useCallback(() => {
+    setLensOpen(true)
+  }, [])
+
+  const diveIntoWorld = useCallback(
+    (sceneId: DioramaSceneId, title: string, mode: CloudDiveMode, radioCode?: string | null) => {
+      setDiveState({
+        active: true,
+        mode,
+        sceneId,
+        targetTitle: title,
+        targetSub:
+          mode === 'core'
+            ? '6,371.4 KM · 落日六号地心耐压舱'
+            : '正在穿透对流云层 · 切入 3D 实景漫步',
+        radioCode,
+      })
+    },
+    [],
+  )
+
+  const exitWorld = useCallback(() => {
+    setPendingDiorama(null)
+    syncModuleHash('radio', true)
+  }, [])
+
+  const openRadioAlbum = useCallback(() => {
+    removeSignalFromUrl()
+    setSignalCode(null)
+    setRadioFocusCode(null)
+    setRadioAutoOpen(false)
+    if (module !== 'radio') {
+      setNavHistory((history) => [...history, module].slice(-8))
+    }
+    setModule('radio')
+    setPendingDiorama(makeAlbumPreview())
+    syncModuleHash('radio', false)
+  }, [module])
+
+  const handleDiveMidpoint = useCallback(() => {
+    if (!diveState) return
+    removeSignalFromUrl()
+    setSignalCode(null)
+    setRadioFocusCode(null)
+    setRadioAutoOpen(false)
+    setPendingDiorama({
+      sceneId: diveState.sceneId,
+      autoWalkMode: true,
+      nonce: Date.now(),
+      radioCode: diveState.radioCode ?? null,
+    })
+    if (module !== 'radio') {
+      setNavHistory((history) => [...history, module].slice(-8))
+    }
+    setModule('radio')
+    syncModuleHash('radio', false)
+  }, [diveState, module])
+
+  const handleDiveDone = useCallback(() => {
+    setDiveState(null)
+  }, [])
 
   const updateRelay = useCallback((patch: Partial<StoryRelayState>) => {
     setRelay((prev) => {
@@ -170,6 +277,10 @@ export default function App() {
 
   useEffect(() => {
     if (signalCode || adminMode) return
+    if (isLegacyDioramaHash(window.location.hash)) {
+      syncModuleHash('radio', true)
+      return
+    }
     if (!parseModuleFromHash(window.location.hash)) {
       syncModuleHash(module, true)
     }
@@ -183,6 +294,14 @@ export default function App() {
         return
       }
       if (adminMode) setAdminMode(false)
+      if (isLegacyDioramaHash(window.location.hash)) {
+        setRadioFocusCode(null)
+        setRadioAutoOpen(false)
+        setPendingDiorama(makeAlbumPreview())
+        setModule('radio')
+        syncModuleHash('radio', true)
+        return
+      }
       const parsed = parseModuleFromHash(window.location.hash)
       if (parsed && parsed !== module) {
         setRadioFocusCode(null)
@@ -199,6 +318,24 @@ export default function App() {
     }
   }, [module, signalCode, adminMode])
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyH' || event.metaKey || event.ctrlKey || event.altKey) return
+      if (settingsOpen || adminMode || lensOpen || Boolean(signalCode)) return
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+          return
+        }
+      }
+      event.preventDefault()
+      setCinemaHidden((prev) => !prev)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [adminMode, lensOpen, settingsOpen, signalCode])
+
   const calmMotion = settings.reducedMotion || systemReducedMotion
 
   const clearSignal = () => {
@@ -210,6 +347,7 @@ export default function App() {
     clearSignal()
     setRadioFocusCode(null)
     setRadioAutoOpen(false)
+    setPendingDiorama(null)
     if (next !== module) {
       setNavHistory((prev) => [...prev, module].slice(-8))
     }
@@ -221,6 +359,7 @@ export default function App() {
     clearSignal()
     setRadioFocusCode(null)
     setRadioAutoOpen(false)
+    setPendingDiorama(null)
     setNavHistory([])
     setModule('prologue')
     syncModuleHash('prologue', false)
@@ -230,6 +369,10 @@ export default function App() {
   const goBack = () => {
     if (signalCode) {
       clearSignal()
+      return
+    }
+    if (pendingDiorama) {
+      exitWorld()
       return
     }
     if (module !== 'prologue') {
@@ -257,6 +400,7 @@ export default function App() {
     clearSignal()
     setRadioFocusCode(code ?? null)
     setRadioAutoOpen(Boolean(code && autoOpen))
+    setPendingDiorama(null)
     if (module !== 'radio') {
       setNavHistory((prev) => [...prev, module].slice(-8))
     }
@@ -266,6 +410,7 @@ export default function App() {
 
   const enterPost = () => {
     clearSignal()
+    setPendingDiorama(null)
     if (module !== 'post') {
       setNavHistory((prev) => [...prev, module].slice(-8))
     }
@@ -290,6 +435,7 @@ export default function App() {
 
   const openAdmin = () => {
     clearSignal()
+    setPendingDiorama(null)
     setSettingsOpen(false)
     setAdminMode(true)
     try {
@@ -342,6 +488,7 @@ export default function App() {
                 sound={sound}
                 active
                 onNavigate={navigate}
+                onOpenKeepsake={openRadioAlbum}
                 relay={relay}
                 onRelayUpdate={updateRelay}
                 onPhaseChange={setProloguePhase}
@@ -351,9 +498,12 @@ export default function App() {
                   updateSettings({ flashSafe: !settings.flashSafe, flashNoticeSeen: true })
                 }
                 exitSignal={prologueExitTick}
+                cinemaHidden={cinemaHidden}
+                onToggleCinemaHidden={toggleCinema}
+                onOpenSensoryLens={openSensoryLens}
               />
             )}
-            {module === 'radio' && (
+            {module === 'radio' && !pendingDiorama && (
               <RadioExperience
                 muted={muted}
                 focusCode={radioFocusCode}
@@ -362,6 +512,35 @@ export default function App() {
                 onRecordCity={recordCityRelay}
                 onBack={goBack}
                 onCompose={() => navigate('post')}
+                onDiveWorld={diveIntoWorld}
+                onOpenAlbum={openRadioAlbum}
+                onOpenSensoryLens={openSensoryLens}
+              />
+            )}
+            {module === 'radio' && pendingDiorama && (
+              <DioramaExperience
+                key={pendingDiorama.nonce}
+                muted={muted}
+                flashSafe={settings.flashSafe || calmMotion}
+                relay={relay}
+                sound={sound}
+                initialSceneId={pendingDiorama.sceneId}
+                autoWalkMode={pendingDiorama.autoWalkMode}
+                diveNonce={pendingDiorama.nonce}
+                cinemaHidden={cinemaHidden}
+                onToggleCinemaHidden={toggleCinema}
+                onRecordCity={recordCityRelay}
+                onGoPrologue={() => navigate('prologue')}
+                onSendToPost={(entry) => {
+                  setPendingPostEntry(entry)
+                  navigate('post')
+                }}
+                immersive
+                radioCode={pendingDiorama.radioCode ?? null}
+                worldTitle={pendingDiorama.sceneId === 'core' ? '地心深处 · 落日六号' : undefined}
+                albumPreview={pendingDiorama.albumPreview}
+                initialAlbumOpen={pendingDiorama.initialAlbumOpen}
+                onExitWorld={exitWorld}
               />
             )}
             {module === 'post' && (
@@ -375,19 +554,6 @@ export default function App() {
                 onOpenRadio={(code) => enterRadio(code, false)}
               />
             )}
-            {module === 'diorama' && (
-              <DioramaExperience
-                muted={muted}
-                flashSafe={settings.flashSafe || calmMotion}
-                relay={relay}
-                onRecordCity={recordCityRelay}
-                onGoPrologue={() => navigate('prologue')}
-                onSendToPost={(entry) => {
-                  setPendingPostEntry(entry)
-                  navigate('post')
-                }}
-              />
-            )}
           </>
         )}
       </Suspense>
@@ -398,10 +564,50 @@ export default function App() {
         muted={muted}
         onToggleSound={toggleSound}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSensoryLens={openSensoryLens}
+        hidden={cinemaHidden || (module === 'radio' && Boolean(pendingDiorama))}
         canGoBack={Boolean(signalCode) || module !== 'prologue' || prologuePhase !== 'ritual'}
         onBack={goBack}
         onGoHome={goHome}
       />
+
+      {cinemaHidden && (
+        <button
+          type="button"
+          onClick={toggleCinema}
+          className="fixed right-4 top-4 z-[90] flex items-center gap-2 rounded-full border border-signal/25 bg-[#060a14]/60 px-3.5 py-1.5 font-serif text-[12px] tracking-[0.08em] text-[#fff6ea]/82 backdrop-blur-2xl transition hover:border-signal/60 hover:bg-[#060a14]/82 hover:text-[#fff9f0] sm:right-6 sm:top-5"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-signal/90" aria-hidden="true" />
+          <span>按 H 恢复界面</span>
+        </button>
+      )}
+
+      {diveState?.active && (
+        <CloudDiveOverlay
+          key={`${diveState.mode}-${diveState.sceneId}-${diveState.targetTitle}`}
+          active={diveState.active}
+          mode={diveState.mode}
+          targetTitle={diveState.targetTitle}
+          targetSub={diveState.targetSub}
+          onMidpoint={handleDiveMidpoint}
+          onDone={handleDiveDone}
+        />
+      )}
+
+      {lensOpen && (
+        <Suspense fallback={null}>
+          <SensoryLensModal
+            open={lensOpen}
+            onClose={() => setLensOpen(false)}
+            onSendToPost={(entry) => {
+              setLensOpen(false)
+              setPendingPostEntry(entry)
+              navigate('post')
+            }}
+          />
+        </Suspense>
+      )}
+
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsDrawer

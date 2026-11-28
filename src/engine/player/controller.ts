@@ -20,6 +20,8 @@ export interface PlayerTelemetry {
   z: number
   yaw: number
   speedNorm: number
+  gliding: boolean
+  altitude: number
   nearbyBench: { id: string; name: string; hint: string } | null
   seatedBenchId: string | null
   nearbyDiscovery: WorldDiscoveryId | null
@@ -116,10 +118,19 @@ export class PlayerController {
   private lastTelemetryYaw = 0
   private lastTelemetryX = 0
   private lastTelemetryZ = 0
+  private lastTelemetryAlt = 0
   private lastBoundaryReport = 0
   private currentPlace = ''
   private prevCursorXZ = new THREE.Vector2(999, 999)
   private calmMotion = false
+
+  private coverOrbit = false
+  private coverOrbitTime = 0
+  private coverOrbitInitialized = false
+
+  private gliding = false
+  private glideTargetY = 0
+  private lastSpaceTapAt = 0
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -142,8 +153,104 @@ export class PlayerController {
     return this.flight !== null
   }
 
+  get isGliding(): boolean {
+    return this.gliding
+  }
+
   setCalmMotion(calm: boolean) {
     this.calmMotion = calm
+  }
+
+  setCoverOrbit(enabled: boolean) {
+    if (this.coverOrbit === enabled) return
+    this.coverOrbit = enabled
+    if (enabled) {
+      this.flight = null
+      this.walkTarget = null
+      this.seatedBenchId = null
+      this.gliding = false
+      this.keys.clear()
+      this.moveAxis.x = 0
+      this.moveAxis.y = 0
+      this.lookAxis.x = 0
+      this.lookAxis.y = 0
+      this.pointer.down = false
+      this.velXZ.set(0, 0)
+      this.speedNorm = 0
+      this.cursorWorld.set(999, 999, 999)
+      this.coverOrbitInitialized = false
+      this.cb.onHoverTarget?.(null)
+      this.emitSkim(0, true)
+      this.emitTelemetry(true)
+      return
+    }
+    this.syncAngles()
+    this.fovTarget = 55
+    if (this.cb.isSurfaceActive()) {
+      this.focusTarget('home', 1.25)
+    }
+  }
+
+  toggleGlide(): boolean {
+    this.setGlideEnabled(!this.gliding)
+    return this.gliding
+  }
+
+  setGlideEnabled(enabled: boolean) {
+    if (enabled && (!this.cb.isSurfaceActive() || this.coverOrbit)) return
+    if (this.gliding === enabled) return
+    this.gliding = enabled
+    if (enabled) {
+      if (this.seatedBenchId) this.standFromBench()
+      this.flight = null
+      this.walkTarget = null
+      const groundY = Math.max(heightAt(this.camPos.x, this.camPos.z), LAKE.y)
+      this.glideTargetY = clamp(Math.max(this.camPos.y, groundY + 7.5), groundY + 2.2, groundY + 34)
+      this.syncAngles()
+    } else {
+      this.walkTarget = null
+      if (this.cb.isSurfaceActive() && heightAt(this.camPos.x, this.camPos.z) <= LAKE.y + 0.28) {
+        const shore = this.findNearestDryShore(this.camPos.x, this.camPos.z)
+        const shoreY = heightAt(shore.x, shore.z) + EYE_HEIGHT
+        const forward = new THREE.Vector3(Math.sin(this.yaw), 0, -Math.cos(this.yaw))
+        const toPos = new THREE.Vector3(shore.x, shoreY, shore.z)
+        const toLook = toPos.clone().addScaledVector(forward, 18)
+        toLook.y = shoreY - 0.35
+        this.flight = {
+          fromPos: this.camPos.clone(),
+          toPos,
+          fromLook: this.lookCurrent.clone(),
+          toLook,
+          fromFov: this.fov,
+          toFov: this.fovTarget,
+          time: 0,
+          duration: 1.15,
+          ease: easeInOutCubic,
+        }
+      }
+    }
+    this.emitTelemetry(true)
+  }
+
+  private findNearestDryShore(x: number, z: number): { x: number; z: number } {
+    let dirX = x - LAKE.x
+    let dirZ = z - LAKE.z
+    const len = Math.hypot(dirX, dirZ)
+    if (len < 0.01) {
+      dirX = 0.78
+      dirZ = 0.62
+    } else {
+      dirX /= len
+      dirZ /= len
+    }
+    for (let step = 4; step <= 120; step += 4) {
+      const cx = x + dirX * step
+      const cz = z + dirZ * step
+      if (this.inRoam(cx, cz) && heightAt(cx, cz) > LAKE.y + 0.45) {
+        return { x: cx, z: cz }
+      }
+    }
+    return { x: 0, z: 12 }
   }
 
   private inRoam(x: number, z: number): boolean {
@@ -190,16 +297,23 @@ export class PlayerController {
     this.walkTarget = null
     this.seatedBenchId = null
     this.roamEnabled = false
+    this.coverOrbit = false
+    this.gliding = false
+    this.lastSpaceTapAt = 0
     this.keys.clear()
     this.velXZ.set(0, 0)
     this.speedNorm = 0
     this.cb.onHoverTarget?.(null)
     this.emitSkim(0, true)
+    this.emitTelemetry(true)
   }
 
   resetSurfaceState() {
     this.roamEnabled = false
     this.seatedBenchId = null
+    this.coverOrbit = false
+    this.gliding = false
+    this.lastSpaceTapAt = 0
     this.keys.clear()
     this.walkTarget = null
     this.walkPhase = 0
@@ -209,12 +323,14 @@ export class PlayerController {
     this.cb.onHoverTarget?.(null)
     this.emitSkim(0, true)
     this.focusTarget('home', 0.02)
+    this.emitTelemetry(true)
   }
 
   sitOnBench(benchId: string) {
     if (!this.cb.isSurfaceActive()) return
     const bench = SCENIC_BENCHES.find((b) => b.id === benchId)
     if (!bench) return
+    this.gliding = false
     this.seatedBenchId = bench.id
     this.walkTarget = null
     this.velXZ.set(0, 0)
@@ -251,6 +367,10 @@ export class PlayerController {
     if (!this.cb.isSurfaceActive()) return
     this.seatedBenchId = null
     this.walkTarget = null
+    if (this.gliding) {
+      this.gliding = false
+      this.emitTelemetry(true)
+    }
     const preset = getCameraPreset(target)
     this.fovTarget = preset.fov
     this.cb.onZoomChange?.(55 / this.fovTarget)
@@ -280,7 +400,8 @@ export class PlayerController {
 
   applyCamera(pos: THREE.Vector3, look: THREE.Vector3, fov: number) {
     this.camera.position.copy(pos)
-    this.camera.up.set(Math.sin(this.roll) * 0.04, 1, 0).normalize()
+    const rollAmp = this.gliding ? 0.11 : 0.04
+    this.camera.up.set(Math.sin(this.roll) * rollAmp, 1, 0).normalize()
     this.camera.lookAt(look)
     if (Math.abs(this.camera.fov - fov) > 0.01) {
       this.camera.fov = fov
@@ -294,7 +415,35 @@ export class PlayerController {
 
     let forwardInput = 0
     let rightInput = 0
-    if (this.flight) {
+    if (this.coverOrbit) {
+      this.coverOrbitTime += dt * (this.calmMotion ? 0.35 : 1)
+      const t = this.coverOrbitTime
+      const ox = Math.sin(t * 0.085) * 14
+      const oz = 11 + Math.cos(t * 0.065) * 3.5
+      const oy = heightAt(ox, oz) + 3.4 + Math.sin(t * 0.14) * 0.45
+      const lx = -6 + Math.sin(t * 0.07) * 8
+      const lz = -26
+      const ly = heightAt(-6, -24) + 1.8
+      const targetPos = new THREE.Vector3(ox, oy, oz)
+      const targetLook = new THREE.Vector3(lx, ly, lz)
+      const targetFov = 52
+      if (!this.coverOrbitInitialized) {
+        this.coverOrbitInitialized = true
+        this.camPos.copy(targetPos)
+        this.lookCurrent.copy(targetLook)
+        this.fov = targetFov
+      } else {
+        const k = 1 - Math.exp(-dt * 2.4)
+        this.camPos.lerp(targetPos, k)
+        this.lookCurrent.lerp(targetLook, k)
+        this.fov += (targetFov - this.fov) * k
+      }
+      this.roll += (0 - this.roll) * Math.min(1, dt * 4)
+      this.velXZ.set(0, 0)
+      this.speedNorm = 0
+      this.cursorWorld.set(999, 999, 999)
+      this.syncAngles()
+    } else if (this.flight) {
       const f = this.flight
       f.time += dt
       const raw = clamp(f.time / f.duration, 0, 1)
@@ -312,6 +461,7 @@ export class PlayerController {
         this.syncAngles()
       }
     } else {
+      let verticalInput = 0
       if (this.roamEnabled) {
         if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) forwardInput += 1
         if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) forwardInput -= 1
@@ -319,9 +469,14 @@ export class PlayerController {
         if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) rightInput -= 1
         forwardInput += this.moveAxis.y
         rightInput += this.moveAxis.x
+        if (this.gliding) {
+          if (this.keys.has('Space') || this.keys.has('KeyR')) verticalInput += 1
+          if (this.keys.has('KeyQ') || this.keys.has('ControlLeft')) verticalInput -= 1
+        }
       }
 
-      const valid = (x: number, z: number) => this.inRoam(x, z) && heightAt(x, z) > LAKE.y + 0.28
+      const valid = (x: number, z: number) =>
+        this.gliding ? this.inRoam(x, z) : this.inRoam(x, z) && heightAt(x, z) > LAKE.y + 0.28
       let desiredVx = 0
       let desiredVz = 0
 
@@ -335,15 +490,22 @@ export class PlayerController {
           move.normalize()
           const fast = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
           const mag = Math.min(1, Math.hypot(forwardInput, rightInput))
-          const baseSpeed = fast ? 9.6 : 3.45
-          const hHere = heightAt(this.camPos.x, this.camPos.z)
-          const hAhead = heightAt(this.camPos.x + move.x * 1.4, this.camPos.z + move.z * 1.4)
-          const slopeDown = clamp((hHere - hAhead) / 1.4, -0.35, 0.45)
-          const speed = baseSpeed * (1 + Math.max(0, slopeDown) * (fast ? 0.34 : 0.16)) * Math.max(0.35, mag)
-          desiredVx = move.x * speed
-          desiredVz = move.z * speed
+          if (this.gliding) {
+            const glideBase = fast ? 18.2 : 6.6
+            const speed = glideBase * Math.max(0.35, mag)
+            desiredVx = move.x * speed
+            desiredVz = move.z * speed
+          } else {
+            const baseSpeed = fast ? 9.6 : 3.45
+            const hHere = heightAt(this.camPos.x, this.camPos.z)
+            const hAhead = heightAt(this.camPos.x + move.x * 1.4, this.camPos.z + move.z * 1.4)
+            const slopeDown = clamp((hHere - hAhead) / 1.4, -0.35, 0.45)
+            const speed = baseSpeed * (1 + Math.max(0, slopeDown) * (fast ? 0.34 : 0.16)) * Math.max(0.35, mag)
+            desiredVx = move.x * speed
+            desiredVz = move.z * speed
+          }
         }
-      } else if (this.roamEnabled && this.walkTarget) {
+      } else if (this.roamEnabled && this.walkTarget && !this.gliding) {
         if (this.seatedBenchId) this.standFromBench()
         const dx = this.walkTarget.x - this.camPos.x
         const dz = this.walkTarget.z - this.camPos.z
@@ -356,15 +518,16 @@ export class PlayerController {
         }
       }
 
-      // 丝滑惯性加速与收步阻尼（参考 Petalwake 惯性平滑手感）
+      // 丝滑惯性加速与收步阻尼（参考 Petalwake 惯性平滑手感；滑翔时具备顺滑气流滑行惯性）
       const hasInput = desiredVx !== 0 || desiredVz !== 0
-      const accel = 1 - Math.exp(-dt * (hasInput ? 7.5 : 8.5))
+      const accelRate = this.gliding ? (hasInput ? 3.8 : 2.6) : hasInput ? 7.5 : 8.5
+      const accel = 1 - Math.exp(-dt * accelRate)
       this.velXZ.x += (desiredVx - this.velXZ.x) * accel
       this.velXZ.y += (desiredVz - this.velXZ.y) * accel
       if (!hasInput && this.velXZ.lengthSq() < 0.001) this.velXZ.set(0, 0)
 
       const curSpeed = this.velXZ.length()
-      this.speedNorm = clamp(curSpeed / 9.6, 0, 1)
+      this.speedNorm = clamp(curSpeed / (this.gliding ? 14.0 : 9.6), 0, 1)
 
       if (curSpeed > 0.02) {
         const stepX = this.velXZ.x * dt
@@ -388,14 +551,27 @@ export class PlayerController {
         } else {
           this.camPos.x = nextX
           this.camPos.z = nextZ
-          this.walkPhase += dt * (0.75 + this.speedNorm * 0.65)
-          const bob = this.calmMotion ? 0 : Math.sin(this.walkPhase * 7.8) * (0.042 + this.speedNorm * 0.02)
-          const targetY = heightAt(nextX, nextZ) + EYE_HEIGHT + bob
-          this.camPos.y += (targetY - this.camPos.y) * Math.min(1, dt * 8)
+          if (!this.gliding) {
+            this.walkPhase += dt * (0.75 + this.speedNorm * 0.65)
+            const bob = this.calmMotion ? 0 : Math.sin(this.walkPhase * 7.8) * (0.042 + this.speedNorm * 0.02)
+            const targetY = heightAt(nextX, nextZ) + EYE_HEIGHT + bob
+            this.camPos.y += (targetY - this.camPos.y) * Math.min(1, dt * 8)
+          }
         }
-      } else {
+      } else if (!this.gliding) {
         const restY = heightAt(this.camPos.x, this.camPos.z) + (this.seatedBenchId ? 1.18 : EYE_HEIGHT)
         this.camPos.y += (restY - this.camPos.y) * Math.min(1, dt * 5)
+      }
+
+      if (this.gliding) {
+        const groundY = Math.max(heightAt(this.camPos.x, this.camPos.z), LAKE.y)
+        const minY = groundY + 2.2
+        const maxY = groundY + 34
+        this.glideTargetY = clamp(this.glideTargetY + verticalInput * 9.5 * dt, minY, maxY)
+        this.walkPhase += dt * (0.55 + this.speedNorm * 0.5)
+        const hoverBob = this.calmMotion ? 0 : Math.sin(this.walkPhase * 2.2) * 0.14
+        const desiredY = clamp(this.glideTargetY + hoverBob, minY, maxY)
+        this.camPos.y += (desiredY - this.camPos.y) * (1 - Math.exp(-dt * 4.5))
       }
 
       if (this.lookAxis.x !== 0 || this.lookAxis.y !== 0) {
@@ -409,11 +585,16 @@ export class PlayerController {
       this.yaw += (this.targetYaw - this.yaw) * damp
       this.pitch += (this.targetPitch - this.pitch) * damp
 
-      const targetRoll = this.calmMotion ? 0 : clamp(-rightInput * 0.25 - (this.targetYaw - this.yaw) * 0.6, -1, 1)
-      this.roll += (targetRoll - this.roll) * Math.min(1, dt * 6)
+      const targetRoll = this.calmMotion
+        ? 0
+        : this.gliding
+          ? clamp(-rightInput * 0.55 - (this.targetYaw - this.yaw) * 1.15, -1, 1)
+          : clamp(-rightInput * 0.25 - (this.targetYaw - this.yaw) * 0.6, -1, 1)
+      this.roll += (targetRoll - this.roll) * Math.min(1, dt * (this.gliding ? 4.2 : 6))
 
-      const sprintFovLift = this.calmMotion ? 0 : this.speedNorm * 4.2
-      this.fov += (this.fovTarget + sprintFovLift - this.fov) * damp
+      const glideFovLift = this.gliding ? 8 : 0
+      const sprintFovLift = this.calmMotion ? 0 : this.speedNorm * (this.gliding ? 3.2 : 4.2)
+      this.fov += (this.fovTarget + glideFovLift + sprintFovLift - this.fov) * damp
 
       const cosPitch = Math.cos(this.pitch)
       const dir = new THREE.Vector3(
@@ -428,8 +609,9 @@ export class PlayerController {
     this.updatePlace()
     this.emitTelemetry(false)
 
-    // 掠草微音效：综合脚步速度 + 鼠标划草速度
-    const cursorActive = this.cursorWorld.x < 450 && this.cursorWorld.z < 450 && !this.flight
+    // 掠草微音效：综合脚步速度 + 鼠标划草速度；滑翔时按飞行速度输出柔和风声
+    const cursorActive =
+      this.cursorWorld.x < 450 && this.cursorWorld.z < 450 && !this.flight && !this.coverOrbit && !this.gliding
     let cursorSpeed = 0
     if (cursorActive && this.prevCursorXZ.x < 450) {
       const jump = Math.hypot(
@@ -440,9 +622,12 @@ export class PlayerController {
     }
     this.prevCursorXZ.set(this.cursorWorld.x, this.cursorWorld.z)
 
-    const skimTarget = this.flight
-      ? 0
-      : clamp(this.speedNorm * 0.95 + Math.min(0.45, cursorSpeed * 0.08), 0, 1)
+    const skimTarget =
+      this.flight || this.coverOrbit
+        ? 0
+        : this.gliding
+          ? clamp(0.18 + this.speedNorm * 0.68, 0, 0.9)
+          : clamp(this.speedNorm * 0.95 + Math.min(0.45, cursorSpeed * 0.08), 0, 1)
     const skimRate = skimTarget > this.skimSmoothed ? 4.5 : 2.6
     this.skimSmoothed += (skimTarget - this.skimSmoothed) * Math.min(1, dt * skimRate)
     if (this.skimSmoothed < 0.01 && skimTarget === 0) this.skimSmoothed = 0
@@ -488,10 +673,19 @@ export class PlayerController {
       }
     }
 
-    const key = [nearbyBench?.id ?? '', this.seatedBenchId ?? '', nearbyDiscovery ?? ''].join('|')
+    const groundY = Math.max(heightAt(x, z), LAKE.y)
+    const altitude = Math.max(0, Math.round((this.camPos.y - groundY) * 10) / 10)
+
+    const key = [
+      nearbyBench?.id ?? '',
+      this.seatedBenchId ?? '',
+      nearbyDiscovery ?? '',
+      this.gliding ? '1' : '0',
+    ].join('|')
     const moved =
       Math.hypot(x - this.lastTelemetryX, z - this.lastTelemetryZ) > 0.35 ||
-      Math.abs(this.yaw - this.lastTelemetryYaw) > 0.015
+      Math.abs(this.yaw - this.lastTelemetryYaw) > 0.015 ||
+      Math.abs(altitude - this.lastTelemetryAlt) >= 0.2
     if (!force && key === this.lastTelemetryKey && (!moved || now - this.lastTelemetryAt < 65)) {
       return
     }
@@ -501,11 +695,14 @@ export class PlayerController {
     this.lastTelemetryX = x
     this.lastTelemetryZ = z
     this.lastTelemetryYaw = this.yaw
+    this.lastTelemetryAlt = altitude
     this.cb.onTelemetry({
       x,
       z,
       yaw: this.yaw,
       speedNorm: this.speedNorm,
+      gliding: this.gliding,
+      altitude,
       nearbyBench,
       seatedBenchId: this.seatedBenchId,
       nearbyDiscovery,
@@ -588,13 +785,14 @@ export class PlayerController {
   }
 
   private onWheel = (event: WheelEvent) => {
-    if (!this.cb.isSurfaceActive() || this.flight || !this.roamEnabled) return
+    if (!this.cb.isSurfaceActive() || this.flight || !this.roamEnabled || this.coverOrbit) return
     event.preventDefault()
     this.fovTarget = clamp(this.fovTarget + event.deltaY * 0.032, 30, 74)
     this.cb.onZoomChange?.(55 / this.fovTarget)
   }
 
   private onKeyDown = (event: KeyboardEvent) => {
+    if (this.coverOrbit) return
     const target = event.target as HTMLElement | null
     if (
       target &&
@@ -602,9 +800,26 @@ export class PlayerController {
     ) {
       return
     }
-    if (event.code === 'Space' && !event.repeat && this.roamEnabled && this.cb.isSurfaceActive()) {
+    if (event.code === 'KeyF' && !event.repeat && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (this.roamEnabled && this.cb.isSurfaceActive()) {
+        event.preventDefault()
+        this.toggleGlide()
+      }
+      return
+    }
+    if (event.code === 'Space' && this.roamEnabled && this.cb.isSurfaceActive()) {
       event.preventDefault()
-      this.cb.onSkyCall?.()
+      this.keys.add('Space')
+      if (!event.repeat) {
+        const now = performance.now()
+        if (now - this.lastSpaceTapAt <= 320) {
+          this.lastSpaceTapAt = 0
+          this.toggleGlide()
+        } else {
+          this.lastSpaceTapAt = now
+          if (!this.gliding) this.cb.onSkyCall?.()
+        }
+      }
       return
     }
     if (!this.roamEnabled) return
@@ -622,6 +837,7 @@ export class PlayerController {
   }
 
   private onPointerDown = (event: PointerEvent) => {
+    if (this.coverOrbit) return
     this.pointer.down = true
     this.pointer.id = event.pointerId
     this.pointer.lastX = event.clientX
@@ -633,6 +849,12 @@ export class PlayerController {
   }
 
   private onPointerMove = (event: PointerEvent) => {
+    if (this.coverOrbit) {
+      this.canvas.style.cursor = 'default'
+      this.cb.onHoverTarget?.(null)
+      this.cursorWorld.set(999, 999, 999)
+      return
+    }
     if (this.pointer.down && !this.flight) {
       const dx = clamp(event.clientX - this.pointer.lastX, -36, 36)
       const dy = clamp(event.clientY - this.pointer.lastY, -36, 36)
@@ -697,7 +919,7 @@ export class PlayerController {
   }
 
   private onPointerUp = (event: PointerEvent) => {
-    if (!this.pointer.down) return
+    if (this.coverOrbit || !this.pointer.down) return
     this.pointer.down = false
     if (this.canvas.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId)
@@ -706,7 +928,7 @@ export class PlayerController {
     if (this.pointer.drag < 8 && !this.flight && this.cb.isSurfaceActive()) {
       const hit = this.pickHit(event.clientX, event.clientY)
       if (!hit) {
-        if (this.roamEnabled) {
+        if (this.roamEnabled && !this.gliding) {
           const rect = this.canvas.getBoundingClientRect()
           const x = ((event.clientX - rect.left) / rect.width) * 2 - 1
           const y = -((event.clientY - rect.top) / rect.height) * 2 + 1

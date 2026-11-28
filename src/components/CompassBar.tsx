@@ -77,7 +77,7 @@ export function CompassBar({ yaw, x, z, discoveriesFound }: CompassBarProps) {
           return (
             <span
               key={c.label}
-              className={`absolute top-0 -translate-x-1/2 font-serif tracking-[0.06em] transition-[left] duration-75 ${
+              className={`hud-ink-soft absolute top-0 -translate-x-1/2 font-serif tracking-[0.06em] transition-[left] duration-75 ${
                 c.major ? 'text-[10.5px] text-white/74' : 'text-[9.5px] text-white/42'
               }`}
               style={{ left: `${leftPct}%`, opacity: Math.max(0.15, edgeFade) }}

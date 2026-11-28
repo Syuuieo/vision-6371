@@ -7,15 +7,15 @@ const CITIES = [
   '三亚',
   '青岛',
   '大理',
-  '武汉',
-  '拉萨',
-  '上海',
+  '罗马',
+  '格鲁吉亚',
+  '阿格拉',
   '成都',
   '西安',
   '杭州',
-  '南京',
+  '复活节岛',
   '悉尼',
-  '夏威夷',
+  '吉萨',
   '雷克雅未克',
   '开普敦',
   '京都',
@@ -57,7 +57,7 @@ describe('citySignature', () => {
   })
 
   it('prefers the city table over the ambience fallback', () => {
-    expect(signatureFor('南京', 'wind').effect).toBe('drizzle')
+    expect(signatureFor('复活节岛', 'wind').effect).toBe('ripple')
     expect(signatureFor('三亚', 'wind').weather).toBe('闷热无风')
     expect(signatureFor('悉尼', 'wind').weather).toBe('南半球盛夏')
   })

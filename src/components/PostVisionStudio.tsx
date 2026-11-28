@@ -566,7 +566,7 @@ export function PostVisionStudio({
       showToast(
         result.source === 'cloud'
           ? visibility === 'public'
-            ? '这片风景已投递到地球表面电台'
+            ? '这片风景已投递到行星电台'
             : '私密分享链接已生成'
           : '已封存在本机电台 · 分享链接仍可打开',
       )
@@ -637,7 +637,7 @@ export function PostVisionStudio({
         }}
       />
 
-      <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-6 pt-[64px] sm:px-5 sm:pt-[76px] lg:h-full lg:min-h-0">
+      <div className="relative mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-3 px-3 pb-20 pt-[64px] sm:px-5 sm:pt-[76px] lg:h-full lg:min-h-0">
         {/* 视野信箱双模式切换条：写信寄视野 vs 漂流收件箱 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -835,7 +835,7 @@ export function PostVisionStudio({
             })}
           </div>
 
-          <div className="studio-scroll min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="studio-scroll min-h-0 flex-1 overflow-y-auto p-4 pb-20">
             {step === 1 && (
               <div className="space-y-5">
                 <div>
@@ -853,7 +853,7 @@ export function PostVisionStudio({
                   </div>
                   {albumEntries.length === 0 ? (
                     <div className="mt-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-3.5 py-3 font-serif text-[11.5px] leading-[1.7] text-white/58">
-                      纪念册暂无照片：可在「04 纪念册」或「01 序章按 P」拍下风景卡片后直接来此贴邮票寄出，也可先用下方预设风景。
+                      纪念册暂无照片：可在「行星电台 · 我的纪念册」或「序章按 P」拍下风景卡片后直接来此贴邮票寄出，也可先用下方预设风景。
                     </div>
                   ) : (
                     <div className="mt-2 grid grid-cols-3 gap-2">
@@ -1555,7 +1555,7 @@ export function PostVisionStudio({
       </div>
 
       {toast && (
-        <div className="pointer-events-none fixed bottom-6 left-1/2 z-[95] w-[min(92vw,460px)] -translate-x-1/2">
+        <div className="pointer-events-none fixed bottom-[calc(env(safe-area-inset-bottom)+3.5rem)] left-1/2 z-[95] w-[min(92vw,460px)] -translate-x-1/2">
           <div className="animate-fade-in rounded-full border border-signal/35 bg-[#0e1a36]/95 px-4 py-2.5 text-center font-serif text-[12.5px] text-[#fff8ee] shadow-2xl backdrop-blur-md">
             {toast}
           </div>

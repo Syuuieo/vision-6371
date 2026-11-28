@@ -5,8 +5,12 @@ export function parseModuleFromHash(hash: string): ModuleId | null {
   if (clean === 'prologue') return 'prologue'
   if (clean === 'radio') return 'radio'
   if (clean === 'mailbox' || clean === 'post') return 'post'
-  if (clean === 'diorama') return 'diorama'
+  if (clean === 'diorama') return 'radio'
   return null
+}
+
+export function isLegacyDioramaHash(hash: string): boolean {
+  return hash.trim().replace(/^#\/?/, '').toLowerCase() === 'diorama'
 }
 
 export function formatModuleHash(module: ModuleId): string {

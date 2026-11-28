@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { formatModuleHash, isAdminHash, parseModuleFromHash } from './hashRoute'
+import type { ModuleId } from '../types/sensor'
+import { formatModuleHash, isAdminHash, isLegacyDioramaHash, parseModuleFromHash } from './hashRoute'
 
 describe('hashRoute', () => {
   it('parses valid module hashes case-insensitively', () => {
@@ -8,7 +9,15 @@ describe('hashRoute', () => {
     expect(parseModuleFromHash('#/radio')).toBe('radio')
     expect(parseModuleFromHash('#/mailbox')).toBe('post')
     expect(parseModuleFromHash('#/post')).toBe('post')
-    expect(parseModuleFromHash('#/Diorama')).toBe('diorama')
+    expect(parseModuleFromHash('#/diorama')).toBe('radio')
+    expect(parseModuleFromHash('#/Diorama')).toBe('radio')
+  })
+
+  it('recognizes legacy diorama hashes case-insensitively', () => {
+    expect(isLegacyDioramaHash('#/diorama')).toBe(true)
+    expect(isLegacyDioramaHash('#Diorama')).toBe(true)
+    expect(isLegacyDioramaHash('#/radio')).toBe(false)
+    expect(isLegacyDioramaHash('')).toBe(false)
   })
 
   it('returns null for empty or unknown hashes', () => {
@@ -21,7 +30,11 @@ describe('hashRoute', () => {
     expect(formatModuleHash('prologue')).toBe('#/prologue')
     expect(formatModuleHash('radio')).toBe('#/radio')
     expect(formatModuleHash('post')).toBe('#/mailbox')
-    expect(formatModuleHash('diorama')).toBe('#/diorama')
+  })
+
+  it('never formats a diorama route', () => {
+    const modules: ModuleId[] = ['prologue', 'radio', 'post']
+    expect(modules.map(formatModuleHash)).not.toContain('#/diorama')
   })
 
   it('recognizes #/admin hash routes exclusively', () => {

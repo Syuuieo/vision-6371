@@ -2,9 +2,8 @@ import type { ModuleId } from '../types/sensor'
 
 const MODULES: { id: ModuleId; short: string; label: string }[] = [
   { id: 'prologue', short: '序章', label: '序章 · 地球的一天' },
-  { id: 'radio', short: '电台', label: '地球表面电台' },
+  { id: 'radio', short: '电台', label: '行星电台 · 3D 奇境' },
   { id: 'post', short: '视野信箱', label: '视野信箱 · 漂流邮局' },
-  { id: 'diorama', short: '纪念册', label: '立体漫游 · 纪念册' },
 ]
 
 interface TopNavProps {
@@ -13,6 +12,8 @@ interface TopNavProps {
   muted: boolean
   onToggleSound: () => void
   onOpenSettings: () => void
+  onOpenSensoryLens?: () => void
+  hidden?: boolean
   canGoBack?: boolean
   onBack?: () => void
   onGoHome?: () => void
@@ -45,21 +46,30 @@ export function TopNav({
   muted,
   onToggleSound,
   onOpenSettings,
+  onOpenSensoryLens,
+  hidden = false,
   canGoBack = false,
   onBack,
   onGoHome,
 }: TopNavProps) {
+  const interactiveClass = hidden ? 'pointer-events-none' : 'pointer-events-auto'
+
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 bg-gradient-to-b from-[#050a16]/62 via-[#050a16]/20 to-transparent px-3.5 pb-4 pt-3 sm:px-6 sm:pt-4">
-      <div className="mx-auto flex w-full max-w-[1160px] items-center justify-between gap-2">
-        <div className="pointer-events-auto flex shrink-0 items-center gap-2">
+    <header
+      aria-hidden={hidden || undefined}
+      className={`pointer-events-none fixed inset-x-0 top-0 z-50 bg-gradient-to-b from-[#050a16]/68 via-[#050a16]/22 to-transparent px-3.5 pb-4 pt-3 transition-all duration-500 ease-out sm:px-6 sm:pt-4 ${
+        hidden ? '-translate-y-4 opacity-0' : 'translate-y-0 opacity-100'
+      }`}
+    >
+      <div className="mx-auto flex w-full max-w-[1180px] items-center justify-between gap-2">
+        <div className={`${interactiveClass} flex shrink-0 items-center gap-2`}>
           {canGoBack && onBack && (
             <button
               type="button"
               onClick={onBack}
               aria-label="返回上一级"
               title="返回上一级"
-              className="hud-ink-soft flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-white/15 bg-[#080f20]/42 px-2.5 text-white/86 backdrop-blur-md transition hover:border-signal/55 hover:text-signal sm:h-9 sm:px-3"
+              className="hud-ink-soft flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-white/15 bg-[#060a14]/60 px-2.5 text-white/86 backdrop-blur-2xl transition hover:border-signal/55 hover:text-signal sm:h-9 sm:px-3"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -91,7 +101,7 @@ export function TopNav({
 
         <nav
           aria-label="主导航"
-          className="pointer-events-auto flex min-w-0 items-center gap-0.5 rounded-full border border-white/12 bg-[#070e1f]/42 p-0.5 backdrop-blur-md sm:gap-1 sm:px-1.5 sm:py-1"
+          className={`${interactiveClass} flex min-w-0 items-center gap-0.5 rounded-full border border-signal/15 bg-[#060a14]/60 p-0.5 backdrop-blur-2xl sm:gap-1 sm:px-1.5 sm:py-1`}
         >
           {MODULES.map((item) => {
             const active = module === item.id
@@ -120,13 +130,40 @@ export function TopNav({
           })}
         </nav>
 
-        <div className="pointer-events-auto flex shrink-0 items-center gap-1.5">
+        <div className={`${interactiveClass} flex shrink-0 items-center gap-1.5`}>
+          {onOpenSensoryLens && (
+            <button
+              type="button"
+              onClick={onOpenSensoryLens}
+              aria-label="打开传感透镜"
+              title="传感透镜 · 借一双真实的眼睛"
+              className="hud-ink-soft flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-signal/25 bg-[#060a14]/60 px-2.5 text-[#fff6ea]/88 backdrop-blur-2xl transition hover:border-signal/55 hover:bg-signal/12 hover:text-[#fff9f0] sm:h-9 sm:px-3"
+            >
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-signal shadow-[0_0_8px_rgba(242,194,139,0.92)]"
+              />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-signal/90">
+                <circle cx="12" cy="12" r="7.5" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="12" cy="12" r="2.8" stroke="currentColor" strokeWidth="1.4" />
+                <path
+                  d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <span className="hidden font-serif text-[12px] tracking-[0.06em] md:inline">
+                传感透镜
+              </span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleSound}
             aria-pressed={!muted}
             aria-label={muted ? '开启声音' : '静音'}
-            className="hud-ink-soft flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/14 bg-[#070e1f]/42 px-2.5 text-white/78 backdrop-blur-md transition hover:border-signal/45 hover:text-[#fff6ea] sm:h-9 sm:px-3"
+            className="hud-ink-soft flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/14 bg-[#060a14]/60 px-2.5 text-white/78 backdrop-blur-2xl transition hover:border-signal/45 hover:text-[#fff6ea] sm:h-9 sm:px-3"
           >
             <SoundIcon muted={muted} />
             <span className="hidden font-serif text-[12px] tracking-[0.06em] sm:inline">
@@ -138,7 +175,7 @@ export function TopNav({
             onClick={onOpenSettings}
             aria-label="设置与关于"
             title="设置与关于"
-            className="hud-ink-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/14 bg-[#070e1f]/42 text-white/75 backdrop-blur-md transition hover:border-signal/45 hover:text-signal sm:h-9 sm:w-9"
+            className="hud-ink-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/14 bg-[#060a14]/60 text-white/75 backdrop-blur-2xl transition hover:border-signal/45 hover:text-signal sm:h-9 sm:w-9"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path

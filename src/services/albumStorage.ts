@@ -1,12 +1,18 @@
 import { deleteMedia, deleteMediaByPrefix, getMedia, putMedia } from './mediaDb'
 
 export type DioramaSceneId =
-  | 'shanghai'
-  | 'library'
+  | 'agra'
+  | 'rapanui'
   | 'sydney'
-  | 'hawaii'
+  | 'giza'
   | 'harbin'
-  | 'observatory'
+  | 'georgia'
+  | 'iceland'
+  | 'kyoto'
+  | 'core'
+  | 'rome'
+  | 'paris'
+  | 'dali'
 
 export type AlbumSceneId = DioramaSceneId | 'meadow' | 'postcard'
 export type AlbumMood = 'dawn' | 'dusk' | 'night'
@@ -33,12 +39,18 @@ const MAX_INLINE_BYTES = 1_400_000
 const IDB_PREFIX = 'idb:album:'
 const VALID_MOODS: readonly AlbumMood[] = ['dawn', 'dusk', 'night']
 const VALID_STAMP_SCENES: readonly DioramaSceneId[] = [
-  'shanghai',
-  'library',
+  'agra',
+  'rapanui',
   'sydney',
-  'hawaii',
+  'giza',
   'harbin',
-  'observatory',
+  'georgia',
+  'iceland',
+  'kyoto',
+  'core',
+  'rome',
+  'paris',
+  'dali',
 ]
 
 const memoryImages = new Map<string, string>()
@@ -63,19 +75,89 @@ export function subscribeAlbum(listener: () => void): () => void {
 
 export function inferAlbumSceneId(city: string, presetId?: string): AlbumSceneId {
   const text = `${city} ${presetId ?? ''}`.trim().toLowerCase()
-  if (text.includes('上海') || text.includes('shanghai')) return 'shanghai'
-  if (text.includes('南京') || text.includes('图书馆') || text.includes('library')) return 'library'
+  if (
+    text.includes('阿格拉') ||
+    text.includes('泰姬陵') ||
+    text.includes('agra') ||
+    text.includes('taj') ||
+    text.includes('shanghai')
+  ) {
+    return 'agra'
+  }
+  if (
+    text.includes('复活节岛') ||
+    text.includes('摩艾') ||
+    text.includes('拉帕努伊') ||
+    text.includes('rapanui') ||
+    text.includes('moai') ||
+    text.includes('南京') ||
+    text.includes('图书馆') ||
+    text.includes('library')
+  ) {
+    return 'rapanui'
+  }
+  if (
+    text.includes('罗马') ||
+    text.includes('斗兽场') ||
+    text.includes('凯旋门') ||
+    text.includes('rome') ||
+    text.includes('colosseum') ||
+    text.includes('wuhan')
+  ) {
+    return 'rome'
+  }
+  if (text.includes('大理') || text.includes('洱海') || text.includes('苍山') || text.includes('dali')) return 'dali'
+  if (text.includes('巴黎') || text.includes('塞纳') || text.includes('铁塔') || text.includes('paris')) return 'paris'
   if (text.includes('悉尼') || text.includes('sydney')) return 'sydney'
-  if (text.includes('夏威夷') || text.includes('hawaii') || text.includes('sea')) return 'hawaii'
+  if (
+    text.includes('吉萨') ||
+    text.includes('金字塔') ||
+    text.includes('斯芬克斯') ||
+    text.includes('giza') ||
+    text.includes('pyramid') ||
+    text.includes('夏威夷') ||
+    text.includes('hawaii') ||
+    text.includes('sea')
+  ) {
+    return 'giza'
+  }
   if (text.includes('哈尔滨') || text.includes('harbin')) return 'harbin'
   if (
+    text.includes('格鲁吉亚') ||
+    text.includes('圣剑') ||
+    text.includes('乌什巴') ||
+    text.includes('georgia') ||
     text.includes('拉萨') ||
     text.includes('西藏') ||
     text.includes('那曲') ||
     text.includes('观星') ||
     text.includes('observatory')
   ) {
-    return 'observatory'
+    return 'georgia'
+  }
+  if (
+    text.includes('冰岛') ||
+    text.includes('雷克雅未克') ||
+    text.includes('极光') ||
+    text.includes('iceland')
+  ) {
+    return 'iceland'
+  }
+  if (
+    text.includes('京都') ||
+    text.includes('樱花') ||
+    text.includes('古寺') ||
+    text.includes('kyoto')
+  ) {
+    return 'kyoto'
+  }
+  if (
+    text.includes('地心') ||
+    text.includes('落日六号') ||
+    text.includes('sunset') ||
+    text.includes('core')
+  ) {
+    return 'core'
   }
   if (text.includes('草原') || text.includes('meadow')) return 'meadow'
   return 'postcard'

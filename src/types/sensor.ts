@@ -1,4 +1,4 @@
-export type ModuleId = 'prologue' | 'radio' | 'post' | 'diorama'
+export type ModuleId = 'prologue' | 'radio' | 'post'
 
 export type SkyStage = 0 | 1 | 2
 

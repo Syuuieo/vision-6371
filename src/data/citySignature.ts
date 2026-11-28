@@ -40,23 +40,23 @@ export const CITY_SIGNATURES: Record<string, CitySignature> = {
     reply: '水很凉。她说像摸到了一块在黑暗里藏了很久的石头。',
     effect: 'ripple',
   },
-  武汉: {
-    weather: '江雾',
-    verb: '等一声汽笛',
-    reply: '汽笛从雾里穿出来。她说，这是她第一次听见一条江的形状。',
-    effect: 'ripple',
+  罗马: {
+    weather: '古罗马金晖',
+    verb: '仰望洞石穹弧',
+    reply: '斜阳穿过两千年的拱洞，她轻声说地心之外的石壁原来也记着黄昏的温度。',
+    effect: 'bloom',
   },
-  拉萨: {
-    weather: '高原晴夜',
-    verb: '数三颗星',
-    reply: '三颗星连成一条线。她说在 6371 公里以下，是看不到星的。',
-    effect: 'starlight',
+  格鲁吉亚: {
+    weather: '日照金山',
+    verb: '迎着雪脊深呼吸',
+    reply: '粉金晨光漫过双刃剑峰时，她说连两千公里深处的寒铁仿佛也被晒暖了一点。',
+    effect: 'frost',
   },
-  上海: {
-    weather: '末班地铁',
-    verb: '贴着车窗看站台',
-    reply: '站台的灯一盏盏退走。她说这像她每天穿过地层的那条隧道。',
-    effect: 'starlight',
+  阿格拉: {
+    weather: '白玉拂晓',
+    verb: '凝望中轴镜池',
+    reply: '淡粉晨光照亮整座大理石穹顶时，她说连长池里碎开的波光都像一段永不褪色的诗。',
+    effect: 'bloom',
   },
   成都: {
     weather: '阴天有雾',
@@ -76,11 +76,11 @@ export const CITY_SIGNATURES: Record<string, CitySignature> = {
     reply: '雨点弹开。她说，雨声是她最想念的声音。',
     effect: 'drizzle',
   },
-  南京: {
-    weather: '梧桐夜雨',
-    verb: '踩一片落叶',
-    reply: '叶子在积水里打了个旋。她说这声音像有人在轻轻敲门。',
-    effect: 'drizzle',
+  复活节岛: {
+    weather: '南太海风',
+    verb: '轻触玄武岩巨像',
+    reply: '白珊瑚圣眸亮起那一刻，她说南太平洋的潮汐替两千公里外的巨石像一直守着黎明。',
+    effect: 'ripple',
   },
   悉尼: {
     weather: '南半球盛夏',
@@ -88,10 +88,10 @@ export const CITY_SIGNATURES: Record<string, CitySignature> = {
     reply: '北半球正在过冬，可这里的海风还是热的。她说原来地球另一边一直藏着夏天。',
     effect: 'ripple',
   },
-  夏威夷: {
-    weather: '热带椰风',
-    verb: '捧起一捧温热海沙',
-    reply: '金红色的夕阳落进太平洋。她说热浪拍在脚背上，比岩浆温柔一万倍。',
+  吉萨: {
+    weather: '撒哈拉金晖',
+    verb: '凝望三大金字塔',
+    reply: '黄金顶石在暮色里最后熄灭时，她说四千年的沙海竟然也记得一次日落。',
     effect: 'bloom',
   },
   雷克雅未克: {

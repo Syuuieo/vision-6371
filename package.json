@@ -1,13 +1,13 @@
 {
   "name": "vision-6371",
   "private": true,
-  "version": "4.0.0",
+  "version": "5.0.0",
   "description": "风信 · Windpost — 3D 沉浸式感官序章、地球表面电台与漂流邮局",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint src",
     "preview": "vite preview",
     "test": "vitest run"
   },

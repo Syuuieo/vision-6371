@@ -7,12 +7,30 @@ import {
   seedSignalCodes as lightSeedSignalCodes,
 } from '../data/seedRadioBriefs'
 import {
+  RADIO_CITY_COORDS,
+  cityCoords,
   isSeedCode as fullIsSeedCode,
   seedBrief as fullSeedBrief,
   seedSignalCodes,
 } from '../data/seedRadioVisions'
 import { dailyEcho, milestones, todayKey, type JourneyState } from './journey'
 import type { StoryRelayState } from '../utils/storyRelay'
+
+const DEFAULT_SEED_CODES = [
+  'VRAG06',
+  'VRRI07',
+  'VRRM08',
+  'VRDL05',
+  'VRHR04',
+  'VRGE12',
+  'VRSY13',
+  'VRGZ14',
+  'VRIS15',
+  'VRKY17',
+  'VRPR18',
+]
+const DEFAULT_SEED_CITIES = ['阿格拉', '复活节岛', '罗马', '大理', '哈尔滨', '格鲁吉亚', '悉尼', '吉萨', '雷克雅未克', '京都', '巴黎']
+const LEGACY_SEED_CODES = ['VRHZ01', 'VRQD02', 'VRCD03', 'VRBJ09', 'VRXA10', 'VRSY11', 'VRCT16']
 
 const EMPTY_JOURNEY: JourneyState = {
   actsSeen: [],
@@ -104,13 +122,37 @@ describe('milestones', () => {
 })
 
 describe('seedRadioBriefs parity', () => {
-  it('stays in exact sync with seedRadioVisions metadata', () => {
-    expect(lightSeedSignalCodes()).toEqual(seedSignalCodes())
-    expect(SEED_RADIO_BRIEFS.length).toBe(18)
+  it('limits every default preset collection to the eleven 3D cities', () => {
+    expect(lightSeedSignalCodes()).toEqual(DEFAULT_SEED_CODES)
+    expect(seedSignalCodes()).toEqual(DEFAULT_SEED_CODES)
+    expect(SEED_RADIO_BRIEFS).toHaveLength(11)
+    expect(SEED_RADIO_BRIEFS.map((brief) => brief.code)).toEqual(DEFAULT_SEED_CODES)
+    expect(SEED_RADIO_BRIEFS.map((brief) => brief.city)).toEqual(DEFAULT_SEED_CITIES)
+    expect(Object.keys(RADIO_CITY_COORDS)).toEqual(DEFAULT_SEED_CITIES)
     for (const brief of SEED_RADIO_BRIEFS) {
       expect(lightSeedBrief(brief.code)).toEqual(fullSeedBrief(brief.code))
       expect(lightIsSeedCode(brief.code)).toBe(fullIsSeedCode(brief.code))
+      expect(cityCoords(brief.city)).toEqual(RADIO_CITY_COORDS[brief.city])
     }
+  })
+
+  it('keeps legacy bookmark codes readable without including them in defaults', () => {
+    for (const code of LEGACY_SEED_CODES) {
+      const brief = fullSeedBrief(code)
+      expect(lightSeedSignalCodes()).not.toContain(code)
+      expect(seedSignalCodes()).not.toContain(code)
+      expect(lightSeedBrief(` ${code.toLowerCase()} `)).toEqual(brief)
+      expect(fullSeedBrief(` ${code.toLowerCase()} `)).toEqual(brief)
+      expect(brief).not.toBeNull()
+      expect(lightIsSeedCode(code)).toBe(true)
+      expect(fullIsSeedCode(code)).toBe(true)
+      expect(RADIO_CITY_COORDS[brief!.city]).toBeUndefined()
+      expect(cityCoords(brief!.city)).toEqual({
+        lat: expect.any(Number),
+        lon: expect.any(Number),
+      })
+    }
+    expect(fullIsSeedCode('VRZZ99')).toBe(false)
   })
 })
 

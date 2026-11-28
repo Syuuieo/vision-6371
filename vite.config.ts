@@ -5,6 +5,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    // Three.js is intentionally isolated in a lazy vendor chunk.
+    chunkSizeWarningLimit: 700,
     rolldownOptions: {
       output: {
         codeSplitting: {

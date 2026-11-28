@@ -1500,128 +1500,46 @@ function renderCityLandmark(ctx: CanvasRenderingContext2D, city: string, palette
     drawTieredStupa(cx, 30, 11, 14)
     drawTieredStupa(cx - 58, 19, 8, 11)
     drawTieredStupa(cx + 58, 19, 8, 11)
-  } else if (city === '上海') {
-    const wx = 118
-    const wy = 84
-    const ww = W - 236
-    const wh = 690
+  } else if (city === '阿格拉') {
+    const cx = W * 0.5
+    const baseY = H * 0.62
+    glow(ctx, cx, baseY - 120, 260, '#ffd4b8', 0.36)
+    ctx.fillStyle = 'rgba(244,234,224,0.94)'
+    ctx.fillRect(cx - 120, baseY - 96, 240, 96)
     ctx.beginPath()
-    ctx.roundRect(wx, wy, ww, wh, 88)
-    ctx.clip()
-    const baseY = wy + wh * 0.76
-    // Oriental Pearl Tower
-    const px = wx + ww * 0.62
-    glow(ctx, px, baseY - 180, 260, '#ff98b8', 0.24)
-    ctx.strokeStyle = 'rgba(18,34,42,0.95)'
-    ctx.lineWidth = 6
-    ctx.beginPath()
-    ctx.moveTo(px - 28, baseY)
-    ctx.lineTo(px, baseY - 90)
-    ctx.lineTo(px + 28, baseY)
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(22,38,46,0.96)'
-    ctx.fillRect(px - 6, baseY - 260, 12, 260)
-    ctx.strokeStyle = 'rgba(255,214,178,0.85)'
-    ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.moveTo(px, baseY - 295)
-    ctx.lineTo(px, baseY - 375)
-    ctx.stroke()
-    for (const [sy, sr, glowCol] of [
-      [baseY - 122, 26, '#ff9eb8'],
-      [baseY - 245, 18, '#ffd28e'],
-      [baseY - 295, 10, '#fff2cf'],
-    ] as const) {
-      glow(ctx, px, sy, sr * 2.5, glowCol, 0.34)
-      ctx.fillStyle = glowCol
-      ctx.beginPath()
-      ctx.arc(px, sy, sr, 0, TAU)
-      ctx.fill()
+    ctx.arc(cx, baseY - 135, 58, Math.PI, 0)
+    ctx.fill()
+    for (const mx of [-155, -108, 108, 155]) {
+      ctx.fillRect(cx + mx - 8, baseY - 165, 16, 165)
     }
-    // Shanghai Tower & SWFC
-    const stX = wx + ww * 0.73
-    ctx.fillStyle = 'rgba(12,26,34,0.95)'
-    ctx.beginPath()
-    ctx.moveTo(stX - 24, baseY)
-    ctx.quadraticCurveTo(stX - 18, baseY - 190, stX - 7, baseY - 340)
-    ctx.lineTo(stX + 12, baseY - 325)
-    ctx.quadraticCurveTo(stX + 20, baseY - 180, stX + 26, baseY)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(148,230,245,0.55)'
-    ctx.lineWidth = 2
-    ctx.stroke()
-
-    const swX = wx + ww * 0.81
-    ctx.fillStyle = 'rgba(10,22,29,0.95)'
-    ctx.beginPath()
-    ctx.moveTo(swX - 22, baseY)
-    ctx.lineTo(swX - 14, baseY - 295)
-    ctx.lineTo(swX + 14, baseY - 295)
-    ctx.lineTo(swX + 22, baseY)
-    ctx.closePath()
-    ctx.fill()
-    ctx.fillStyle = '#183b44'
-    ctx.fillRect(swX - 9, baseY - 278, 18, 22)
-    // River glow
-    glow(ctx, wx + ww * 0.7, baseY + 60, 260, '#ffb982', 0.16)
-  } else if (city === '南京') {
-    const horizon = H * 0.55
-    // Zifeng Tower stepped spire silhouette in misty distance
-    const zx = W * 0.67
-    glow(ctx, zx, horizon - 170, 240, '#8fe0d8', 0.2)
-    ctx.fillStyle = 'rgba(8,20,24,0.88)'
-    ctx.fillRect(zx - 32, horizon - 180, 64, 184)
-    ctx.fillRect(zx - 22, horizon - 268, 44, 96)
-    ctx.beginPath()
-    ctx.moveTo(zx - 22, horizon - 268)
-    ctx.lineTo(zx + 8, horizon - 318)
-    ctx.lineTo(zx + 22, horizon - 268)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(170,242,232,0.68)'
-    ctx.lineWidth = 2.5
-    ctx.beginPath()
-    ctx.moveTo(zx + 4, horizon - 314)
-    ctx.lineTo(zx + 4, horizon - 374)
-    ctx.stroke()
-    for (let r = 0; r < 14; r += 1) {
-      ctx.fillStyle = r % 3 === 0 ? 'rgba(255,212,150,0.45)' : 'rgba(148,228,225,0.32)'
-      ctx.fillRect(zx - 16, horizon - 250 + r * 14, 30, 3)
+  } else if (city === '复活节岛') {
+    const baseY = H * 0.65
+    glow(ctx, W * 0.5, baseY - 90, 290, '#ffd498', 0.34)
+    ctx.fillStyle = 'rgba(28,32,36,0.94)'
+    ctx.fillRect(W * 0.24, baseY - 12, W * 0.52, 20)
+    for (let i = -3; i <= 3; i += 1) {
+      const mx = W * 0.5 + i * 74
+      const mh = 96 + (3 - Math.abs(i)) * 14
+      ctx.fillStyle = 'rgba(72,66,58,0.95)'
+      ctx.fillRect(mx - 18, baseY - mh, 36, mh)
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(128,58,42,0.94)'
+        ctx.fillRect(mx - 14, baseY - mh - 18, 28, 18)
+      }
     }
-    // Ming City Wall bastion gate on the left background
-    ctx.fillStyle = 'rgba(6,13,16,0.92)'
-    ctx.fillRect(W * 0.28, horizon - 58, 148, 60)
-    drawPagodaEave(ctx, W * 0.354, horizon - 58, 92, 24, 128, 'rgba(8,16,18,0.94)', 'rgba(12,24,26,0.98)', 'rgba(255,198,122,0.45)')
-  } else if (city === '武汉') {
-    // Yellow Crane Tower on misty Snake Hill above the Yangtze bridge
-    const cx = W * 0.79
-    const baseY = H * 0.525
-    glow(ctx, cx, baseY - 120, 250, '#ffd490', 0.34)
-    ctx.fillStyle = 'rgba(28,39,43,0.92)'
-    ctx.beginPath()
-    ctx.moveTo(cx - 110, baseY + 6)
-    ctx.quadraticCurveTo(cx, baseY - 46, cx + 115, baseY + 6)
-    ctx.closePath()
-    ctx.fill()
-    for (let i = 0; i < 4; i += 1) {
-      const w = 104 - i * 16
-      drawPagodaEave(
-        ctx,
-        cx,
-        baseY - 20 - i * 38,
-        w,
-        36,
-        w + 58,
-        'rgba(34,46,50,0.95)',
-        'rgba(182,134,74,0.88)',
-        'rgba(255,214,142,0.72)',
-      )
+  } else if (city === '罗马') {
+    // Flavian Colosseum arches & golden Roman sunset silhouette
+    const cx = W * 0.54
+    const baseY = H * 0.62
+    glow(ctx, cx, baseY - 120, 290, '#ffd490', 0.36)
+    ctx.fillStyle = 'rgba(72,56,42,0.92)'
+    ctx.fillRect(cx - 190, baseY - 140, 380, 140)
+    ctx.fillStyle = 'rgba(255,204,132,0.58)'
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 9; col += 1) {
+        ctx.fillRect(cx - 165 + col * 38, baseY - 122 + row * 42, 18, 26)
+      }
     }
-    ctx.fillStyle = 'rgba(255,220,152,0.9)'
-    ctx.beginPath()
-    ctx.arc(cx, baseY - 186, 6, 0, TAU)
-    ctx.fill()
   } else if (city === '北京') {
     // Temple of Heaven Hall of Prayer for Good Harvests down the hutong axis
     const cx = W * 0.5
@@ -1671,44 +1589,29 @@ function renderCityLandmark(ctx: CanvasRenderingContext2D, city: string, palette
     ctx.beginPath()
     ctx.arc(cx, baseY - 196, 10, Math.PI, TAU)
     ctx.fill()
-  } else if (city === '拉萨') {
-    // Potala Palace atop Marpo Ri hill under the starry plateau night sky
-    const cx = W * 0.42
-    const baseY = H * 0.675
-    glow(ctx, cx, baseY - 78, 280, '#ffd49a', 0.24)
-    // Hill slope
-    ctx.fillStyle = 'rgba(14,22,30,0.96)'
+  } else if (city === '格鲁吉亚') {
+    // Mount Ushba twin sword peaks & Gergeti Trinity Stone Sanctuary
+    const cx = W * 0.5
+    const baseY = H * 0.68
+    glow(ctx, cx, baseY - 170, 290, '#ffd4b8', 0.34)
+    ctx.fillStyle = 'rgba(46,58,66,0.94)'
     ctx.beginPath()
-    ctx.moveTo(cx - 210, H * 0.74)
-    ctx.lineTo(cx - 125, baseY - 40)
-    ctx.lineTo(cx + 125, baseY - 38)
-    ctx.lineTo(cx + 210, H * 0.74)
+    ctx.moveTo(cx - 210, baseY + 20)
+    ctx.lineTo(cx - 82, baseY - 215)
+    ctx.lineTo(cx - 12, baseY - 95)
+    ctx.lineTo(cx + 68, baseY - 190)
+    ctx.lineTo(cx + 210, baseY + 20)
     ctx.closePath()
     ctx.fill()
-    // White Palace terraced fortress wings
-    ctx.fillStyle = 'rgba(226,232,240,0.78)'
+    ctx.fillStyle = 'rgba(248,236,228,0.86)'
     ctx.beginPath()
-    ctx.moveTo(cx - 135, baseY - 20)
-    ctx.lineTo(cx - 124, baseY - 76)
-    ctx.lineTo(cx + 124, baseY - 76)
-    ctx.lineTo(cx + 135, baseY - 20)
+    ctx.moveTo(cx - 82, baseY - 215)
+    ctx.lineTo(cx - 46, baseY - 135)
+    ctx.lineTo(cx - 110, baseY - 140)
     ctx.closePath()
     ctx.fill()
-    ctx.fillStyle = 'rgba(235,240,248,0.86)'
-    ctx.fillRect(cx - 98, baseY - 108, 196, 36)
-    // Red Palace centerpiece
-    ctx.fillStyle = 'rgba(134,42,46,0.92)'
-    ctx.fillRect(cx - 46, baseY - 142, 92, 48)
-    // Golden roofs
-    ctx.fillStyle = 'rgba(255,210,126,0.92)'
-    ctx.fillRect(cx - 48, baseY - 148, 96, 7)
-    ctx.fillRect(cx - 20, baseY - 158, 40, 10)
-    // Warm butter-lamp windows
-    for (let i = 0; i < 16; i += 1) {
-      const wx = cx - 105 + i * 14
-      ctx.fillStyle = 'rgba(255,214,136,0.78)'
-      ctx.fillRect(wx, baseY - 94 + (i % 2) * 26, 4, 6)
-    }
+    ctx.fillStyle = 'rgba(184,171,152,0.92)'
+    ctx.fillRect(cx + 35, baseY - 48, 42, 48)
   } else {
     void palette
   }
@@ -2016,7 +1919,7 @@ function imageFor(meta: SeedMeta, width: number, height: number) {
   return url
 }
 
-const SEEDS: SeedMeta[] = [
+const ALL_SEEDS: SeedMeta[] = [
   {
     code: 'VRHZ01',
     city: '杭州',
@@ -2278,159 +2181,159 @@ const SEEDS: SeedMeta[] = [
     ],
   },
   {
-    code: 'VRSH06',
-    city: '上海',
-    title: '上海 · 陆家嘴末班地铁窗外',
-    sender: '江屿',
-    scene: 'metro',
-    lat: 31.2304,
-    lon: 121.4737,
+    code: 'VRAG06',
+    city: '阿格拉',
+    title: '阿格拉 · 泰姬陵破晓',
+    sender: '沙贾汗',
+    scene: 'lake',
+    lat: 27.1751,
+    lon: 78.0421,
     particles: 'dust',
     ambience: 'city',
-    tempC: 13,
+    tempC: 21,
     windLevel: 1,
-    scentTag: '金属与冷咖啡',
+    scentTag: '白玉与茉莉晨露',
     hearts: 452,
     publishedAt: Date.UTC(2026, 10, 22, 15, 50),
     palette: {
-      top: '#071117',
-      mid: '#16323b',
-      bottom: '#3b5555',
-      glow: '#ffbd7d',
-      accent: '#9fe8de',
-      ground: '#0b1c22',
+      top: '#426186',
+      mid: '#9fb0c8',
+      bottom: '#f3d2cb',
+      glow: '#ffd2a8',
+      accent: '#f4d3b8',
+      ground: '#3e5a39',
     },
     focus: [
       {
-        id: 'sh-1',
-        x: 0.7,
-        y: 0.5,
-        note: '末班地铁穿过陆家嘴的时候，所有灯都被拉成了长长的线。有一瞬间，城市像在融化。',
-      },
-      {
-        id: 'sh-2',
-        x: 0.22,
-        y: 0.44,
-        note: '车厢里只剩三个人。对面的人靠着玻璃睡着了，手机还亮着没回完的消息。',
-      },
-      {
-        id: 'sh-3',
+        id: 'ag-1',
         x: 0.5,
-        y: 0.85,
-        note: '下一站是终点。可我还想再坐一站，哪怕只多这一站。',
+        y: 0.36,
+        note: '第一缕淡粉晨光落上白大理石穹顶，整座主陵像浮在晨雾里的珍珠。',
+      },
+      {
+        id: 'ag-2',
+        x: 0.24,
+        y: 0.48,
+        note: '四座白玉宣礼塔隔水对望，查尔巴格花园的丝柏刚沾满露水。',
+      },
+      {
+        id: 'ag-3',
+        x: 0.5,
+        y: 0.78,
+        note: '长池水波平静得像整面镜子，把穹顶和拂晓都完整收进了水里。',
       },
     ],
     echoes: [
       {
-        id: 'sh-e1',
-        message: '上海的最后几班地铁总有一种把城市轻轻收起来的声音。',
+        id: 'ag-e1',
+        message: '站在长池南端看泰姬陵醒来，才知道白色也可以有这么多层次的温度。',
         createdAt: Date.UTC(2026, 10, 22, 16, 12),
       },
       {
-        id: 'sh-e2',
-        message: '坐过站也没关系，今夜没有人催你回家。',
+        id: 'ag-e2',
+        message: '如果只能替地下的她选一座清晨，那就留住这里吧。',
         createdAt: Date.UTC(2026, 10, 22, 17, 4),
       },
     ],
   },
   {
-    code: 'VRNJ07',
-    city: '南京',
-    title: '南京 · 梧桐夜雨',
-    sender: '夜航员',
-    scene: 'rain-street',
-    lat: 32.0603,
-    lon: 118.7969,
-    particles: 'rain',
-    ambience: 'rain',
-    tempC: 14,
-    windLevel: 2,
-    scentTag: '梧桐与湿沥青',
+    code: 'VRRI07',
+    city: '复活节岛',
+    title: '复活节岛 · 摩艾石像阵',
+    sender: '拉帕努伊守望者',
+    scene: 'coast',
+    lat: -27.1127,
+    lon: -109.3497,
+    particles: 'dust',
+    ambience: 'ocean',
+    tempC: 21,
+    windLevel: 3,
+    scentTag: '火山石与咸潮',
     hearts: 233,
     publishedAt: Date.UTC(2026, 10, 21, 16, 9),
     palette: {
-      top: '#081015',
-      mid: '#1b3335',
-      bottom: '#3c514d',
-      glow: '#ffbd77',
-      accent: '#8fe6d8',
-      ground: '#0b1518',
+      top: '#284972',
+      mid: '#768fb2',
+      bottom: '#f5c79e',
+      glow: '#ffd4a0',
+      accent: '#ffd8a8',
+      ground: '#4a5b35',
     },
     focus: [
       {
-        id: 'nj-1',
-        x: 0.48,
-        y: 0.74,
-        note: '梧桐叶子把路灯剪成了碎片。每走一步，脚下都有一小片晃动的光。',
+        id: 'ri-1',
+        x: 0.5,
+        y: 0.44,
+        note: '九尊玄武岩摩艾背对着南太平洋站在阿胡石台上，赤金破晓正好从它们肩膀后面升起。',
       },
       {
-        id: 'nj-2',
-        x: 0.21,
-        y: 0.6,
-        note: '我把伞借给了校门口修车的爷爷。他说不用，我却已经跑进了雨里。',
+        id: 'ri-2',
+        x: 0.22,
+        y: 0.62,
+        note: '拉诺拉拉库火山草坡里还半埋着未雕刻完的石像，像时间按下了暂停。',
       },
       {
-        id: 'nj-3',
-        x: 0.76,
+        id: 'ri-3',
+        x: 0.78,
         y: 0.68,
-        note: '这条路我送她走过很多次。今晚只有雨，还是走得很慢。',
+        note: '这是地球上离其他大陆最远的一座岛，浪声比风声还要辽阔。',
       },
     ],
     echoes: [
       {
-        id: 'nj-e1',
-        message: '南京的雨总像从旧唱片里落下来的。替我听一段梧桐叶的声音。',
+        id: 'ri-e1',
+        message: '在南太平洋看着摩艾的白珊瑚眼睛亮起时，忽然就不觉得孤单了。',
         createdAt: Date.UTC(2026, 10, 21, 18, 26),
       },
     ],
   },
   {
-    code: 'VRWH08',
-    city: '武汉',
-    title: '武汉 · 长江大桥晨雾',
-    sender: '楚天',
+    code: 'VRRM08',
+    city: '罗马',
+    title: '罗马 · 斗兽场夕照',
+    sender: '奥古斯都',
     scene: 'fog-bridge',
-    lat: 30.5928,
-    lon: 114.3055,
+    lat: 41.8902,
+    lon: 12.4922,
     particles: 'dust',
-    ambience: 'wind',
-    tempC: 11,
+    ambience: 'city',
+    tempC: 19,
     windLevel: 2,
-    scentTag: '江雾与汽笛',
-    hearts: 196,
+    scentTag: '洞石夕照',
+    hearts: 268,
     publishedAt: Date.UTC(2026, 10, 23, 22, 15),
     palette: {
-      top: '#21313a',
-      mid: '#829596',
-      bottom: '#e0e1d8',
-      glow: '#f5ddb7',
-      accent: '#d5e7e0',
-      ground: '#566e70',
+      top: '#2b3459',
+      mid: '#87636c',
+      bottom: '#ebb47f',
+      glow: '#ffd498',
+      accent: '#f2c98d',
+      ground: '#766452',
     },
     focus: [
       {
-        id: 'wh-1',
-        x: 0.56,
-        y: 0.35,
-        note: '雾把桥塔的上半截藏起来了。江面上传来一声汽笛，听不出是从哪一边过来的。',
+        id: 'rm-1',
+        x: 0.54,
+        y: 0.36,
+        note: '斜阳透过四层残缺的洞石拱洞斜照进竞技场，每一道柱廊都在发光。',
       },
       {
-        id: 'wh-2',
-        x: 0.18,
-        y: 0.79,
-        note: '那艘船我认得。小时候每周末都会跟外公来看它靠岸。',
-      },
-      {
-        id: 'wh-3',
+        id: 'rm-2',
         x: 0.78,
         y: 0.58,
-        note: '太阳还没真正升起来。整条江像一块刚刚醒来的玻璃。',
+        note: '君士坦丁凯旋门旁边的罗马伞松站得很静，像给神圣大道守了两千年。',
+      },
+      {
+        id: 'rm-3',
+        x: 0.24,
+        y: 0.72,
+        note: '墨达苏丹斯古泉前的倒影池像一块温热的琥珀，把整座罗马接进了夜色里。',
       },
     ],
     echoes: [
       {
-        id: 'wh-e1',
-        message: '武汉的江雾总让人想起第一次坐轮渡。替我听一声汽笛。',
+        id: 'rm-e1',
+        message: '地中海的黄昏落在斗兽场石拱上时，真希望有人能在这里替她吹一阵晚风。',
         createdAt: Date.UTC(2026, 10, 23, 23, 2),
       },
     ],
@@ -2589,52 +2492,52 @@ const SEEDS: SeedMeta[] = [
     ],
   },
   {
-    code: 'VRLS12',
-    city: '拉萨',
-    title: '拉萨 · 高原星空',
-    sender: '高原邮差',
+    code: 'VRGE12',
+    city: '格鲁吉亚',
+    title: '格鲁吉亚 · 圣剑双峰',
+    sender: '高加索牧风人',
     scene: 'plateau',
-    lat: 29.652,
-    lon: 91.1721,
-    particles: 'dust',
-    ambience: 'night',
-    tempC: 1,
-    windLevel: 1,
-    scentTag: '冷石与柏枝',
+    lat: 43.1249,
+    lon: 42.6589,
+    particles: 'snow',
+    ambience: 'snow',
+    tempC: 2,
+    windLevel: 2,
+    scentTag: '雪松与晨雾岩石',
     hearts: 409,
     publishedAt: Date.UTC(2026, 10, 20, 18, 58),
     palette: {
-      top: '#010409',
-      mid: '#081426',
-      bottom: '#163040',
-      glow: '#8fb1dd',
-      accent: '#dcecff',
-      ground: '#030a10',
+      top: '#2a4a7a',
+      mid: '#7691b8',
+      bottom: '#f5cbb8',
+      glow: '#ffd8ba',
+      accent: '#ffd6c4',
+      ground: '#344a32',
     },
     focus: [
       {
-        id: 'ls-1',
+        id: 'ge-1',
         x: 0.48,
         y: 0.24,
-        note: '银河今晚很低。好像只要伸手，就能把一粒星尘从天上摘下来。',
+        note: '乌什巴双刃雪峰在破晓第一缕日光里变成了玫瑰金，像高加索山脊插着的两把剑。',
       },
       {
-        id: 'ls-2',
+        id: 'ge-2',
         x: 0.73,
-        y: 0.7,
-        note: '风把经幡吹得一直响。每响一次，山那边的夜色就淡一点。',
+        y: 0.62,
+        note: '石砌修道院的火盆刚升起烟，圣钟的余音沿着冷水湖面传过山谷。',
       },
       {
-        id: 'ls-3',
-        x: 0.27,
-        y: 0.72,
-        note: '这里的安静不是没有声音，而是所有声音都离得很远。',
+        id: 'ge-3',
+        x: 0.25,
+        y: 0.68,
+        note: '冷杉林里守了千年的方形石碉楼还留着微弱窗光，天亮前风雪就已经停了。',
       },
     ],
     echoes: [
       {
-        id: 'ls-e1',
-        message: '在拉萨抬头看星星的时候，会突然觉得自己离家很远，又很近。',
+        id: 'ge-e1',
+        message: '在斯瓦涅季抬头看圣剑双峰的日照金山，会突然觉得自己离天空很近。',
         createdAt: Date.UTC(2026, 10, 20, 21, 35),
       },
     ],
@@ -2685,46 +2588,46 @@ const SEEDS: SeedMeta[] = [
     ],
   },
   {
-    code: 'VRHW14',
-    city: '夏威夷',
-    title: '夏威夷 · 珊瑚日落湾',
-    sender: '浪尖邮差',
+    code: 'VRGZ14',
+    city: '吉萨',
+    title: '吉萨 · 金字塔与狮身人面像',
+    sender: '尼罗河行者',
     scene: 'hawaii-sunset',
-    lat: 21.3069,
-    lon: -157.8583,
-    particles: 'firefly',
-    ambience: 'ocean',
+    lat: 29.9792,
+    lon: 31.1342,
+    particles: 'dust',
+    ambience: 'wind',
     tempC: 27,
     windLevel: 2,
-    scentTag: '鸡蛋花、椰风与暖海潮',
+    scentTag: '撒哈拉暖沙与乳香',
     hearts: 438,
     publishedAt: Date.UTC(2026, 10, 24, 4, 45),
     palette: {
-      top: '#24224a',
-      mid: '#b85c6a',
-      bottom: '#f6a868',
-      glow: '#ffd996',
-      accent: '#ffe9be',
-      ground: '#161b30',
+      top: '#283058',
+      mid: '#875c68',
+      bottom: '#f2aa68',
+      glow: '#ffcc7c',
+      accent: '#f5cc82',
+      ground: '#c79b64',
     },
     focus: [
       {
-        id: 'hw14-1',
-        x: 0.52,
-        y: 0.52,
-        note: '太阳掉进太平洋的那三分钟，整片海都是温热的蜜橘色。',
+        id: 'gz-1',
+        x: 0.45,
+        y: 0.42,
+        note: '胡夫、哈夫拉与孟卡拉三座金字塔在落日余晖中排成一线，塔尖黄金顶石还在微微发亮。',
       },
       {
-        id: 'hw14-2',
-        x: 0.16,
-        y: 0.44,
-        note: '椰子树叶被海风吹得沙沙响，和草原上的风是完全不同的夏天。',
+        id: 'gz-2',
+        x: 0.72,
+        y: 0.6,
+        note: '斯芬克斯胸前梦想石碑火坛刚被点亮，尼罗河的晚风静静绕过沙丘。',
       },
     ],
     echoes: [
       {
-        id: 'hw14-e1',
-        message: '听着太平洋的浪声发呆，真想把这片晚霞叠起来放进口袋。',
+        id: 'gz-e1',
+        message: '在撒哈拉看着猎户座三颗星慢慢浮现在金字塔顶上，时间像慢了一百倍。',
         createdAt: Date.UTC(2026, 10, 24, 5, 30),
       },
     ],
@@ -2911,37 +2814,60 @@ const SEEDS: SeedMeta[] = [
   },
 ]
 
+const DEFAULT_SEED_CODES = [
+  'VRAG06',
+  'VRRI07',
+  'VRRM08',
+  'VRDL05',
+  'VRHR04',
+  'VRGE12',
+  'VRSY13',
+  'VRGZ14',
+  'VRIS15',
+  'VRKY17',
+  'VRPR18',
+] as const
+const DEFAULT_SEED_CODE_SET = new Set<string>(DEFAULT_SEED_CODES)
+const ALL_SEED_BY_CODE = new Map(ALL_SEEDS.map((seed) => [seed.code, seed]))
+const SEEDS: SeedMeta[] = DEFAULT_SEED_CODES.flatMap((code) => {
+  const seed = ALL_SEED_BY_CODE.get(code)
+  return seed ? [seed] : []
+})
+const SEED_BY_CODE = new Map(SEEDS.map((seed) => [seed.code, seed]))
+// 旧 2D 城市保留完整原数据，仅通过已知 code 访问，不进入默认预览或信标。
+const LEGACY_SEED_BY_CODE = new Map(
+  ALL_SEEDS.filter((seed) => !DEFAULT_SEED_CODE_SET.has(seed.code)).map((seed) => [seed.code, seed]),
+)
+
 export const RADIO_CITY_COORDS: Record<string, { lat: number; lon: number }> = {
-  北京: { lat: 39.9042, lon: 116.4074 },
-  上海: { lat: 31.2304, lon: 121.4737 },
-  杭州: { lat: 30.2741, lon: 120.1551 },
-  成都: { lat: 30.5728, lon: 104.0668 },
-  广州: { lat: 23.1291, lon: 113.2644 },
-  武汉: { lat: 30.5928, lon: 114.3055 },
-  南京: { lat: 32.0603, lon: 118.7969 },
-  哈尔滨: { lat: 45.8038, lon: 126.5349 },
-  西安: { lat: 34.3416, lon: 108.9398 },
-  三亚: { lat: 18.2528, lon: 109.5119 },
-  昆明: { lat: 25.0389, lon: 102.7183 },
-  拉萨: { lat: 29.652, lon: 91.1721 },
-  青岛: { lat: 36.0671, lon: 120.3826 },
+  阿格拉: { lat: 27.1751, lon: 78.0421 },
+  复活节岛: { lat: -27.1127, lon: -109.3497 },
+  罗马: { lat: 41.8902, lon: 12.4922 },
   大理: { lat: 25.6065, lon: 100.2676 },
-  重庆: { lat: 29.563, lon: 106.5516 },
-  深圳: { lat: 22.5431, lon: 114.0579 },
-  苏州: { lat: 31.2989, lon: 120.5853 },
-  厦门: { lat: 24.4798, lon: 118.0894 },
+  哈尔滨: { lat: 45.8038, lon: 126.5349 },
+  格鲁吉亚: { lat: 43.1249, lon: 42.6589 },
   悉尼: { lat: -33.8688, lon: 151.2093 },
-  夏威夷: { lat: 21.3069, lon: -157.8583 },
+  吉萨: { lat: 29.9792, lon: 31.1342 },
   雷克雅未克: { lat: 64.1466, lon: -21.9426 },
-  开普敦: { lat: -33.9249, lon: 18.4241 },
   京都: { lat: 35.0116, lon: 135.7681 },
   巴黎: { lat: 48.8566, lon: 2.3522 },
 }
 
+const LEGACY_RADIO_CITY_COORDS: Record<string, { lat: number; lon: number }> = {
+  北京: { lat: 39.9042, lon: 116.4074 },
+  杭州: { lat: 30.2741, lon: 120.1551 },
+  成都: { lat: 30.5728, lon: 104.0668 },
+  西安: { lat: 34.3416, lon: 108.9398 },
+  三亚: { lat: 18.2528, lon: 109.5119 },
+  青岛: { lat: 36.0671, lon: 120.3826 },
+  开普敦: { lat: -33.9249, lon: 18.4241 },
+}
+
 export function cityCoords(city: string) {
-  const direct = RADIO_CITY_COORDS[city.trim()]
+  const name = city.trim()
+  const direct = RADIO_CITY_COORDS[name] ?? LEGACY_RADIO_CITY_COORDS[name]
   if (direct) return direct
-  const hash = seedOf(city || 'earth')
+  const hash = seedOf(name || 'earth')
   return {
     lat: 18 + (hash % 2800) / 100,
     lon: 74 + ((hash >>> 8) % 5600) / 100,
@@ -2949,7 +2875,8 @@ export function cityCoords(city: string) {
 }
 
 function seedMetaByCode(code: string) {
-  return SEEDS.find((seed) => seed.code === code.toUpperCase()) ?? null
+  const normalized = code.trim().toUpperCase()
+  return SEED_BY_CODE.get(normalized) ?? LEGACY_SEED_BY_CODE.get(normalized) ?? null
 }
 
 function packetFor(meta: SeedMeta, image: string): VisionPacket {
@@ -2982,6 +2909,10 @@ export function getSeedSignal(code: string): RadioSignal | null {
     origin: 'seed',
     publishedAt: meta.publishedAt,
   }
+}
+
+export function getSeedVisionByCode(code: string): RadioSignal | null {
+  return getSeedSignal(code)
 }
 
 export function getSeedPreview(code: string): RadioSignalPreview | null {
@@ -3020,7 +2951,7 @@ export function seedSignalCodes() {
 }
 
 export function isSeedCode(code: string) {
-  return SEEDS.some((seed) => seed.code === code.toUpperCase())
+  return seedMetaByCode(code) !== null
 }
 
 export function seedCityId(code: string) {
